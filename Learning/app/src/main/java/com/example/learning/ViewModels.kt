@@ -1,0 +1,74 @@
+package com.example.learning
+
+import android.Manifest
+import android.app.Application
+import android.location.Location
+import androidx.annotation.RequiresPermission
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.learning.repos.ApplicationRepos
+import com.example.learning.repos.LocationRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+class LearningApplication : Application() {
+    // This holds the data layer
+    lateinit var repos: ApplicationRepos
+    // This is effectively "applicationScope"
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
+    override fun onCreate() {
+        super.onCreate()
+        // Initialize it once when the app starts
+        repos = ApplicationRepos(this)
+    }
+}
+
+object AppViewModelProvider {
+    val Factory = viewModelFactory {
+
+        // 2. Recipe for SecondViewModel
+        initializer {
+            val app = (this[APPLICATION_KEY] as LearningApplication)
+
+            HomeViewModel(app.repos.busStopsResource, app.repos.locationRepo)
+        }
+    }
+}
+
+class HomeViewModel(
+    private val busStopsResource: BusStopsResource,
+    private val locationRepository: LocationRepository
+) : ViewModel() {
+
+    private val _closestBusStop = MutableStateFlow<BusStopInfo?>(null)
+    val closestBusStop = _closestBusStop.asStateFlow()
+
+    private val _location = MutableStateFlow<Location?>(null)
+    val location = _location.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _location.value = locationRepository.getCurrentLocation()
+            val busStopsInfo = busStopsResource.busStopInfo!!
+
+            if (_location.value == null) {
+                println("Location not available yet")
+                return@launch
+            }
+
+            _closestBusStop.value = busStopsInfo.minByOrNull {
+                it.getDistance(_location.value!!)
+            }
+        }
+    }
+}
+
