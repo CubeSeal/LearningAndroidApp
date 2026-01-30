@@ -55,19 +55,26 @@ class HomeViewModel(
     private val _location = MutableStateFlow<Location?>(null)
     val location = _location.asStateFlow()
 
+    private val _associatedStopTimes = MutableStateFlow<List<ScheduledStopTimesInfo>>(emptyList())
+    val associatedStopTimes = _associatedStopTimes.asStateFlow()
+
     init {
         viewModelScope.launch {
+            // Init location
             _location.value = locationRepository.getCurrentLocation()
-            val busStopsInfo = busStopsResource.busStopInfo!!
-
             if (_location.value == null) {
                 println("Location not available yet")
                 return@launch
             }
 
+            // Init Closest Bus Stops
+            val busStopsInfo = busStopsResource.busStopInfo!!
             _closestBusStop.value = busStopsInfo.minByOrNull {
                 it.getDistance(_location.value!!)
             }
+
+            // Init Associated Stop Times
+            _associatedStopTimes.value = busStopsResource.getAssociatedTrips(_closestBusStop.value!!.id)
         }
     }
 }

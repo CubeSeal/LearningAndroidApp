@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
@@ -33,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -174,8 +175,9 @@ fun HOMEScreen(
     // The Magic: We set the default value to use our global Factory
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    val closestBusStop by viewModel.closestBusStop.collectAsStateWithLifecycle()
     val location by viewModel.location.collectAsStateWithLifecycle()
+    val closestBusStop by viewModel.closestBusStop.collectAsStateWithLifecycle()
+    val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = Modifier.fillMaxSize()
@@ -188,7 +190,8 @@ fun HOMEScreen(
         ) {
             NearestStopCard(
                 busStopInfo = closestBusStop,
-                location = location
+                location = location,
+                associatedBusStopTimes = associatedBusStopTimes
             )
 
             Text("Hello")
@@ -199,14 +202,13 @@ fun HOMEScreen(
 @Composable
 fun NearestStopCard(
     busStopInfo: BusStopInfo?,
-    location: Location?
+    location: Location?,
+    associatedBusStopTimes: List<ScheduledStopTimesInfo>
 ) {
     if (
-        busStopInfo != null && location != null
+        busStopInfo != null && location != null && associatedBusStopTimes.isNotEmpty()
     ) {
-        val distance = busStopInfo.getDistance(location)
-
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .height(200.dp)
                 .fillMaxWidth()
@@ -214,17 +216,19 @@ fun NearestStopCard(
                 .background(Color(0xFF00B5EF))
                 .padding(16.dp)
         ) {
-            Text(
-                text = "CLOSEST BUS STOP",
-                fontWeight = FontWeight.Bold,
-                fontSize = 30.sp,
-                color = Color.White
-            )
-            Text(busStopInfo.name, color = Color.White)
-            Text(
-                text = "Distance is $distance m",
-                fontStyle = FontStyle.Italic
-            )
+            item {
+                Text(
+                    text = "CLOSEST BUS STOP",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 30.sp,
+                    color = Color.White
+                )
+                Text(busStopInfo.name, color = Color.White)
+            }
+
+            items(associatedBusStopTimes) {
+                Text(it.tripId, color = Color.White)
+            }
         }
     }
 }

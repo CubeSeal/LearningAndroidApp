@@ -1,22 +1,21 @@
 package com.example.learning
 
 import android.Manifest
+import android.R.attr.targetId
 import android.content.Context
 import android.location.Location
 import androidx.annotation.RequiresPermission
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.Modifier
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.LocationRepository
 import com.github.doyaaaaaken.kotlincsv.dsl.csvReader
 import com.google.protobuf.CodedInputStream
 import com.google.transit.realtime.GtfsRealtime.FeedEntity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalTime
@@ -129,7 +128,7 @@ data class BusStopInfo(
 }
 
 @Immutable
-data class StopTimesInfo(
+data class ScheduledStopTimesInfo(
     val stopId: String,
     val tripId: String,
     val departureTime: LocalTime,
@@ -157,6 +156,50 @@ class BusStopsResource(
         busStopInfo = getStops()
     }
 
+    suspend fun getAssociatedTrips(stopId: String): List<ScheduledStopTimesInfo> = withContext(Dispatchers.IO) {
+        var results = mutableListOf<ScheduledStopTimesInfo>()
+        val targetStr = "\"$stopId\""
+        val file = File(fileRepository.directory, "stop_times.txt")
+
+        file.useLines { lines ->
+            lines.forEach { line ->
+                // GTFS structure: trip_id, arrival_time, departure_time, stop_id, ...
+
+                // 1. Find start of stop_id (After 3rd comma)
+                val p1 = line.indexOf(',')
+                val p2 = line.indexOf(',', p1 + 1)
+                val p3 = line.indexOf(',', p2 + 1)
+                val p4 = line.indexOf(',', p3 + 1)
+
+                // 2. Extract ONLY the stop_id substring
+                // If p4 is -1, it might be the last column, handle accordingly
+                val stopIdSubstring =
+                    if (p4 != -1) line.substring(p3 + 1, p4) else line.substring(p3 + 1)
+
+                // 3. Compare Strings
+                if (stopIdSubstring == targetStr) {
+                    // 4. ONLY parse the rest if we have a match
+                    // We already know the indices of the other commas (p1, p2)
+
+                    val tripId = line.take(p1).removeSurrounding("\"")
+                    val arrivalStr = line.substring(p1 + 1, p2).removeSurrounding("\"")
+                    val departureStr = line.substring(p2 + 1, p3).removeSurrounding("\"")
+
+                    results.add(
+                        ScheduledStopTimesInfo(
+                            stopId = stopId,
+                            tripId = tripId,
+                            departureTime = LocalTime.parse(departureStr), // Helper function
+                            arrivalTime = LocalTime.parse(arrivalStr)
+                        )
+                    )
+                }
+            }
+        }
+
+        return@withContext results
+    }
+
     suspend fun getStops(): List<BusStopInfo> {
         return withContext(Dispatchers.IO) {
             val fileData = fileRepository.readFile("stops.txt")!!
@@ -182,7 +225,7 @@ class BusStopsResource(
         )
 
         val justWipeEverythingAndStartAgain = suspend {
-                listOfFiles.map{fileRepository.deleteFile(it)}
+                listOfFiles.forEach{fileRepository.deleteFile(it)}
 
                 // If this returns null then everything is already up to date so whatever.
                 downloadBusStopData(null)?.let {
@@ -191,9 +234,9 @@ class BusStopsResource(
         }
 
         if (requiredFiles.any {!fileRepository.fileExists(it)}) {
-            justWipeEverythingAndStartAgain
+            justWipeEverythingAndStartAgain()
         } else if (!fileRepository.fileExists("timestamp")) {
-            justWipeEverythingAndStartAgain
+            justWipeEverythingAndStartAgain()
         } else {
             val timeStampFile = fileRepository.readFile("timestamp") ?: throw IOException("Could not read timestamp file.")
             val timestamp = Instant.parse(timeStampFile)

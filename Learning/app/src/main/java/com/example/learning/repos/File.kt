@@ -1,12 +1,13 @@
 package com.example.learning.repos
 import android.content.Context
+import com.github.doyaaaaaken.kotlincsv.dsl.csvReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 
 class FileRepository(private val context: Context, private val directoryStr: String) {
-    private val directory = File(context.filesDir, directoryStr)
+    val directory = File(context.filesDir, directoryStr)
 
     init {
         if (!directory.exists()) {
@@ -34,6 +35,11 @@ class FileRepository(private val context: Context, private val directoryStr: Str
         }
     }
 
+    fun readCSVRows(filename: String) =
+        csvReader().open(File(directory, filename)) {
+           readAllWithHeaderAsSequence().toList()
+    }
+
     // Check if file exists (fast operation, but can still be suspended)
     suspend fun fileExists(filename: String): Boolean = withContext(Dispatchers.IO) {
         File(directory, filename).exists()
@@ -48,4 +54,5 @@ class FileRepository(private val context: Context, private val directoryStr: Str
     suspend fun listFiles(): List<String> = withContext(Dispatchers.IO) {
         directory.listFiles()?.map { it.name } ?: emptyList()
     }
+
 }
