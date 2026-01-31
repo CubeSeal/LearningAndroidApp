@@ -13,28 +13,31 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBox
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,28 +47,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch
 
-enum class AppDestinations(
-    val label: String,
-    val icon: ImageVector,
-) {
-    HOME("Home", Icons.Default.Home),
-    PROFILE("Profile", Icons.Default.AccountBox),
-    SETTINGS("Settings", Icons.Default.Settings),
-}
-
-@Composable
-fun LoadingScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(text = "Downloading Transport Data...")
-        }
-    }
-}
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -105,11 +86,7 @@ class MainActivity : ComponentActivity() {
                 val app = application as LearningApplication
                 val isAppReady by app.repos.isLoaded.collectAsStateWithLifecycle()
 
-                if (isAppReady) {
-                    HOMEScreen()
-                } else {
-                    LoadingScreen()
-                }
+                HOMEScreen()
             }
         }
 
@@ -117,65 +94,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-//@Composable
-//fun LearningApp() {
-//    val navController = rememberNavController()
-//
-//    // Get the current route to determine which item is selected
-//    val navBackStackEntry by navController.currentBackStackEntryAsState()
-//    val currentDestination = navBackStackEntry?.destination?.route
-//
-//    NavigationSuiteScaffold(
-//        navigationSuiteItems = {
-//            AppDestinations.entries.forEach { destination ->
-//                item(
-//                    icon = { Icon(destination.icon, contentDescription = destination.label) },
-//                    label = { Text(destination.label) },
-//                    // Compare the current route string with the enum name/route
-//                    selected = currentDestination == destination.name,
-//                    onClick = {
-//                        navController.navigate(destination.name) {
-//                            // Pop up to the start destination of the graph to
-//                            // avoid building up a large stack of destinations
-//                            popUpTo(navController.graph.findStartDestination().id) {
-//                                saveState = true
-//                            }
-//                            // Avoid multiple copies of the same destination
-//                            launchSingleTop = true
-//                            // Restore state when reselecting a previously selected item
-//                            restoreState = true
-//                        }
-//                    }
-//                )
-//            }
-//        }
-//    ) {
-//        // Place the NavHost here instead of a static Scaffold
-//        NavHost(
-//            navController = navController,
-//            startDestination = AppDestinations.HOME.name,
-//            modifier = Modifier.fillMaxSize().safeDrawingPadding()
-//        ) {
-//            composable(AppDestinations.HOME.name) {
-//                HOMEScreen()
-//            }
-//            composable(AppDestinations.PROFILE.name) {
-//                PROFILEScreen()
-//            }
-//            composable(AppDestinations.SETTINGS.name) {
-//                SETTINGScreen()
-//            }
-//        }
-//    }
-//
-//}
-
 @Composable
 fun HOMEScreen(
     // The Magic: We set the default value to use our global Factory
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val location by viewModel.location.collectAsStateWithLifecycle()
+    val allBusStops by viewModel.allBusStops.collectAsStateWithLifecycle()
     val closestBusStop by viewModel.closestBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
 
@@ -190,8 +115,10 @@ fun HOMEScreen(
         ) {
             NearestStopCard(
                 busStopInfo = closestBusStop,
+                allBusStops = allBusStops,
                 location = location,
-                associatedBusStopTimes = associatedBusStopTimes
+                associatedBusStopTimes = associatedBusStopTimes,
+                stopChangeCallback = viewModel::updateClosestBusStop
             )
 
             Text("Hello")
@@ -202,105 +129,82 @@ fun HOMEScreen(
 @Composable
 fun NearestStopCard(
     busStopInfo: BusStopInfo?,
+    allBusStops: List<BusStopInfo>,
     location: Location?,
-    associatedBusStopTimes: List<ScheduledStopTimesInfo>
+    associatedBusStopTimes: List<ScheduledStopTimesInfo>,
+    stopChangeCallback: (BusStopInfo) -> Unit
 ) {
-    if (
-        busStopInfo != null && location != null && associatedBusStopTimes.isNotEmpty()
+    Column(
+        modifier = Modifier
+            .height(500.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF00B5EF))
+            .padding(16.dp)
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .height(200.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF00B5EF))
-                .padding(16.dp)
-        ) {
-            item {
-                Text(
-                    text = "CLOSEST BUS STOP",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 30.sp,
-                    color = Color.White
-                )
-                Text(busStopInfo.name, color = Color.White)
-            }
+        CardHeader(busStopInfo, allBusStops, stopChangeCallback)
 
-            items(associatedBusStopTimes) {
-                Text(it.tripId, color = Color.White)
+        ArrivalsTable(associatedBusStopTimes)
+    }
+}
+
+@Composable
+fun CardHeader(
+    closestBusStop: BusStopInfo?,
+    allBusStops: List<BusStopInfo>,
+    stopChangeCallback: (BusStopInfo) -> Unit
+) {
+    var expanded by remember {mutableStateOf(false)}
+
+    Box(
+        modifier = Modifier
+            .padding(16.dp)
+    ) {
+        TextButton(onClick = { expanded = !expanded }) {
+            Text(
+                text = closestBusStop?.name ?: "Loading...",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            allBusStops.take(100).forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.name) },
+                    onClick = { expanded = false; stopChangeCallback(option) }
+                )
             }
         }
     }
 }
 
-//@Composable
-//fun PROFILEScreen(
-//    // The Magic: We set the default value to use our global Factory
-//    viewModel: SecondViewModel = viewModel(factory = AppViewModelProvider.Factory)
-//) {
-//    val busStopsInfo by viewModel.busStopsInfo.collectAsStateWithLifecycle()
-//    val location by viewModel.location.collectAsStateWithLifecycle()
-//    // Create state for the LazyColumn
-//    val listState = rememberLazyListState()
-//
-//    // This runs once when the composable enters the composition
-//    LaunchedEffect(Unit) {
-//        viewModel.loadDataIfNeeded()
-//    }
-//
-//    LaunchedEffect(busStopsInfo) {
-//        if (busStopsInfo.isNotEmpty()) listState.animateScrollToItem(0)
-//    }
-//
-//    LazyColumn(
-//        state = listState,
-//        modifier = Modifier.fillMaxSize()
-//    ) {
-//        items(
-//            items = busStopsInfo,
-//            key = { it.id }
-//        ) { BusStopsCard(it, location) }
-//    }
-//}
-//
-//@Composable
-//fun SETTINGScreen() {
-//    var value by remember { mutableStateOf("Loading...") }
-//
-//    // This runs once when the composable enters the composition
-//    LaunchedEffect(Unit) {
-//        value = try {
-//            "Cringe"
-//        } catch (e: Exception) {
-//            "Error: ${e.message}"
-//        }
-//    }
-//
-//    Text(
-//        text = "Hello $value!"
-//    )
-//}
-//
-//@Composable
-//fun BusCard(bus: BusInfo) {
-//    Card(modifier = Modifier.padding(8.dp).fillMaxWidth()) {
-//        Column(modifier = Modifier.padding(16.dp)) {
-//            Text(text = "Bus ID: ${bus.vehicleId}")
-//            Text(text = "Route: ${bus.routeId}")
-//            Text(text = "Distance from me: ${bus.distance}")
-//        }
-//    }
-//}
-//
-//@Composable
-//fun BusStopsCard(busStop: BusStopInfo, location: Location) {
-//    val distance = busStop.getDistance(location)
-//
-//    Card(modifier = Modifier.padding(8.dp).fillMaxWidth()) {
-//        Column(modifier = Modifier.padding(16.dp)) {
-//            Text(text = "Bus ID: ${busStop.id}")
-//            Text(text = "Name: ${busStop.name}")
-//            Text(text = "Distance from me: ${String.format(Locale.ENGLISH, "%.2f", distance)}m")
-//        }
-//    }
-//}
+@Composable
+fun ArrivalsTable(
+    associatedBusStopTimes: List<ScheduledStopTimesInfo>
+) {
+    val colWeight1 = 0.25f
+    val colWeight2 = 0.25f
+    val colWeight3 = 0.5f
+
+    Row() {
+        Text("Departure Time", Modifier.weight(colWeight1))
+        Text("Route Name", Modifier.weight(colWeight2))
+        Text("Headsign", Modifier.weight(colWeight3))
+    }
+
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(
+            items = associatedBusStopTimes,
+            key = { it.id }
+        ) { item ->
+            Row() {
+                Text(item.departureTime, Modifier.weight(colWeight1))
+                Text(item.routeShortName, Modifier.weight(colWeight2))
+                Text(item.tripHeadsign, Modifier.weight(colWeight3))
+            }
+        }
+    }
+}

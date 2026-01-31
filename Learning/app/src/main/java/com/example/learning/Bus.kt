@@ -1,28 +1,21 @@
 package com.example.learning
 
+import GtfsStaticRepository
 import android.Manifest
-import android.R.attr.targetId
 import android.content.Context
 import android.location.Location
 import androidx.annotation.RequiresPermission
 import androidx.compose.runtime.Immutable
-import com.example.learning.repos.FileRepository
 import com.example.learning.repos.LocationRepository
-import com.github.doyaaaaaken.kotlincsv.dsl.csvReader
 import com.google.protobuf.CodedInputStream
 import com.google.transit.realtime.GtfsRealtime.FeedEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
 import java.io.IOException
-import java.time.Instant
 import java.time.LocalTime
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import java.util.TreeSet
-import java.util.zip.ZipInputStream
 
 @Immutable
 data class BusInfo(
@@ -77,7 +70,7 @@ class BusResource(
                 val length = cis.readRawVarint32()
                 val oldLimit = cis.pushLimit(length)
                 val entity = FeedEntity.parseFrom(cis)
-                val bus = convertToBusInfo(entity) ?: break
+                val bus = convertToBusInfo(entity) ?: continue
 
                 // Keep only closest 100
                 closestBuses.add(bus)
@@ -129,221 +122,25 @@ data class BusStopInfo(
 
 @Immutable
 data class ScheduledStopTimesInfo(
+    val id: Long, // Unique ID for Lazy columns.
     val stopId: String,
     val tripId: String,
-    val departureTime: LocalTime,
-    val arrivalTime: LocalTime
+    val departureTime: String,
+    val arrivalTime: String,
+    val tripHeadsign: String,
+    val routeShortName: String,
 )
 
 class BusStopsResource(
-    private val locationRepo: LocationRepository,
-    private val fileRepository: FileRepository,
-    private val httpClient: OkHttpClient
+    private val gtfsStaticRepository: GtfsStaticRepository
 ) {
-    private val gtfsUrl = "https://api.transport.nsw.gov.au/v1/gtfs/schedule/buses"
-    private val apiKey =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJPOExUTzJkbGJhTmZiZkpDR2VUTDlyMDd3Yk9WVE9LbFFiclN0eDdFUnA4IiwiaWF0IjoxNzY2ODM1ODU1fQ.cdCzNDKLb5eoA1r57iuUAx-aNVSXAdlXS1rIuTm0Q2I"
-    private val request = Request
-        .Builder()
-        .url(gtfsUrl)
-        .header("Authorization", value = "apikey $apiKey")
-        .build()
-    var busStopInfo: List<BusStopInfo>? = null
-
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
-    suspend fun init() {
-        updateBusStopData()
-        busStopInfo = getStops()
-    }
 
-    suspend fun getAssociatedTrips(stopId: String): List<ScheduledStopTimesInfo> = withContext(Dispatchers.IO) {
-        var results = mutableListOf<ScheduledStopTimesInfo>()
-        val targetStr = "\"$stopId\""
-        val file = File(fileRepository.directory, "stop_times.txt")
-
-        file.useLines { lines ->
-            lines.forEach { line ->
-                // GTFS structure: trip_id, arrival_time, departure_time, stop_id, ...
-
-                // 1. Find start of stop_id (After 3rd comma)
-                val p1 = line.indexOf(',')
-                val p2 = line.indexOf(',', p1 + 1)
-                val p3 = line.indexOf(',', p2 + 1)
-                val p4 = line.indexOf(',', p3 + 1)
-
-                // 2. Extract ONLY the stop_id substring
-                // If p4 is -1, it might be the last column, handle accordingly
-                val stopIdSubstring =
-                    if (p4 != -1) line.substring(p3 + 1, p4) else line.substring(p3 + 1)
-
-                // 3. Compare Strings
-                if (stopIdSubstring == targetStr) {
-                    // 4. ONLY parse the rest if we have a match
-                    // We already know the indices of the other commas (p1, p2)
-
-                    val tripId = line.take(p1).removeSurrounding("\"")
-                    val arrivalStr = line.substring(p1 + 1, p2).removeSurrounding("\"")
-                    val departureStr = line.substring(p2 + 1, p3).removeSurrounding("\"")
-
-                    results.add(
-                        ScheduledStopTimesInfo(
-                            stopId = stopId,
-                            tripId = tripId,
-                            departureTime = LocalTime.parse(departureStr), // Helper function
-                            arrivalTime = LocalTime.parse(arrivalStr)
-                        )
-                    )
-                }
-            }
-        }
-
-        return@withContext results
+    suspend fun getAssociatedTrips(stopId: String): List<ScheduledStopTimesInfo> = withContext(Dispatchers.Default) {
+        gtfsStaticRepository.getAssociatedTrips(stopId)
     }
 
     suspend fun getStops(): List<BusStopInfo> {
-        return withContext(Dispatchers.IO) {
-            val fileData = fileRepository.readFile("stops.txt")!!
-
-            csvReader()
-                .readAllWithHeader(fileData)
-                .mapNotNull { convertToBusStopInfo(it) }
-        }
-    }
-
-    private suspend fun updateBusStopData(): Boolean {
-        val listOfFiles = fileRepository.listFiles()
-        val requiredFiles = listOf(
-            "agency.txt",
-            "calendar_dates.txt",
-            "calendar.txt",
-            "notes.txt",
-            "routes.txt",
-            "shapes.txt",
-            "stops.txt",
-            "stop_times.txt",
-            "trips.txt"
-        )
-
-        val justWipeEverythingAndStartAgain = suspend {
-                listOfFiles.forEach{fileRepository.deleteFile(it)}
-
-                // If this returns null then everything is already up to date so whatever.
-                downloadBusStopData(null)?.let {
-                    fileRepository.writeFile("timestamp", it.toString())
-                }
-        }
-
-        if (requiredFiles.any {!fileRepository.fileExists(it)}) {
-            justWipeEverythingAndStartAgain()
-        } else if (!fileRepository.fileExists("timestamp")) {
-            justWipeEverythingAndStartAgain()
-        } else {
-            val timeStampFile = fileRepository.readFile("timestamp") ?: throw IOException("Could not read timestamp file.")
-            val timestamp = Instant.parse(timeStampFile)
-
-            // If this returns null then everything is already up to date so whatever.
-            downloadBusStopData(timestamp)?.let {
-                fileRepository.writeFile("timestamp", it.toString())
-            }
-        }
-
-        return true
-    }
-
-    private fun parseHttpDate(dateString: String): Instant {
-        return ZonedDateTime.parse(dateString, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()
-    }
-
-    private suspend fun downloadBusStopData(checkHeaderTimestamp: Instant?): Instant? {
-        return withContext(Dispatchers.IO) {
-
-            // 1. THE CHEAP CHECK (HEAD)
-            // Only perform this if we have a previous timestamp.
-            if (checkHeaderTimestamp != null) {
-                val headRequest = request.newBuilder().head().build()
-
-                httpClient.newCall(headRequest).execute().use { headResponse ->
-                    if (!headResponse.isSuccessful) {
-                        // Note: Some APIs return 404 or 405 for HEAD.
-                        // If so, you might want to catch this and proceed to GET anyway.
-                        throw IOException("HEAD request failed: ${headResponse.code}")
-                    }
-
-                    val lastModifiedHeader = headResponse.header("last-modified")
-                    val serverTimestamp = lastModifiedHeader?.let {
-                        parseHttpDate(it)
-                    }
-
-                    // If server timestamp is older or equal to what we have, STOP.
-                    if (serverTimestamp != null && checkHeaderTimestamp >= serverTimestamp) {
-                        return@withContext null
-                    }
-                }
-            }
-
-            // 2. THE HEAVY DOWNLOAD (GET)
-            // We only get here if data is new or it's the first run.
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                response.close()
-                throw IOException("GET request failed: ${response.code}")
-            }
-
-            // Capture the new timestamp to return at the end
-            val newTimestamp = response.header("last-modified")?.let {
-                parseHttpDate(it)
-            }
-
-            // 3. STREAMING & UNZIPPING
-            try {
-                val rawStream = response.body?.byteStream() ?: throw IOException("No body")
-
-                // Critical Optimization: wrap in .buffered()
-                // This reduces system calls significantly.
-                rawStream.buffered().use { bufferedBody ->
-                    ZipInputStream(bufferedBody).use { zipStream ->
-
-                        var entry = zipStream.nextEntry
-
-                        while (entry != null) {
-                            if (!entry.isDirectory) {
-                                // Logic to save the individual file
-                                fileRepository.writeFileStream(entry.name, zipStream)
-                            }
-                            entry = zipStream.nextEntry
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                throw IOException("Error unzipping stream", e)
-            } finally {
-                // Ensure the connection is released back to the pool
-                response.close()
-            }
-
-            return@withContext newTimestamp
-        }
-    }
-
-    fun convertToBusStopInfo(row: Map<String, String>): BusStopInfo? {
-        val id = row["stop_id"] ?: return null
-        val name = row["stop_name"] ?: return null
-        val location = Location("bus")
-            .apply {
-                latitude = row["stop_lat"]?.toDoubleOrNull() ?: return null
-                longitude = row["stop_lon"]?.toDoubleOrNull() ?: return null
-            }
-        val wheelchairBoarding = when (row["wheelchair_boarding"]) {
-            "1" -> true
-            else -> false
-        }
-
-        return BusStopInfo(
-            id = id,
-            name = name,
-            location = location,
-            wheelchairBoarding = wheelchairBoarding
-        )
+        return gtfsStaticRepository.getStops()
     }
 }
