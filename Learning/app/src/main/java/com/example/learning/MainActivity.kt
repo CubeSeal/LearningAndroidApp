@@ -188,9 +188,9 @@ fun ArrivalsTable(
     val colWeight3 = 0.5f
 
     Row {
-        Text("Departure Time", Modifier.weight(colWeight1))
-        Text("Route Name", Modifier.weight(colWeight2))
-        Text("Headsign", Modifier.weight(colWeight3))
+        Text("Day", Modifier.weight(colWeight3))
+        Text("Time", Modifier.weight(colWeight1))
+        Text("Name", Modifier.weight(colWeight2))
     }
 
     LazyColumn(Modifier.fillMaxSize()) {
@@ -199,9 +199,9 @@ fun ArrivalsTable(
             key = { it.id }
         ) { item ->
             Row {
+                Text(item.arrivalTime.day.toString(), Modifier.weight(colWeight3))
                 Text(item.departureTime.time.toString(), Modifier.weight(colWeight1))
                 Text(item.routeShortName, Modifier.weight(colWeight2))
-                Text(item.tripHeadsign, Modifier.weight(colWeight3))
             }
         }
     }
