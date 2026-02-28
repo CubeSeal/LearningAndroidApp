@@ -632,15 +632,14 @@ class GtfsStaticRepository(
         val nowDay = time.dayOfWeek
         val nowTime = time.toLocalTime()
 
-        val unsortedList = convertRawQueryToScheduledStopTimesInfo(entities)
-        Log.d("VM", "$unsortedList")
+        val sortedList = convertRawQueryToScheduledStopTimesInfo(entities).sortedWith(
+            compareBy<ScheduledStopTimesInfo> {it.arrivalTime.day}.thenBy {it.arrivalTime.time}
+        )
+        Log.d("VM", "sortedList = $sortedList")
         Log.d("VM", "Now day = $nowDay")
         Log.d("VM", "Now time = $nowTime")
-        Log.d("VM", "Predicate = ${unsortedList.map { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }}")
-        Log.d("VM", "Predicate = ${unsortedList.map { it.arrivalTime.time > nowTime }}")
-        Log.d("VM", "Predicate = ${unsortedList.map { it.arrivalTime.day >= nowDay }}")
-        val prefix = unsortedList.indexOfFirst { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }
+        val prefix = sortedList.indexOfFirst { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }
 
-        return Pair(unsortedList, if (prefix == -1) 0 else prefix)
+        return Pair(sortedList, if (prefix == -1) 0 else prefix)
     }
 }
