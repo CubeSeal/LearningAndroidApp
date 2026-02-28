@@ -4,7 +4,6 @@ package com.example.learning
 
 // Helper for finding the start destination in the graph
 import android.Manifest
-import android.location.Location
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,16 +13,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Scaffold
@@ -34,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -44,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.learning.database.BusStopInfo
+import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch
 
@@ -83,8 +80,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LearningTheme {
-                val app = application as LearningApplication
-                val isAppReady by app.repos.isLoaded.collectAsStateWithLifecycle()
+//                val app = application as LearningApplication
+//                val isAppReady by app.repos
+//                    .isLoaded
+//                    .collectAsStateWithLifecycle()
 
                 HOMEScreen()
             }
@@ -99,9 +98,8 @@ fun HOMEScreen(
     // The Magic: We set the default value to use our global Factory
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    val location by viewModel.location.collectAsStateWithLifecycle()
-    val allBusStops by viewModel.allBusStops.collectAsStateWithLifecycle()
-    val closestBusStop by viewModel.closestBusStop.collectAsStateWithLifecycle()
+    val closestBusStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
+    val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -114,14 +112,11 @@ fun HOMEScreen(
                 .padding(20.dp)
         ) {
             NearestStopCard(
-                busStopInfo = closestBusStop,
-                allBusStops = allBusStops,
-                location = location,
+                busStopInfo = focusedBusStop,
+                busStopsDropdown = closestBusStops,
                 associatedBusStopTimes = associatedBusStopTimes,
-                stopChangeCallback = viewModel::updateClosestBusStop
+                stopChangeCallback = viewModel::updateFocusedBusStop
             )
-
-            Text("Hello")
         }
     }
 }
@@ -129,8 +124,7 @@ fun HOMEScreen(
 @Composable
 fun NearestStopCard(
     busStopInfo: BusStopInfo?,
-    allBusStops: List<BusStopInfo>,
-    location: Location?,
+    busStopsDropdown: List<BusStopInfo>,
     associatedBusStopTimes: List<ScheduledStopTimesInfo>,
     stopChangeCallback: (BusStopInfo) -> Unit
 ) {
@@ -142,7 +136,7 @@ fun NearestStopCard(
             .background(Color(0xFF00B5EF))
             .padding(16.dp)
     ) {
-        CardHeader(busStopInfo, allBusStops, stopChangeCallback)
+        CardHeader(busStopInfo, busStopsDropdown, stopChangeCallback)
 
         ArrivalsTable(associatedBusStopTimes)
     }
@@ -158,13 +152,17 @@ fun CardHeader(
 
     Box(
         modifier = Modifier
-            .padding(16.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .padding(2.dp)
+            .background(Color.Gray)
     ) {
         TextButton(onClick = { expanded = !expanded }) {
             Text(
                 text = closestBusStop?.name ?: "Loading...",
                 fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
+                fontSize = 20.sp,
+                color = Color.White
             )
         }
         DropdownMenu(
@@ -189,7 +187,7 @@ fun ArrivalsTable(
     val colWeight2 = 0.25f
     val colWeight3 = 0.5f
 
-    Row() {
+    Row {
         Text("Departure Time", Modifier.weight(colWeight1))
         Text("Route Name", Modifier.weight(colWeight2))
         Text("Headsign", Modifier.weight(colWeight3))
@@ -200,8 +198,8 @@ fun ArrivalsTable(
             items = associatedBusStopTimes,
             key = { it.id }
         ) { item ->
-            Row() {
-                Text(item.departureTime, Modifier.weight(colWeight1))
+            Row {
+                Text(item.departureTime.time.toString(), Modifier.weight(colWeight1))
                 Text(item.routeShortName, Modifier.weight(colWeight2))
                 Text(item.tripHeadsign, Modifier.weight(colWeight3))
             }

@@ -1,5 +1,6 @@
 package com.example.learning.repos
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
@@ -71,12 +72,6 @@ class LocationRepository(private val context: Context) {
     /**
      * Get current fresh location
      */
-    @RequiresPermission(
-        anyOf = [
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION
-        ]
-    )
     suspend fun getCurrentLocation(): Location? {
         if (!hasLocationPermission()) return null
 
@@ -89,6 +84,7 @@ class LocationRepository(private val context: Context) {
             val cancellationToken = CancellationTokenSource()
 
             suspendCancellableCoroutine { continuation ->
+                @SuppressLint("MissingPermission")
                 fusedLocationClient
                     .getCurrentLocation(request, cancellationToken.token)
                     .addOnSuccessListener { location ->
@@ -111,12 +107,6 @@ class LocationRepository(private val context: Context) {
     /**
      * Start continuous location updates
      */
-    @RequiresPermission(
-        anyOf = [
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION
-        ]
-    )
     fun startLocationUpdates(
         intervalMillis: Long = 10000L,
         priority: Int = Priority.PRIORITY_BALANCED_POWER_ACCURACY
@@ -141,6 +131,7 @@ class LocationRepository(private val context: Context) {
 
         locationCallback = callback
 
+        @SuppressLint("MissingPermission")
         fusedLocationClient.requestLocationUpdates(
             locationRequest,
             callback,

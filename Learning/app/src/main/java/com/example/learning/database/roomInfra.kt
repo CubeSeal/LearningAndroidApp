@@ -10,7 +10,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
-import com.example.learning.ScheduledStopTimesInfo
 
 @Entity(
     tableName = "stop_times",
@@ -47,13 +46,23 @@ interface StopTimesDao {
             , trips.serviceId
             , trips.tripHeadsign
             , routes.routeShortName
+            , calendar.startDate as calendarStartDate
+            , calendar.endDate as calendarEndDate
+            , calendar.monday as calendarMonday
+            , calendar.tuesday as calendarTuesday
+            , calendar.wednesday as calendarWednesday
+            , calendar.thursday as calendarThursday
+            , calendar.friday as calendarFriday
+            , calendar.saturday as calendarSaturday
+            , calendar.sunday as calendarSunday
         FROM stop_times
         LEFT JOIN trips ON stop_times.tripId = trips.tripId
         LEFT JOIN routes ON routes.routeId = trips.routeId
+        LEFT JOIN calendar ON trips.serviceId = calendar.serviceId
         WHERE stopId = :stopId
         ORDER BY arrivalTime ASC
     """)
-    suspend fun getTripsByStopId(stopId: String): List<ScheduledStopTimesInfo>
+    suspend fun getTripsByStopId(stopId: String): List<RawQueryResultScheduledStopTimes>
 
     @Query("DELETE FROM stop_times")
     suspend fun deleteAll()
@@ -143,15 +152,53 @@ interface RoutesDao {
     suspend fun deleteAll()
 }
 
+// Probably don't need all this infrastructure for like a 200 line file, but it's also probably
+// better to do all the file parsing the same way.
+@Entity(
+    tableName = "calendar",
+    indices = [Index(value = ["serviceId"])]
+)
+@Immutable
+data class BusCalendarEntity(
+    @PrimaryKey
+    val serviceId: String,
+    val monday: String,
+    val tuesday: String,
+    val wednesday: String,
+    val thursday: String,
+    val friday: String,
+    val saturday: String,
+    val sunday: String,
+    val startDate: String,
+    val endDate: String,
+)
+
+@Dao
+interface CalendarDao {
+    @Query("SELECT COUNT(*) FROM routes")
+    suspend fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBatch(calendarEntities: List<BusCalendarEntity>)
+
+    @Query("SELECT * FROM routes")
+    suspend fun getAll(): List<BusRoutesEntity>
+
+    @Query("DELETE FROM routes")
+    suspend fun deleteAll()
+}
+
 @Database(entities = [
     StopTimeEntity::class,
     BusStopInfoEntity::class,
     BusTripsEntity::class,
     BusRoutesEntity::class,
+    BusCalendarEntity::class,
 ], version = 1)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun stopTimesDao(): StopTimesDao
     abstract fun stopsDao(): StopsDao
     abstract fun tripsDao(): TripsDao
     abstract fun routesDao(): RoutesDao
+    abstract fun calendarDao(): CalendarDao
 }

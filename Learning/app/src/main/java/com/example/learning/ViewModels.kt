@@ -1,6 +1,5 @@
 package com.example.learning
 
-import GtfsStaticRepository
 import android.Manifest
 import android.app.Application
 import android.location.Location
@@ -11,15 +10,28 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.learning.database.BusStopInfo
+import com.example.learning.database.GtfsStaticRepository
+import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.repos.ApplicationRepos
 import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 
 class LearningApplication : Application() {
     // This holds the data layer
@@ -51,51 +63,84 @@ class HomeViewModel(
     private val gtfsStaticRepository: GtfsStaticRepository,
     private val locationRepository: LocationRepository
 ) : ViewModel() {
+    private val _location = MutableStateFlow<Location?>(null)
+    val location = _location.asStateFlow()
+
+    private var locationJob: Job? = null
 
     private val _allBusStops = MutableStateFlow<List<BusStopInfo>>(emptyList())
     val allBusStops = _allBusStops.asStateFlow()
 
-    private val _closestBusStop = MutableStateFlow<BusStopInfo?>(null)
-    val closestBusStop = _closestBusStop.asStateFlow()
+    // Derived state - automatically updates when location or allBusStops change
+    val closestBusStops: StateFlow<List<BusStopInfo>> = combine(
+        _location,
+        _allBusStops
+    ) { location, stops ->
+        location?.let { loc ->
+            stops.sortedBy { it.getDistance(loc) }.take(10)
+        } ?: emptyList()
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
-    private val _location = MutableStateFlow<Location?>(null)
-    val location = _location.asStateFlow()
+    private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
+    val focusedBusStop = _focusedBusStop.asStateFlow()
 
-    private val _associatedStopTimes = MutableStateFlow<List<ScheduledStopTimesInfo>>(emptyList())
-    val associatedStopTimes = _associatedStopTimes.asStateFlow()
-
-    fun updateClosestBusStop(busStopInfo: BusStopInfo) {
-        _closestBusStop.update { busStopInfo }
-
-        viewModelScope.launch {
-            val newStopTimes = gtfsStaticRepository.getAssociatedTrips(busStopInfo.id)
-            _associatedStopTimes.update { newStopTimes }
+    // Derived state - automatically updates when focusedBusStop changes
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val associatedStopTimes: StateFlow<List<ScheduledStopTimesInfo>> = _focusedBusStop
+        .filterNotNull()
+        .distinctUntilChanged()
+        .mapLatest { busStop ->
+            val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.id, LocalDateTime.now())
+            Log.d("VM", "Index is $index")
+            return@mapLatest trips.drop(index) + trips.take(index)
         }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
+        _focusedBusStop.value = busStopInfo
+        // No need to manually update associatedStopTimes - it happens automatically!
+    }
+
+    fun startLocationUpdates() {
+        locationJob?.cancel()
+        locationJob = viewModelScope.launch {
+            locationRepository
+                .startLocationUpdates()
+                .collect { _location.value = it }
+            // closestBusStops automatically updates via combine()
+        }
+    }
+
+    fun endLocationUpdates() {
+        locationJob?.cancel()
     }
 
     init {
         viewModelScope.launch {
             // Init location
             _location.value = locationRepository.getCurrentLocation()
+
             if (_location.value == null) {
-                println("Location not available yet")
+                Log.d("LOCATION", "Location not available yet")
                 return@launch
             }
 
-            // Init Closest Bus Stops
+            // Init all bus stops
             _allBusStops.value = gtfsStaticRepository.getStops()
-            _closestBusStop.value = allBusStops.value.minByOrNull {
-                it.getDistance(location.value!!)
-            }
 
-            // Init Associated Stop Times
-            _associatedStopTimes.value = _closestBusStop.value?.id?.let {
-                Log.d("VM", "Trying to get associated trips")
-                val associatedTrips = gtfsStaticRepository.getAssociatedTrips(it)
-                Log.d("VM", associatedTrips.toString())
-                associatedTrips
-            } ?: emptyList()
+            // closestBusStops is automatically calculated via combine()
+            // Wait for first emission to set focused stop
+            closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
+                updateFocusedBusStop(it)
+            }
         }
     }
 }
-

@@ -1,10 +1,9 @@
+package com.example.learning.database
 
 import android.location.Location
 import android.util.Log
+import androidx.compose.runtime.Immutable
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.example.learning.BusStopInfo
-import com.example.learning.ScheduledStopTimesInfo
-import com.example.learning.database.AppDatabase
 import com.example.learning.repos.FileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,12 +11,64 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.ZipInputStream
 import com.example.learning.BuildConfig
 
+@Immutable
+data class BusStopInfo(
+    val id: String,
+    val name: String,
+    val location: Location,
+    val wheelchairBoarding: Boolean
+) {
+    fun getDistance(currentLocation: Location): Float { return location.distanceTo(currentLocation) }
+}
+
+@Immutable
+data class WeeklySchedule (
+    val time: LocalTime,
+    val day: DayOfWeek,
+    val startDate: LocalDate,
+    val endDate: LocalDate
+)
+
+@Immutable
+data class ScheduledStopTimesInfo(
+    val id: String, // Unique ID for Lazy columns.
+    val stopId: String,
+    val tripId: String,
+    val departureTime: WeeklySchedule,
+    val arrivalTime: WeeklySchedule,
+    val tripHeadsign: String,
+    val routeShortName: String,
+)
+
+@Immutable
+data class RawQueryResultScheduledStopTimes(
+    val id: Long, // Unique ID for Lazy columns.
+    val stopId: String,
+    val tripId: String,
+    val departureTime: String,
+    val arrivalTime: String,
+    val tripHeadsign: String,
+    val routeShortName: String,
+    val calendarStartDate: String,
+    val calendarEndDate: String,
+    val calendarMonday: String,
+    val calendarTuesday: String,
+    val calendarWednesday: String,
+    val calendarThursday: String,
+    val calendarFriday: String,
+    val calendarSaturday: String,
+    val calendarSunday: String,
+)
 
 class GtfsStaticRepository(
     val database: AppDatabase,
@@ -35,6 +86,7 @@ class GtfsStaticRepository(
     private val stopsDao = database.stopsDao()
     private val tripsDao = database.tripsDao()
     private val routesDao = database.routesDao()
+    private val calendarDao = database.routesDao()
 
     /**
      * Call this when the app starts. It checks if DB is empty.
@@ -119,6 +171,9 @@ class GtfsStaticRepository(
                     "departureTime",
                     "stopId"
                 )
+
+                Log.d("GTFS", "Stop times Count = $stopTimesCount")
+
                 if (stopTimesCount < 4_000_000 && stopTimesCount > 3_000_000) {
                     upsertFromFile(
                         file = stopTimesFile,
@@ -194,6 +249,26 @@ class GtfsStaticRepository(
                     )
                 }
 
+                // Load new calendar data
+                val calendarFile = File(fileRepository.directory, "calendar.txt")
+                val calendarColumns = listOf(
+                    "serviceId",
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday",
+                    "startDate",
+                    "endDate",
+                )
+
+                fastLoadFromScratch(
+                    file = calendarFile,
+                    columns = calendarColumns
+                )
+
                 // Write timestamp after all done.
                 fileRepository.writeFile("timestamp", newTimestamp.toString())
 
@@ -258,9 +333,17 @@ class GtfsStaticRepository(
         var start = 0
 
         for (i in line.indices) {
-            if (line[i] == ',' && line[i-1] == '"') {
-                result[col++] = line.substring(start, i).removeSurrounding("\"")
-                start = i + 1
+            // Safe check: Are we at the end? OR is the next char a comma?
+            val isAtEnd = i == line.length - 1
+            val isNextComma = !isAtEnd && line[i + 1] == ','
+
+            if (line[i] == '"' && (isAtEnd || isNextComma)) {
+                val parsedString = line.substring(start, i + 1).removeSurrounding("\"")
+                result[col++] = parsedString
+
+                // Move start past the comma (i + 2), or just finish if at end
+                start = i + 2
+
                 if (col == colCount) break
             }
         }
@@ -419,12 +502,145 @@ class GtfsStaticRepository(
         }
     }
 
+    fun createWeeklySchedule(
+        startDay: DayOfWeek,
+        rawTime: String,
+        startDate: String,
+        endDate: String
+    ): WeeklySchedule {
+        // 1. Split "26:30" into hours and minutes
+        val parts = rawTime.split(":")
+        val rawHours = parts[0].toLong()
+        val rawMinutes = parts[1].toLong()
+
+        // 2. Convert everything to total minutes to handle cases like "23:90"
+        val totalMinutes = (rawHours * 60) + rawMinutes
+
+        // 3. Calculate how many days to add
+        val daysToAdd = totalMinutes / (24 * 60)
+
+        // 4. Calculate the time remaining in the final day
+        val minutesIntoDay = totalMinutes % (24 * 60)
+
+        // 5. Shift the day (DayOfWeek handles the Mon-Sun wrapping automatically)
+        val newDay = startDay.plus(daysToAdd)
+
+        // 6. Create the normalized time
+        val newTime = LocalTime.of((minutesIntoDay / 60).toInt(), (minutesIntoDay % 60).toInt())
+
+        return WeeklySchedule(
+            newTime,
+            newDay,
+            LocalDate.parse(startDate, DateTimeFormatter.BASIC_ISO_DATE),
+            LocalDate.parse(endDate, DateTimeFormatter.BASIC_ISO_DATE)
+        )
+    }
+
+    private fun convertRawQueryToScheduledStopTimesInfo(rawquerylist: List<RawQueryResultScheduledStopTimes>): List<ScheduledStopTimesInfo> {
+       return rawquerylist.flatMap {
+                buildList {
+                    if (it.calendarMonday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Monday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.MONDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.MONDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+
+                    if (it.calendarTuesday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Tuesday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.TUESDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.TUESDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+
+                    if (it.calendarWednesday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Wednesday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.WEDNESDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.WEDNESDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+
+                    if (it.calendarThursday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Thursday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.THURSDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.THURSDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+
+                    if (it.calendarFriday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Friday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.FRIDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.FRIDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+
+                    if (it.calendarSaturday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Saturday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.SATURDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.SATURDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+
+                    if (it.calendarSunday != "") add(
+                        ScheduledStopTimesInfo(
+                            id = "${it.id}-Sunday",
+                            stopId = it.stopId,
+                            tripId =  it.tripId,
+                            tripHeadsign = it.tripHeadsign,
+                            routeShortName = it.routeShortName,
+                            departureTime = createWeeklySchedule(DayOfWeek.SUNDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
+                            arrivalTime = createWeeklySchedule(DayOfWeek.SUNDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
+                        )
+                    )
+                }
+           }
+    }
+
     // This is now lightning fast
-    suspend fun getAssociatedTrips(stopId: String): List<ScheduledStopTimesInfo> {
+    suspend fun getAssociatedTrips(stopId: String, time: LocalDateTime): Pair<List<ScheduledStopTimesInfo>, Int> {
         val entities = stopTimesDao.getTripsByStopId(stopId)
+        val nowDay = time.dayOfWeek
+        val nowTime = time.toLocalTime()
 
-        Log.d("VM", entities.toString())
+        val unsortedList = convertRawQueryToScheduledStopTimesInfo(entities)
+        Log.d("VM", "$unsortedList")
+        Log.d("VM", "Now day = $nowDay")
+        Log.d("VM", "Now time = $nowTime")
+        Log.d("VM", "Predicate = ${unsortedList.map { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }}")
+        Log.d("VM", "Predicate = ${unsortedList.map { it.arrivalTime.time > nowTime }}")
+        Log.d("VM", "Predicate = ${unsortedList.map { it.arrivalTime.day >= nowDay }}")
+        val prefix = unsortedList.indexOfFirst { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }
 
-        return entities
+        return Pair(unsortedList, if (prefix == -1) 0 else prefix)
     }
 }
