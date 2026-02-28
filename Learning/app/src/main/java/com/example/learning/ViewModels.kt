@@ -2,6 +2,7 @@ package com.example.learning
 
 import android.Manifest
 import android.app.Application
+import android.content.Context
 import android.location.Location
 import android.util.Log
 import androidx.annotation.RequiresPermission
@@ -10,16 +11,19 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.room.Room
+import com.example.learning.database.AppDatabase
 import com.example.learning.database.BusStopInfo
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.ScheduledStopTimesInfo
-import com.example.learning.repos.ApplicationRepos
+import com.example.learning.repos.FileRepository
 import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +35,36 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import java.time.LocalDateTime
+
+class ApplicationRepos(private val applicationContext: Context) {
+    val database = Room.databaseBuilder(
+        applicationContext,
+        AppDatabase::class.java, "bus-stuff"
+    ).build()
+    val locationRepo = LocationRepository(applicationContext)
+    val fileRepository = FileRepository(applicationContext, "busStops")
+    val httpClient = OkHttpClient()
+    val gtfsStaticRepository = GtfsStaticRepository(
+        database = database,
+        fileRepository = fileRepository,
+        httpClient = httpClient
+    )
+    val isLoaded = MutableStateFlow(false)
+
+    suspend fun initAll() {
+        withContext(Dispatchers.Default) {
+            val job1 = async { gtfsStaticRepository.updateBusStopData() }
+//            val job2 = async { busResource.init(applicationContext) }
+
+            job1.await()
+//            job2.await()
+            isLoaded.value = true
+        }
+    }
+}
 
 class LearningApplication : Application() {
     // This holds the data layer
