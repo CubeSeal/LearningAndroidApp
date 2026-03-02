@@ -5,6 +5,7 @@ package com.example.learning
 // Helper for finding the start destination in the graph
 import android.Manifest
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -13,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,8 +22,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -39,7 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.learning.database.BusStopInfo
+import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch
@@ -80,16 +86,35 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LearningTheme {
-//                val app = application as LearningApplication
-//                val isAppReady by app.repos
-//                    .isLoaded
-//                    .collectAsStateWithLifecycle()
+                val app = application as LearningApplication
+                val isAppReady by app.repos
+                    .isLoaded
+                    .collectAsStateWithLifecycle()
 
-                HOMEScreen()
+                if (!isAppReady){
+                    LoadingScreen()
+                } else {
+                    Log.d("INIT", "Home screen loaded.")
+                    HOMEScreen()
+                }
             }
         }
 
 
+    }
+}
+
+@Composable
+fun LoadingScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator()
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(text = "Downloading Transport Data...")
+        }
     }
 }
 
@@ -108,8 +133,6 @@ fun HOMEScreen(
         Column(
             modifier = Modifier
                 .padding(it)
-                .fillMaxSize()
-                .padding(20.dp)
         ) {
             NearestStopCard(
                 busStopInfo = focusedBusStop,
@@ -123,16 +146,14 @@ fun HOMEScreen(
 
 @Composable
 fun NearestStopCard(
-    busStopInfo: BusStopInfo?,
-    busStopsDropdown: List<BusStopInfo>,
+    busStopInfo: BusStopInfoEntity?,
+    busStopsDropdown: List<BusStopInfoEntity>,
     associatedBusStopTimes: List<ScheduledStopTimesInfo>,
-    stopChangeCallback: (BusStopInfo) -> Unit
+    stopChangeCallback: (BusStopInfoEntity) -> Unit
 ) {
     Column(
         modifier = Modifier
-            .height(500.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFF00B5EF))
             .padding(16.dp)
     ) {
@@ -144,9 +165,9 @@ fun NearestStopCard(
 
 @Composable
 fun CardHeader(
-    closestBusStop: BusStopInfo?,
-    allBusStops: List<BusStopInfo>,
-    stopChangeCallback: (BusStopInfo) -> Unit
+    closestBusStop: BusStopInfoEntity?,
+    allBusStops: List<BusStopInfoEntity>,
+    stopChangeCallback: (BusStopInfoEntity) -> Unit
 ) {
     var expanded by remember {mutableStateOf(false)}
 
@@ -154,7 +175,6 @@ fun CardHeader(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .padding(2.dp)
             .background(Color.Gray)
     ) {
         TextButton(onClick = { expanded = !expanded }) {
@@ -198,11 +218,31 @@ fun ArrivalsTable(
             items = associatedBusStopTimes,
             key = { it.id }
         ) { item ->
-            Row {
-                Text(item.arrivalTime.day.toString(), Modifier.weight(colWeight3))
-                Text(item.departureTime.time.toString(), Modifier.weight(colWeight1))
-                Text(item.routeShortName, Modifier.weight(colWeight2))
-            }
+//            Row {
+//                Text(item.arrivalTime.day.toString(), Modifier.weight(colWeight3))
+//                Text(item.departureTime.time.toString(), Modifier.weight(colWeight1))
+//                Text(item.routeShortName, Modifier.weight(colWeight2))
+//            }
+           BusCard(item)
         }
     }
 }
+
+@Composable
+fun BusCard(
+    item: ScheduledStopTimesInfo
+) {
+    ElevatedCard(
+        elevation = CardDefaults.cardElevation(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(2.dp)
+            .height(100.dp)
+    ) {
+        Text(item.arrivalTime.day.toString())
+        Text(item.departureTime.time.toString())
+        Text(item.routeShortName)
+    }
+}
+
+

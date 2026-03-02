@@ -13,7 +13,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.room.Room
 import com.example.learning.database.AppDatabase
-import com.example.learning.database.BusStopInfo
+import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.repos.FileRepository
@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.time.LocalDateTime
+import kotlin.math.pow
 
 class ApplicationRepos(private val applicationContext: Context) {
     val database = Room.databaseBuilder(
@@ -55,13 +56,17 @@ class ApplicationRepos(private val applicationContext: Context) {
     val isLoaded = MutableStateFlow(false)
 
     suspend fun initAll() {
+        if (isLoaded.value) return
+
         withContext(Dispatchers.Default) {
+            Log.d("INIT", "Start loading...")
             val job1 = async { gtfsStaticRepository.updateBusStopData() }
 //            val job2 = async { busResource.init(applicationContext) }
 
             job1.await()
 //            job2.await()
             isLoaded.value = true
+            Log.d("INIT", "Finished loading.")
         }
     }
 }
@@ -101,16 +106,16 @@ class HomeViewModel(
 
     private var locationJob: Job? = null
 
-    private val _allBusStops = MutableStateFlow<List<BusStopInfo>>(emptyList())
+    private val _allBusStops = MutableStateFlow<List<BusStopInfoEntity>>(emptyList())
     val allBusStops = _allBusStops.asStateFlow()
 
     // Derived state - automatically updates when location or allBusStops change
-    val closestBusStops: StateFlow<List<BusStopInfo>> = combine(
+    val closestBusStops: StateFlow<List<BusStopInfoEntity>> = combine(
         _location,
         _allBusStops
     ) { location, stops ->
         location?.let { loc ->
-            stops.sortedBy { it.getDistance(loc) }.take(10)
+            stops.sortedBy { (loc.latitude - it.latitude.toDouble()).pow(2) + (loc.longitude - it.longitude.toDouble()).pow(2) }.take(10)
         } ?: emptyList()
     }.stateIn(
         scope = viewModelScope,
@@ -118,7 +123,7 @@ class HomeViewModel(
         initialValue = emptyList()
     )
 
-    private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
+    private val _focusedBusStop = MutableStateFlow<BusStopInfoEntity?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
     // Derived state - automatically updates when focusedBusStop changes
@@ -127,8 +132,8 @@ class HomeViewModel(
         .filterNotNull()
         .distinctUntilChanged()
         .mapLatest { busStop ->
-            val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.id, LocalDateTime.now())
-            Log.d("VM", "Index is $index")
+            val time = LocalDateTime.now()
+            val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.id, time)
             return@mapLatest trips.drop(index) + trips.take(index)
         }
         .stateIn(
@@ -137,7 +142,7 @@ class HomeViewModel(
             initialValue = emptyList()
         )
 
-    fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
+    fun updateFocusedBusStop(busStopInfo: BusStopInfoEntity) {
         _focusedBusStop.value = busStopInfo
         // No need to manually update associatedStopTimes - it happens automatically!
     }
@@ -158,22 +163,27 @@ class HomeViewModel(
 
     init {
         viewModelScope.launch {
-            // Init location
-            _location.value = locationRepository.getCurrentLocation()
+            // Init all bus stops
+            Log.d("INIT", "Trying to get stops.")
+            _allBusStops.value = gtfsStaticRepository.getStops()
+            Log.d("INIT", "Got stops.")
 
+            // Init location
+            Log.d("INIT", "Trying to get location")
+            _location.value = locationRepository.getCurrentLocation()
             if (_location.value == null) {
-                Log.d("LOCATION", "Location not available yet")
+                Log.d("INIT", "Location not available yet")
                 return@launch
             }
+            Log.d("INIT", "Got location.")
 
-            // Init all bus stops
-            _allBusStops.value = gtfsStaticRepository.getStops()
-
+            Log.d("INIT", "Trying to get *closest* stops.")
             // closestBusStops is automatically calculated via combine()
             // Wait for first emission to set focused stop
             closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
                 updateFocusedBusStop(it)
             }
+            Log.d("INIT", "Got closests stops.")
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.example.learning.database
 
-import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -20,16 +19,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.ZipInputStream
 import com.example.learning.BuildConfig
-
-@Immutable
-data class BusStopInfo(
-    val id: String,
-    val name: String,
-    val location: Location,
-    val wheelchairBoarding: Boolean
-) {
-    fun getDistance(currentLocation: Location): Float { return location.distanceTo(currentLocation) }
-}
 
 @Immutable
 data class WeeklySchedule (
@@ -155,6 +144,7 @@ class GtfsStaticRepository(
 
                         while (entry != null) {
                             Log.d("GTFS", "Inspecting ${entry.name}")
+                            fileRepository.deleteFile(entry.name)
                             fileRepository.writeFileStream(entry.name, zipStream)
 
                             entry = zipStream.nextEntry
@@ -195,7 +185,8 @@ class GtfsStaticRepository(
                     "latitude",
                     "longitude"
                 )
-                if (stopsCount < 40_000 && stopsCount > 30_000) {
+//                if (stopsCount < 40_000 && stopsCount > 30_000) {
+                if (false) {
                     upsertFromFile(
                         file = stopsFile,
                         columns = stopsColumns
@@ -281,6 +272,7 @@ class GtfsStaticRepository(
 
         }
 
+        Log.d("GTFS", "Finished updating.")
         return true
     }
 
@@ -482,24 +474,8 @@ class GtfsStaticRepository(
         stmt.executeUpdateDelete()
     }
 
-    suspend fun getStops(): List<BusStopInfo> {
-        return stopsDao.getAll().map {
-            BusStopInfo(
-                id = it.id,
-                name = it.name,
-                wheelchairBoarding = false,
-                location = Location("bus")
-                    .apply {
-                        try {
-                            latitude = it.latitude.toDouble()
-                            longitude = it.longitude.toDouble()
-                        } catch (e: Exception) {
-                            throw IOException("Some bullshit on ${it.id} or ${it.latitude} or ${it.longitude}", e)
-                        }
-                    }
-
-            )
-        }
+    suspend fun getStops(): List<BusStopInfoEntity> {
+        return stopsDao.getAll()
     }
 
     fun createWeeklySchedule(
