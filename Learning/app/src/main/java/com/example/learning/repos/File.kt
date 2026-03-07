@@ -49,4 +49,16 @@ class FileRepository(private val context: Context, private val directoryStr: Str
         directory.listFiles()?.map { it.name } ?: emptyList()
     }
 
+    suspend fun runShellCommand(vararg args: String): String = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val process = Runtime.getRuntime().exec(args)
+            val output = process.inputStream.bufferedReader().readText()
+            val error = process.errorStream.bufferedReader().readText()
+            process.waitFor()
+            error.ifEmpty { output }
+        } catch (e: Exception) {
+            e.message ?: "Unknown error"
+        }
+    }
+
 }

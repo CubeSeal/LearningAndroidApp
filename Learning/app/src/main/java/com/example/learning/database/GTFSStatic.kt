@@ -5,6 +5,9 @@ import androidx.compose.runtime.Immutable
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.learning.repos.FileRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,6 +20,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipInputStream
 import com.example.learning.BuildConfig
 
@@ -164,104 +168,104 @@ class GtfsStaticRepository(
 
                 Log.d("GTFS", "Stop times Count = $stopTimesCount")
 
-                if (stopTimesCount < 4_000_000 && stopTimesCount > 3_000_000) {
-                    upsertFromFile(
-                        file = stopTimesFile,
-                        columns = stopTimeColumns
-                    )
-                } else {
-                    fastLoadFromScratch(
-                        file = stopTimesFile,
-                        columns = stopTimeColumns
-                    )
-                }
-
-                // Load new Stops data
-                val stopsCount = stopsDao.getCount()
-                val stopsFile = File(fileRepository.directory, "stops.txt")
-                val stopsColumns = listOf(
-                    "id",
-                    "name",
-                    "latitude",
-                    "longitude"
-                )
+//                if (stopTimesCount < 4_000_000 && stopTimesCount > 3_000_000) {
+//                    upsertFromFile(
+//                        file = stopTimesFile,
+//                        columns = stopTimeColumns
+//                    )
+//                } else {
+//                    fastLoadFromScratch(
+//                        file = stopTimesFile,
+//                        columns = stopTimeColumns
+//                    )
+//                }
+//
+//                // Load new Stops data
+//                val stopsCount = stopsDao.getCount()
+//                val stopsFile = File(fileRepository.directory, "stops.txt")
+//                val stopsColumns = listOf(
+//                    "id",
+//                    "name",
+//                    "latitude",
+//                    "longitude"
+//                )
 //                if (stopsCount < 40_000 && stopsCount > 30_000) {
-                if (false) {
-                    upsertFromFile(
-                        file = stopsFile,
-                        columns = stopsColumns
-                    )
-                } else {
-                    fastLoadFromScratch(
-                        file = stopsFile,
-                        columns = stopsColumns
-                    )
-                }
-
-                // Load new Trips data
-                val tripsCount = tripsDao.getCount()
-                val tripsFile = File(fileRepository.directory, "trips.txt")
-                val tripsColumns = listOf(
-                    "routeId",
-                    "serviceId",
-                    "tripId",
-                    "shapeId",
-                    "tripHeadsign"
-                )
-                if (tripsCount < 100_000 && tripsCount > 90_000) {
-                    upsertFromFile(
-                        file = tripsFile,
-                        columns = tripsColumns
-                    )
-                } else {
-                    fastLoadFromScratch(
-                        file = tripsFile,
-                        columns = tripsColumns
-                    )
-                }
-
-                // Load new routes data
-                val routesCount = routesDao.getCount()
-                val routesFile = File(fileRepository.directory, "routes.txt")
-                val routesColumns = listOf(
-                    "routeId",
-                    "agencyId",
-                    "routeShortName"
-                )
-                if (routesCount < 6500 && routesCount > 5500) {
-                    upsertFromFile(
-                        file = routesFile,
-                        columns = routesColumns
-                    )
-                } else {
-                    fastLoadFromScratch(
-                        file = routesFile,
-                        columns = routesColumns
-                    )
-                }
-
-                // Load new calendar data
-                val calendarFile = File(fileRepository.directory, "calendar.txt")
-                val calendarColumns = listOf(
-                    "serviceId",
-                    "monday",
-                    "tuesday",
-                    "wednesday",
-                    "thursday",
-                    "friday",
-                    "saturday",
-                    "sunday",
-                    "startDate",
-                    "endDate",
-                )
-
-                fastLoadFromScratch(
-                    file = calendarFile,
-                    columns = calendarColumns
-                )
-
-                // Write timestamp after all done.
-                fileRepository.writeFile("timestamp", newTimestamp.toString())
+////                if (false) {
+//                    upsertFromFile(
+//                        file = stopsFile,
+//                        columns = stopsColumns
+//                    )
+//                } else {
+//                    fastLoadFromScratch(
+//                        file = stopsFile,
+//                        columns = stopsColumns
+//                    )
+//                }
+//
+//                // Load new Trips data
+//                val tripsCount = tripsDao.getCount()
+//                val tripsFile = File(fileRepository.directory, "trips.txt")
+//                val tripsColumns = listOf(
+//                    "routeId",
+//                    "serviceId",
+//                    "tripId",
+//                    "shapeId",
+//                    "tripHeadsign"
+//                )
+//                if (tripsCount < 100_000 && tripsCount > 90_000) {
+//                    upsertFromFile(
+//                        file = tripsFile,
+//                        columns = tripsColumns
+//                    )
+//                } else {
+//                    fastLoadFromScratch(
+//                        file = tripsFile,
+//                        columns = tripsColumns
+//                    )
+//                }
+//
+//                // Load new routes data
+//                val routesCount = routesDao.getCount()
+//                val routesFile = File(fileRepository.directory, "routes.txt")
+//                val routesColumns = listOf(
+//                    "routeId",
+//                    "agencyId",
+//                    "routeShortName"
+//                )
+//                if (routesCount < 6500 && routesCount > 5500) {
+//                    upsertFromFile(
+//                        file = routesFile,
+//                        columns = routesColumns
+//                    )
+//                } else {
+//                    fastLoadFromScratch(
+//                        file = routesFile,
+//                        columns = routesColumns
+//                    )
+//                }
+//
+//                // Load new calendar data
+//                val calendarFile = File(fileRepository.directory, "calendar.txt")
+//                val calendarColumns = listOf(
+//                    "serviceId",
+//                    "monday",
+//                    "tuesday",
+//                    "wednesday",
+//                    "thursday",
+//                    "friday",
+//                    "saturday",
+//                    "sunday",
+//                    "startDate",
+//                    "endDate",
+//                )
+//
+//                fastLoadFromScratch(
+//                    file = calendarFile,
+//                    columns = calendarColumns
+//                )
+//
+//                // Write timestamp after all done.
+//                fileRepository.writeFile("timestamp", newTimestamp.toString())
 
             } catch (e: Exception) {
                 throw IOException("Error unzipping stream", e)
@@ -475,7 +479,22 @@ class GtfsStaticRepository(
     }
 
     suspend fun getStops(): List<BusStopInfoEntity> {
-        return stopsDao.getAll()
+        val fileStr: String = fileRepository.readFile("stops.txt") ?: return emptyList()
+
+        return fileStr.trimEnd().lines().drop(1).map {
+            val lineArray: Array<String> = parseCols(it, 4)
+
+            val busStopInfoEntity = BusStopInfoEntity(
+                id = lineArray[0] ,
+                name = lineArray[1] ,
+                latitude = lineArray[2] ,
+                longitude = lineArray[3] ,
+            )
+
+            Log.d("GTFS", busStopInfoEntity.toString())
+
+            return@map busStopInfoEntity
+        }
     }
 
     fun createWeeklySchedule(
@@ -604,16 +623,89 @@ class GtfsStaticRepository(
 
     // This is now lightning fast
     suspend fun getAssociatedTrips(stopId: String, time: LocalDateTime): Pair<List<ScheduledStopTimesInfo>, Int> {
-        val entities = stopTimesDao.getTripsByStopId(stopId)
+        Log.d("GTFS", "Started getAssociatedTrips")
         val nowDay = time.dayOfWeek
         val nowTime = time.toLocalTime()
+        val absPath = fileRepository.directory.absolutePath
+        val fileStr: String = fileRepository.runShellCommand(
+            "sh",
+            "-c",
+            """grep "\"$stopId\"" $absPath/stop_times.txt | awk -F, '$4 == "\"$stopId\""'"""
+            )
+        val routesCache = ConcurrentHashMap<String, String>()
+        val serviceCache = ConcurrentHashMap<String, String>()
+
+        val entities: List<RawQueryResultScheduledStopTimes> = coroutineScope {
+            fileStr.trimEnd().lines().mapIndexed { i, it ->
+                async {
+                    val stopLineArray: Array<String> = parseCols(it, 4)
+                    val tripId: String = stopLineArray[0]
+                    val tripFileStr = fileRepository.runShellCommand(
+                        "sh",
+                        "-c",
+                        """grep \""$tripId\"" $absPath/trips.txt | awk -F, '$3 == "\"$tripId\""'"""
+                    )
+
+                    return@async tripFileStr.trimEnd().lines().map {
+                        val tripLineArray: Array<String> = parseCols(tripFileStr, 5)
+                        val routeId: String = tripLineArray[0]
+
+                        // These should be one line :)
+
+                        val routeFileStrDeferred = async {
+                            routesCache.getOrPut(routeId) {
+                                fileRepository.runShellCommand(
+                                    "sh",
+                                    "-c",
+                                    """grep \""$routeId\"" $absPath/routes.txt | awk -F, '$1 == "\"$routeId\""'"""
+                                )
+                            }
+                        }
+
+                        val serviceId: String = tripLineArray[1]
+                        val serviceIdStrDeferred = async {
+                            serviceCache.getOrPut(serviceId) {
+                                fileRepository.runShellCommand(
+                                    "sh",
+                                    "-c",
+                                    """grep \""$serviceId\"" $absPath/calendar.txt | awk -F, '$1 == "\"$serviceId\""'"""
+                                )
+                            }
+                        }
+
+                        val routeFileStr = routeFileStrDeferred.await()
+                        val serviceIdStr = serviceIdStrDeferred.await()
+                        val routeLineArray: Array<String> = parseCols(routeFileStr.trimEnd(), 3)
+                        val serviceLineArray: Array<String> = parseCols(serviceIdStr.trimEnd(), 10)
+
+                        val result = RawQueryResultScheduledStopTimes(
+                            id = i.toLong(),
+                            stopId = stopLineArray[3],
+                            tripId = stopLineArray[0],
+                            departureTime = stopLineArray[1],
+                            arrivalTime = stopLineArray[2],
+                            tripHeadsign = tripLineArray[4],
+                            routeShortName = routeLineArray[2],
+                            calendarStartDate = serviceLineArray[8],
+                            calendarEndDate = serviceLineArray[9],
+                            calendarMonday = serviceLineArray[1],
+                            calendarTuesday = serviceLineArray[2],
+                            calendarWednesday = serviceLineArray[3],
+                            calendarThursday = serviceLineArray[4],
+                            calendarFriday = serviceLineArray[5],
+                            calendarSaturday = serviceLineArray[6],
+                            calendarSunday = serviceLineArray[7]
+                        )
+
+                        return@map result
+                    }
+                }
+            }.awaitAll().flatten()
+        }
 
         val sortedList = convertRawQueryToScheduledStopTimesInfo(entities).sortedWith(
             compareBy<ScheduledStopTimesInfo> {it.arrivalTime.day}.thenBy {it.arrivalTime.time}
         )
-        Log.d("VM", "sortedList = $sortedList")
-        Log.d("VM", "Now day = $nowDay")
-        Log.d("VM", "Now time = $nowTime")
         val prefix = sortedList.indexOfFirst { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }
 
         return Pair(sortedList, if (prefix == -1) 0 else prefix)
