@@ -2,7 +2,6 @@ package com.example.learning.database
 
 import android.util.Log
 import androidx.compose.runtime.Immutable
-import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.learning.repos.FileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -11,7 +10,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
 import java.io.IOException
 import java.time.DayOfWeek
 import java.time.Instant
@@ -113,12 +111,7 @@ class GtfsStaticRepository(
 
                     Log.d("GTFS", "Checking $timestamp vs. $serverTimestamp")
                     // If server timestamp is older or equal to what we have and there's data, STOP.
-                    if (
-                        serverTimestamp != null
-                        && timestamp >= serverTimestamp
-                        && stopTimesDao.getCount() != 0
-                        && stopsDao.getCount() != 0
-                    ) {
+                    if (serverTimestamp != null && timestamp >= serverTimestamp) {
                         Log.d("GTFS", "Early return")
                         return@withContext null
                     }
@@ -156,116 +149,8 @@ class GtfsStaticRepository(
                     }
                 }
 
-                // Load new Stop Times data.
-                val stopTimesCount = stopTimesDao.getCount()
-                val stopTimesFile = File(fileRepository.directory, "stop_times.txt")
-                val stopTimeColumns = listOf(
-                    "tripId",
-                    "arrivalTime",
-                    "departureTime",
-                    "stopId"
-                )
-
-                Log.d("GTFS", "Stop times Count = $stopTimesCount")
-
-//                if (stopTimesCount < 4_000_000 && stopTimesCount > 3_000_000) {
-//                    upsertFromFile(
-//                        file = stopTimesFile,
-//                        columns = stopTimeColumns
-//                    )
-//                } else {
-//                    fastLoadFromScratch(
-//                        file = stopTimesFile,
-//                        columns = stopTimeColumns
-//                    )
-//                }
-//
-//                // Load new Stops data
-//                val stopsCount = stopsDao.getCount()
-//                val stopsFile = File(fileRepository.directory, "stops.txt")
-//                val stopsColumns = listOf(
-//                    "id",
-//                    "name",
-//                    "latitude",
-//                    "longitude"
-//                )
-//                if (stopsCount < 40_000 && stopsCount > 30_000) {
-////                if (false) {
-//                    upsertFromFile(
-//                        file = stopsFile,
-//                        columns = stopsColumns
-//                    )
-//                } else {
-//                    fastLoadFromScratch(
-//                        file = stopsFile,
-//                        columns = stopsColumns
-//                    )
-//                }
-//
-//                // Load new Trips data
-//                val tripsCount = tripsDao.getCount()
-//                val tripsFile = File(fileRepository.directory, "trips.txt")
-//                val tripsColumns = listOf(
-//                    "routeId",
-//                    "serviceId",
-//                    "tripId",
-//                    "shapeId",
-//                    "tripHeadsign"
-//                )
-//                if (tripsCount < 100_000 && tripsCount > 90_000) {
-//                    upsertFromFile(
-//                        file = tripsFile,
-//                        columns = tripsColumns
-//                    )
-//                } else {
-//                    fastLoadFromScratch(
-//                        file = tripsFile,
-//                        columns = tripsColumns
-//                    )
-//                }
-//
-//                // Load new routes data
-//                val routesCount = routesDao.getCount()
-//                val routesFile = File(fileRepository.directory, "routes.txt")
-//                val routesColumns = listOf(
-//                    "routeId",
-//                    "agencyId",
-//                    "routeShortName"
-//                )
-//                if (routesCount < 6500 && routesCount > 5500) {
-//                    upsertFromFile(
-//                        file = routesFile,
-//                        columns = routesColumns
-//                    )
-//                } else {
-//                    fastLoadFromScratch(
-//                        file = routesFile,
-//                        columns = routesColumns
-//                    )
-//                }
-//
-//                // Load new calendar data
-//                val calendarFile = File(fileRepository.directory, "calendar.txt")
-//                val calendarColumns = listOf(
-//                    "serviceId",
-//                    "monday",
-//                    "tuesday",
-//                    "wednesday",
-//                    "thursday",
-//                    "friday",
-//                    "saturday",
-//                    "sunday",
-//                    "startDate",
-//                    "endDate",
-//                )
-//
-//                fastLoadFromScratch(
-//                    file = calendarFile,
-//                    columns = calendarColumns
-//                )
-//
-//                // Write timestamp after all done.
-//                fileRepository.writeFile("timestamp", newTimestamp.toString())
+                // Write timestamp after all done.
+                fileRepository.writeFile("timestamp", newTimestamp.toString())
 
             } catch (e: Exception) {
                 throw IOException("Error unzipping stream", e)
@@ -278,49 +163,6 @@ class GtfsStaticRepository(
 
         Log.d("GTFS", "Finished updating.")
         return true
-    }
-
-    private fun insertBatch(
-        db: SupportSQLiteDatabase,
-        tableName: String,
-        columns: List<String>,
-        lines: List<String>
-    ) {
-        val colCount = columns.count()
-        val sql = buildString {
-            append("""
-                INSERT INTO ${tableName}(
-            """.trimIndent())
-
-            columns.forEachIndexed { i, column ->
-                if (i > 0) append(',')
-                append(column)
-            }
-
-            append("""
-                ) VALUES
-            """.trimIndent())
-
-            lines.indices.forEach { i ->
-                if (i > 0) append(',')
-                append('(')
-                repeat(colCount) {
-                    if (it > 0) append(',')
-                    append('?')
-                }
-                append(')')
-            }
-        }
-
-        val stmt = db.compileStatement(sql)
-
-        var bindIndex = 1
-        for (line in lines) {
-            val cols = parseCols(line, colCount)
-            repeat (colCount) { stmt.bindString(bindIndex++, cols[it]) }
-        }
-
-        stmt.executeUpdateDelete()
     }
 
     inline fun parseCols(line: String, colCount: Int): Array<String> {
@@ -346,152 +188,18 @@ class GtfsStaticRepository(
         return result
     }
 
-    fun fastLoadFromScratch(file: File, columns: List<String>) {
-        val BATCH = 500
-        val db = database.openHelper.writableDatabase
-
-        // Keeping WAL mode so I can read at the same time.
-//        db.query("PRAGMA journal_mode=OFF").use {}
-        db.execSQL("PRAGMA synchronous=OFF")
-        db.execSQL("PRAGMA foreign_keys=OFF")
-        db.execSQL("DELETE FROM ${file.nameWithoutExtension}")
-
-        db.beginTransaction()
-        try {
-            file
-                .bufferedReader()
-                .useLines { lines ->
-
-                    val iter = lines.drop(1).iterator()
-                    var rowCount = 0
-
-                    while (iter.hasNext()) {
-                        val rows = ArrayList<String>(BATCH)
-
-                        repeat(BATCH) {
-                            if (!iter.hasNext()) return@repeat
-                            rows.add(iter.next())
-                        }
-
-                        if (rows.isEmpty()) break
-
-                        insertBatch(
-                            db = db,
-                            tableName = file.nameWithoutExtension,
-                            columns = columns,
-                            lines = rows,
-                        )
-                        rowCount += rows.size
-
-                        if (rowCount % 50_000 == 0) {
-                            Log.d("GTFS", "Inserted $rowCount rows")
-                        }
-                    }
-                }
-
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-//            db.query("PRAGMA journal_mode=WAL").use {}
-            db.execSQL("PRAGMA synchronous=NORMAL")
-            db.execSQL("PRAGMA foreign_keys=ON")
-        }
-    }
-    private fun upsertFromFile(
-        file: File,
-        columns: List<String>
-    ) {
-        val BATCH = 500
-        val db = database.openHelper.writableDatabase
-
-        // Lighter pragmas - we're keeping data
-        db.execSQL("PRAGMA synchronous=OFF")
-        db.execSQL("PRAGMA cache_size=-262144")
-
-        db.beginTransaction()
-        try {
-            file.bufferedReader().useLines { lines ->
-                val iter = lines.drop(1).iterator()
-                var rowCount = 0
-
-                while (iter.hasNext()) {
-                    val rows = ArrayList<String>(BATCH)
-                    repeat(BATCH) {
-                        if (!iter.hasNext()) return@repeat
-                        rows.add(iter.next())
-                    }
-
-                    if (rows.isEmpty()) break
-
-                    upsertBatch(db, file.nameWithoutExtension, columns, rows)
-                    rowCount += rows.size
-
-                    if (rowCount % 50_000 == 0) {
-                        Log.d("GTFS", "Upserted $rowCount rows")
-                    }
-                }
-            }
-
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-            db.execSQL("PRAGMA synchronous=NORMAL")
-        }
-    }
-
-    private fun upsertBatch(
-        db: SupportSQLiteDatabase,
-        tableName: String,
-        columns: List<String>,
-        lines: List<String>
-    ) {
-        val colCount = columns.count()
-
-        // Use INSERT OR REPLACE (SQLite's UPSERT)
-        val sql = buildString {
-            append("INSERT OR REPLACE INTO $tableName(")
-            columns.forEachIndexed { i, column ->
-                if (i > 0) append(',')
-                append(column)
-            }
-            append(") VALUES")
-
-            lines.indices.forEach { i ->
-                if (i > 0) append(',')
-                append('(')
-                repeat(colCount) {
-                    if (it > 0) append(',')
-                    append('?')
-                }
-                append(')')
-            }
-        }
-
-        val stmt = db.compileStatement(sql)
-
-        var bindIndex = 1
-        for (line in lines) {
-            val cols = parseCols(line, colCount)
-            repeat(colCount) { stmt.bindString(bindIndex++, cols[it]) }
-        }
-
-        stmt.executeUpdateDelete()
-    }
 
     suspend fun getStops(): List<BusStopInfoEntity> {
         val fileStr: String = fileRepository.readFile("stops.txt") ?: return emptyList()
 
         return fileStr.trimEnd().lines().drop(1).map {
             val lineArray: Array<String> = parseCols(it, 4)
-
             val busStopInfoEntity = BusStopInfoEntity(
                 id = lineArray[0] ,
                 name = lineArray[1] ,
                 latitude = lineArray[2] ,
                 longitude = lineArray[3] ,
             )
-
-            Log.d("GTFS", busStopInfoEntity.toString())
 
             return@map busStopInfoEntity
         }
