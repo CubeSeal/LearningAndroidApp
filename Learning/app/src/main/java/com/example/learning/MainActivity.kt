@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,12 +22,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,11 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,7 +46,8 @@ import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch
-
+import java.time.format.TextStyle
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -85,7 +83,7 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            LearningTheme {
+            LearningTheme(dynamicColor = false) {
                 val app = application as LearningApplication
                 val isAppReady by app.repos
                     .isLoaded
@@ -107,13 +105,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun LoadingScreen() {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.onBackground)
             Spacer(modifier = Modifier.height(16.dp))
-            Text(text = "Downloading Transport Data...")
+            Text(
+                text = "Downloading Transport Data...",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
         }
     }
 }
@@ -128,38 +132,24 @@ fun HOMEScreen(
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
 
     Scaffold(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
     ) {
         Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .padding(it)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp)
         ) {
-            NearestStopCard(
-                busStopInfo = focusedBusStop,
-                busStopsDropdown = closestBusStops,
-                associatedBusStopTimes = associatedBusStopTimes,
-                stopChangeCallback = viewModel::updateFocusedBusStop
+            CardHeader(
+                focusedBusStop,
+                closestBusStops,
+                viewModel::updateFocusedBusStop
             )
+            ArrivalsTable(associatedBusStopTimes)
         }
-    }
-}
-
-@Composable
-fun NearestStopCard(
-    busStopInfo: BusStopInfoEntity?,
-    busStopsDropdown: List<BusStopInfoEntity>,
-    associatedBusStopTimes: List<ScheduledStopTimesInfo>,
-    stopChangeCallback: (BusStopInfoEntity) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF00B5EF))
-            .padding(16.dp)
-    ) {
-        CardHeader(busStopInfo, busStopsDropdown, stopChangeCallback)
-
-        ArrivalsTable(associatedBusStopTimes)
     }
 }
 
@@ -171,25 +161,28 @@ fun CardHeader(
 ) {
     var expanded by remember {mutableStateOf(false)}
 
-    Box(
+    Card(
         modifier = Modifier
+            .height(75.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.Gray)
     ) {
-        TextButton(onClick = { expanded = !expanded }) {
+        TextButton(
+            onClick = { expanded = !expanded },
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
             Text(
-                text = closestBusStop?.name ?: "Loading...",
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
-                color = Color.White
+                text = closestBusStop?.name ?: "Loading local stop...",
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
+                style = MaterialTheme.typography.titleMedium
             )
         }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            allBusStops.take(100).forEach { option ->
+            allBusStops.take(10).forEach { option ->
                 DropdownMenuItem(
                     text = { Text(option.name) },
                     onClick = { expanded = false; stopChangeCallback(option) }
@@ -203,27 +196,46 @@ fun CardHeader(
 fun ArrivalsTable(
     associatedBusStopTimes: List<ScheduledStopTimesInfo>
 ) {
-    val colWeight1 = 0.25f
-    val colWeight2 = 0.25f
-    val colWeight3 = 0.5f
 
-    Row {
-        Text("Day", Modifier.weight(colWeight3))
-        Text("Time", Modifier.weight(colWeight1))
-        Text("Name", Modifier.weight(colWeight2))
-    }
-
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(
-            items = associatedBusStopTimes,
-            key = { it.id }
-        ) { item ->
-//            Row {
-//                Text(item.arrivalTime.day.toString(), Modifier.weight(colWeight3))
-//                Text(item.departureTime.time.toString(), Modifier.weight(colWeight1))
-//                Text(item.routeShortName, Modifier.weight(colWeight2))
-//            }
-           BusCard(item)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
+    ) {
+        if (associatedBusStopTimes.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(text = "Loading trips...", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                item() {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Time", style = MaterialTheme.typography.titleSmall)
+                        Text("Bus", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+                items(
+                    items = associatedBusStopTimes,
+                    key = { it.id }
+                ) { item ->
+                    BusCard(item)
+                }
+            }
         }
     }
 }
@@ -232,17 +244,16 @@ fun ArrivalsTable(
 fun BusCard(
     item: ScheduledStopTimesInfo
 ) {
-    ElevatedCard(
-        elevation = CardDefaults.cardElevation(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(2.dp)
-            .height(100.dp)
+    val dayTime: String = item.departureTime.time.toString() +
+        "-" +
+        item.departureTime.day.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+    val busId: String = item.routeShortName + "-" +item.tripHeadsign
+
+    Row(
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Text(item.arrivalTime.day.toString())
-        Text(item.departureTime.time.toString())
-        Text(item.routeShortName)
+        Text(dayTime, style = MaterialTheme.typography.bodySmall)
+        Text(busId, style = MaterialTheme.typography.bodySmall)
     }
 }
-
-
