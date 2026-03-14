@@ -10,7 +10,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,12 +48,24 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import java.time.format.TextStyle
 import java.util.Locale
+
+@Serializable
+data object Home
+
+@Serializable
+data class Trips(val tripId: String)
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -91,12 +106,28 @@ class MainActivity : ComponentActivity() {
                 val isAppReady by app.repos
                     .isLoaded
                     .collectAsStateWithLifecycle()
+                val navController = rememberNavController()
 
                 if (!isAppReady){
                     LoadingScreen()
                 } else {
                     Log.d("INIT", "Home screen loaded.")
-                    HOMEScreen()
+                    NavHost(
+                        navController = navController,
+                        startDestination = Home,
+                        enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
+                        exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
+                        popEnterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) },
+                        popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) }
+                    ) {
+                        composable<Home> {
+                            HOMEScreen(navController)
+                        }
+                        composable<Trips> { backStackEntry ->
+                            val route: Trips = backStackEntry.toRoute()
+                            TripsScreen(navController, route.tripId)
+                        }
+                    }
                 }
             }
         }
@@ -126,8 +157,22 @@ fun LoadingScreen() {
 }
 
 @Composable
+fun TripsScreen(
+    navController: NavController,
+    tripId: String,
+    viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
+) {
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Text(tripId)
+    }
+}
+
+@Composable
 fun HOMEScreen(
-    // The Magic: We set the default value to use our global Factory
+    navController: NavController,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val closestBusStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
@@ -151,7 +196,7 @@ fun HOMEScreen(
                 closestBusStops,
                 viewModel::updateFocusedBusStop
             )
-            ArrivalsTable(associatedBusStopTimes)
+            ArrivalsTable(associatedBusStopTimes, navController)
         }
     }
 }
@@ -201,7 +246,8 @@ fun CardHeader(
 
 @Composable
 fun ArrivalsTable(
-    associatedBusStopTimes: List<ScheduledStopTimesInfo>
+    associatedBusStopTimes: List<ScheduledStopTimesInfo>,
+    navController: NavController
 ) {
     val listState = rememberLazyListState()
 
@@ -249,7 +295,7 @@ fun ArrivalsTable(
                     items = associatedBusStopTimes,
                     key = { it.id }
                 ) { item ->
-                    BusCard(item)
+                    BusCard(navController, item)
                 }
             }
         }
@@ -258,6 +304,7 @@ fun ArrivalsTable(
 
 @Composable
 fun BusCard(
+    navController: NavController,
     item: ScheduledStopTimesInfo
 ) {
     val dayTime: String = item.departureTime.time.toString() +
@@ -267,7 +314,9 @@ fun BusCard(
 
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { navController.navigate(Trips(item.tripId))}
     ) {
         Text(dayTime, style = MaterialTheme.typography.bodySmall)
         Text(busId, style = MaterialTheme.typography.bodySmall)
