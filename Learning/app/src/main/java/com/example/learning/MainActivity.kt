@@ -22,7 +22,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -31,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -162,8 +165,12 @@ fun CardHeader(
     var expanded by remember {mutableStateOf(false)}
 
     Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
         modifier = Modifier
-            .height(75.dp)
+            .height(50.dp)
             .fillMaxWidth()
     ) {
         TextButton(
@@ -175,7 +182,7 @@ fun CardHeader(
                 text = closestBusStop?.name ?: "Loading local stop...",
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Start,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleSmall,
             )
         }
         DropdownMenu(
@@ -196,11 +203,16 @@ fun CardHeader(
 fun ArrivalsTable(
     associatedBusStopTimes: List<ScheduledStopTimesInfo>
 ) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(associatedBusStopTimes) {
+        listState.scrollToItem(0)
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(400.dp)
     ) {
         if (associatedBusStopTimes.isEmpty()) {
             Box(
@@ -215,15 +227,19 @@ fun ArrivalsTable(
             }
         } else {
             LazyColumn(
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                item() {
+                stickyHeader() {
                     Row(
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(8.dp)
                     ) {
                         Text("Time", style = MaterialTheme.typography.titleSmall)
                         Text("Bus", style = MaterialTheme.typography.titleSmall)

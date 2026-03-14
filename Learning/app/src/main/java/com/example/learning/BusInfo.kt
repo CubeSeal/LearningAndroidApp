@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import kotlin.math.pow
@@ -56,10 +56,11 @@ class BusInfo(
         return focusedBusStop
             .filterNotNull()
             .distinctUntilChanged()
-            .mapLatest { busStop ->
+            .transformLatest { busStop ->
+                emit(emptyList())
                 val time = LocalDateTime.now()
                 val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.id, time)
-                return@mapLatest trips.drop(index) + trips.take(index)
+                emit(trips.drop(index) + trips.take(index))
             }
             .stateIn(
                 scope = scope,
