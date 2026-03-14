@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
 
                 if (!isAppReady){
-                    LoadingScreen()
+                    LoadingScreen("Downloading Transport Data...")
                 } else {
                     Log.d("INIT", "Home screen loaded.")
                     NavHost(
@@ -132,12 +132,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-
     }
 }
 
 @Composable
-fun LoadingScreen() {
+fun LoadingScreen(loadingTxt: String) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -148,7 +147,7 @@ fun LoadingScreen() {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.onBackground)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Downloading Transport Data...",
+                text = loadingTxt,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -160,13 +159,61 @@ fun LoadingScreen() {
 fun TripsScreen(
     navController: NavController,
     tripId: String,
-    viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
+    viewModel: TripsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
+    val tripInfo by viewModel.tripInfo.collectAsStateWithLifecycle()
+    viewModel.updateTripInfo(tripId)
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Text(tripId)
+    if (tripInfo == null) {
+        LoadingScreen("Loading trip information...")
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize()
+        ) { padding ->
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(16.dp)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    modifier = Modifier
+                        .height(200.dp)
+                        .fillMaxWidth()
+                ) {
+                    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                        Text(tripInfo!!.routeShortName, modifier = Modifier.align(Alignment.TopStart))
+                        Text(tripInfo!!.routeLongName, modifier = Modifier.align(Alignment.BottomStart))
+                    }
+                }
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    items(
+                        items = tripInfo!!.stops,
+                        key = { it.sequence }
+                    ) { item ->
+                        Card(
+                           modifier = Modifier.fillMaxSize().height(100.dp)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                Text(item.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
+                                Text(item.stopInfo.stopName, modifier = Modifier.align(Alignment.CenterStart), style = MaterialTheme.typography.bodyMedium )
+                                Text(item.departureTime, modifier = Modifier.align(Alignment.BottomStart))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -261,16 +308,7 @@ fun ArrivalsTable(
             .height(400.dp)
     ) {
         if (associatedBusStopTimes.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(text = "Loading trips...", style = MaterialTheme.typography.titleMedium)
-                }
-            }
+            LoadingScreen("Loading trips...")
         } else {
             LazyColumn(
                 state = listState,

@@ -14,6 +14,7 @@ import androidx.room.Room
 import com.example.learning.database.AppDatabase
 import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
+import com.example.learning.database.TripInfo
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +22,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -82,11 +85,15 @@ class LearningApplication : Application() {
 object AppViewModelProvider {
     val Factory = viewModelFactory {
 
-        // 2. Recipe for SecondViewModel
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
 
             HomeViewModel(app.repos.busInfo)
+        }
+        initializer {
+            val app = (this[APPLICATION_KEY] as LearningApplication)
+
+            TripsViewModel(app.repos.busInfo)
         }
     }
 }
@@ -104,6 +111,22 @@ class HomeViewModel(
         viewModelScope.launch {
             busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
                 busInfo.updateFocusedBusStop(it)
+            }
+        }
+    }
+}
+
+class TripsViewModel(
+    private val busInfo: BusInfo
+) : ViewModel() {
+
+    private val _tripInfo = MutableStateFlow<TripInfo?>(null)
+    val tripInfo = _tripInfo.asStateFlow()
+
+    fun updateTripInfo(tripId: String) {
+        viewModelScope.launch {
+            _tripInfo.update {
+                busInfo.getTripInfo(tripId)
             }
         }
     }

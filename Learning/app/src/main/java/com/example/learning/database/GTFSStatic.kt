@@ -1,5 +1,6 @@
 package com.example.learning.database
 
+import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.repos.FileRepository
@@ -59,6 +60,33 @@ data class RawQueryResultScheduledStopTimes(
     val calendarFriday: String,
     val calendarSaturday: String,
     val calendarSunday: String,
+)
+
+@Immutable
+data class StopInfo(
+    val stopId: String,
+    val stopName: String,
+    val stopLoc: Location,
+    val wheelchairBoarding: Boolean
+)
+
+@Immutable
+data class StopTimesInfo(
+    val id: Long, // Unique ID for Lazy columns.
+    val stopInfo: StopInfo,
+    val tripId: String,
+    val departureTime: String,
+    val arrivalTime: String,
+    val sequence: Int,
+)
+
+@Immutable
+data class TripInfo(
+    val tripId: String,
+    val routeId: String,
+    val stops: List<StopTimesInfo>,
+    val routeShortName: String,
+    val routeLongName: String,
 )
 
 class GtfsStaticRepository(
@@ -417,5 +445,92 @@ class GtfsStaticRepository(
         val prefix = sortedList.indexOfFirst { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }
 
         return Pair(sortedList, if (prefix == -1) 0 else prefix)
+    }
+
+    suspend fun getTripInfo(tripId: String): TripInfo = withContext(Dispatchers.IO) {
+        Log.d("GTFS", "Started getTripInfo")
+        val absPath = fileRepository.directory.absolutePath
+        val tripFileStrDeferred = async {
+            fileRepository.runShellCommand(
+                "sh",
+                "-c",
+                """grep "\"$tripId\"" $absPath/trips.txt | awk -F, '$3 == "\"$tripId\""'"""
+            )
+        }
+
+        val stopTimesFileStrDeferred = async {
+            fileRepository.runShellCommand(
+                "sh",
+                "-c",
+                """grep "\"$tripId\"" $absPath/stop_times.txt | awk -F, '$1 == "\"$tripId\""'"""
+            )
+        }
+
+        val tripLineArray = parseCols(tripFileStrDeferred.await(), 5)
+        val routeId: String = tripLineArray[0]
+
+        val routesFileStrDeferred = async {
+            fileRepository.runShellCommand(
+                "sh",
+                "-c",
+                """grep "\"$routeId\"" $absPath/routes.txt | awk -F, '$1 == "\"$routeId\""'"""
+            )
+        }
+
+
+        val listOfStopTimes = stopTimesFileStrDeferred
+            .await()
+            .trimEnd()
+            .lines()
+            .mapIndexed { i, it ->
+                async {
+                    val stopTimesArray = parseCols(it, 5)
+                    val stopId = stopTimesArray[3]
+
+                    Log.d("GTFS", it)
+                    val stopFileStrDeferred = async {
+                        fileRepository.runShellCommand(
+                            "sh",
+                            "-c",
+                            """grep "\"$stopId\"" $absPath/stops.txt | awk -F, '$1 == "\"$stopId\""'"""
+                        )
+                    }
+                    val stopLineArray = parseCols(stopFileStrDeferred.await(), 7)
+
+                    return@async StopTimesInfo(
+                        id = i.toLong(),
+                        stopInfo = StopInfo(
+                           stopId = stopId,
+                           stopName = stopLineArray[1],
+                            stopLoc = Location("location").apply {
+                                latitude = stopLineArray[2].toDouble()
+                                longitude = stopLineArray[3].toDouble()
+                            },
+                           wheelchairBoarding = when(stopLineArray[6]) {
+                               "1" -> true
+                               else -> false
+                           }
+                        ),
+                        tripId = tripId,
+                        departureTime = stopTimesArray[2],
+                        arrivalTime =  stopTimesArray[1],
+                        sequence = stopTimesArray[4].toInt()
+                    )
+                }
+            }.awaitAll().sortedBy { it.sequence }
+
+        val routeFileStr = routesFileStrDeferred.await()
+        val routesLineArray = parseCols(routeFileStr, 6)
+
+        val final = TripInfo(
+            tripId = tripId ,
+            routeId = routeId,
+            stops = listOfStopTimes,
+            routeShortName = routesLineArray[2],
+            routeLongName = routesLineArray[3]
+        )
+
+        return@withContext final
+
     }
 }

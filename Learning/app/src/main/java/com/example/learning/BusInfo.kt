@@ -4,6 +4,7 @@ import android.location.Location
 import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.ScheduledStopTimesInfo
+import com.example.learning.database.TripInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +47,7 @@ class BusInfo(
             } ?: emptyList()
         }.stateIn(
             scope = scope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.Eagerly,
             initialValue = emptyList()
         )
     }
@@ -64,12 +65,16 @@ class BusInfo(
             }
             .stateIn(
                 scope = scope,
-                started = SharingStarted.WhileSubscribed(5000),
+                started = SharingStarted.Eagerly,
                 initialValue = emptyList()
             )
     }
 
     fun updateFocusedBusStop(busStopInfo: BusStopInfoEntity) {
         _focusedBusStop.value = busStopInfo
+    }
+
+    suspend fun getTripInfo(tripId: String): TripInfo {
+        return gtfsStaticRepository.getTripInfo(tripId)
     }
 }
