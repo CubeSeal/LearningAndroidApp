@@ -54,19 +54,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.example.learning.database.BusStopInfo
-import com.example.learning.database.ScheduledStopTimesInfo
+import com.example.learning.database.BusStopTimesRecord
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import java.time.format.TextStyle
-import java.util.Locale
 import kotlin.collections.take
 
 @Serializable
 data object Home
 
 @Serializable
-data class Trips(val tripId: String)
+data object Trips
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -113,6 +111,7 @@ class MainActivity : ComponentActivity() {
                     LoadingScreen("Downloading Transport Data...")
                 } else {
                     Log.d("INIT", "Home screen loaded.")
+                    val sharedViewModel: SharedViewModel = viewModel()
                     NavHost(
                         navController = navController,
                         startDestination = Home,
@@ -122,11 +121,10 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) }
                     ) {
                         composable<Home> {
-                            HOMEScreen(navController)
+                            HOMEScreen(navController, sharedViewModel = sharedViewModel)
                         }
-                        composable<Trips> { backStackEntry ->
-                            val route: Trips = backStackEntry.toRoute()
-                            TripsScreen(navController, route.tripId)
+                        composable<Trips> {
+                            TripsScreen(navController, sharedViewModel.selectedRecord!!)
                         }
                     }
                 }
@@ -159,15 +157,19 @@ fun LoadingScreen(loadingTxt: String) {
 @Composable
 fun TripsScreen(
     navController: NavController,
-    tripId: String,
+    busStopTimesRecord: BusStopTimesRecord,
     viewModel: TripsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    val tripInfo by viewModel.tripInfo.collectAsStateWithLifecycle()
-    viewModel.updateTripInfo(tripId)
+    val stopTimesByTrip by viewModel.busStopTimesRecord.collectAsStateWithLifecycle()
+    viewModel.updateBusStopTimesRecord(busStopTimesRecord)
 
-    if (tripInfo == null) {
+    if (stopTimesByTrip.isEmpty()) {
         LoadingScreen("Loading trip information...")
     } else {
+        // Just get this info from the first since it should be the same for all.
+        val routeShortName = stopTimesByTrip[0].routeInfo.routeShortName
+        val routeLongName = stopTimesByTrip[0].routeInfo.routeLongName
+
         Scaffold(
             modifier = Modifier.fillMaxSize()
         ) { padding ->
@@ -189,8 +191,8 @@ fun TripsScreen(
                         .fillMaxWidth()
                 ) {
                     Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        Text(tripInfo!!.routeShortName, modifier = Modifier.align(Alignment.TopStart))
-                        Text(tripInfo!!.routeLongName, modifier = Modifier.align(Alignment.BottomStart))
+                        Text(routeShortName, modifier = Modifier.align(Alignment.TopStart))
+                        Text(routeLongName, modifier = Modifier.align(Alignment.BottomStart))
                     }
                 }
                 LazyColumn(
@@ -199,16 +201,16 @@ fun TripsScreen(
                         .fillMaxSize()
                 ) {
                     items(
-                        items = tripInfo!!.stops,
-                        key = { it.sequence }
+                        items = stopTimesByTrip,
+                        key = { it.stopTimesInfo.sequence }
                     ) { item ->
                         Card(
                            modifier = Modifier.fillMaxSize().height(100.dp)
                         ) {
                             Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                Text(item.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
+                                Text(item.stopTimesInfo.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
                                 Text(item.stopInfo.stopName, modifier = Modifier.align(Alignment.CenterStart), style = MaterialTheme.typography.bodyMedium )
-                                Text(item.departureTime, modifier = Modifier.align(Alignment.BottomStart))
+                                Text(item.stopTimesInfo.formatDepartureTime(), modifier = Modifier.align(Alignment.BottomStart))
                             }
                         }
                     }
@@ -221,7 +223,8 @@ fun TripsScreen(
 @Composable
 fun HOMEScreen(
     navController: NavController,
-    viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
+    viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
+    sharedViewModel: SharedViewModel,
 ) {
     val closestBusStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
@@ -244,7 +247,7 @@ fun HOMEScreen(
                 closestBusStops,
                 viewModel::updateFocusedBusStop
             )
-            ArrivalsTable(associatedBusStopTimes, navController)
+            ArrivalsTable(sharedViewModel, associatedBusStopTimes, navController)
         }
     }
 }
@@ -294,7 +297,8 @@ fun CardHeader(
 
 @Composable
 fun ArrivalsTable(
-    associatedBusStopTimes: List<ScheduledStopTimesInfo>,
+    sharedViewModel: SharedViewModel,
+    associatedBusStopTimes: List<BusStopTimesRecord>,
     navController: NavController
 ) {
     val listState = rememberLazyListState()
@@ -332,9 +336,9 @@ fun ArrivalsTable(
                 }
                 items(
                     items = associatedBusStopTimes,
-                    key = { it.id }
+                    key = { it.fakeId }
                 ) { item ->
-                    BusCard(navController, item)
+                    BusCard(navController, sharedViewModel, item)
                 }
             }
         }
@@ -344,20 +348,22 @@ fun ArrivalsTable(
 @Composable
 fun BusCard(
     navController: NavController,
-    item: ScheduledStopTimesInfo
+    sharedViewModel: SharedViewModel,
+    item: BusStopTimesRecord
 ) {
-    val dayTime: String = item.departureTime.time.toString() +
-        "-" +
-        item.departureTime.day.getDisplayName(TextStyle.SHORT, Locale.getDefault())
-    val busId: String = item.routeShortName + "-" +item.tripHeadsign
+    val arrivalTime: String = item.stopTimesInfo.formatArrivalTime()
+    val busId: String = item.routeInfo.routeShortName + "-" +item.tripInfo.tripHeadsign
 
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { navController.navigate(Trips(item.tripId))}
+            .clickable {
+                sharedViewModel.select(item)
+                navController.navigate(Trips)
+            }
     ) {
-        Text(dayTime, style = MaterialTheme.typography.bodySmall)
+        Text(arrivalTime, style = MaterialTheme.typography.bodySmall)
         Text(busId, style = MaterialTheme.typography.bodySmall)
     }
 }

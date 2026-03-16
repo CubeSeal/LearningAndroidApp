@@ -2,8 +2,8 @@ package com.example.learning
 
 import android.location.Location
 import com.example.learning.database.BusStopInfo
+import com.example.learning.database.BusStopTimesRecord
 import com.example.learning.database.GtfsStaticRepository
-import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.database.BusTripInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,7 +32,7 @@ class BusInfo(
 
     // Derived state - automatically updates when location or allBusStops change
     val closestBusStops: StateFlow<List<BusStopInfo>> = updateClosestBusStops()
-    val associatedStopTimes: StateFlow<List<ScheduledStopTimesInfo>> = updateAssociatedStopTimes()
+    val associatedStopTimes: StateFlow<List<BusStopTimesRecord>> = updateAssociatedStopTimes()
 
     init {
         scope.launch {
@@ -53,7 +53,7 @@ class BusInfo(
         )
     }
 
-    private fun updateAssociatedStopTimes(): StateFlow<List<ScheduledStopTimesInfo>> {
+    private fun updateAssociatedStopTimes(): StateFlow<List<BusStopTimesRecord>> {
         @OptIn(ExperimentalCoroutinesApi::class)
         return focusedBusStop
             .filterNotNull()
@@ -61,7 +61,7 @@ class BusInfo(
             .transformLatest { busStop ->
                 emit(emptyList())
                 val time = LocalDateTime.now()
-                val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.stopId, time)
+                val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop, time)
                 emit(trips.drop(index) + trips.take(index))
             }
             .stateIn(
@@ -75,7 +75,7 @@ class BusInfo(
         _focusedBusStop.value = busStopInfo
     }
 
-    suspend fun getTripInfo(tripId: String): BusTripInfo {
-        return gtfsStaticRepository.getTripInfo(tripId)
+    suspend fun getByTrip(busStopTimesRecord: BusStopTimesRecord): List<BusStopTimesRecord> {
+        return gtfsStaticRepository.getByTrip(busStopTimesRecord)
     }
 }

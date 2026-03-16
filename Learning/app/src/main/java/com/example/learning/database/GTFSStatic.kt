@@ -22,71 +22,87 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipInputStream
 import com.example.learning.BuildConfig
+import com.example.learning.database.BusStopTimesInfo.Companion.parseGtfsTime
+import kotlinx.serialization.Serializable
 
+@Serializable
+data class LatLon(val latitude: Double, val longitude: Double)
+
+@Serializable
 @Immutable
-data class WeeklySchedule (
-    val time: LocalTime,
-    val day: DayOfWeek,
-    val startDate: LocalDate,
-    val endDate: LocalDate
+data class BusCalenderInfo (
+    val monday: Boolean,
+    val tuesday: Boolean,
+    val wednesday: Boolean,
+    val thursday: Boolean,
+    val friday: Boolean,
+    val saturday: Boolean,
+    val sunday: Boolean,
 )
 
+@Serializable
 @Immutable
-data class ScheduledStopTimesInfo(
-    val id: String, // Unique ID for Lazy columns.
-    val stopId: String,
-    val tripId: String,
-    val departureTime: WeeklySchedule,
-    val arrivalTime: WeeklySchedule,
-    val tripHeadsign: String,
+data class BusStopTimesRecord(
+    val fakeId: Int, // A fake id not provided
+    val stopTimesInfo: BusStopTimesInfo,
+    val stopInfo: BusStopInfo,
+    val tripInfo: BusTripInfo,
+    val routeInfo: BusRouteInfo,
+    val calendarInfo: BusCalenderInfo
+)
+
+@Serializable
+@Immutable
+data class BusRouteInfo (
+    val routeId: String,
     val routeShortName: String,
+    val routeLongName: String
 )
 
-@Immutable
-data class RawQueryResultScheduledStopTimes(
-    val id: Long, // Unique ID for Lazy columns.
-    val stopId: String,
-    val tripId: String,
-    val departureTime: String,
-    val arrivalTime: String,
-    val tripHeadsign: String,
-    val routeShortName: String,
-    val calendarStartDate: String,
-    val calendarEndDate: String,
-    val calendarMonday: String,
-    val calendarTuesday: String,
-    val calendarWednesday: String,
-    val calendarThursday: String,
-    val calendarFriday: String,
-    val calendarSaturday: String,
-    val calendarSunday: String,
-)
-
+@Serializable
 @Immutable
 data class BusStopInfo(
     val stopId: String,
     val stopName: String,
-    val stopLoc: Location,
+    val stopLoc: LatLon,
     val wheelchairBoarding: Boolean
 )
 
+@Serializable
 @Immutable
 data class BusStopTimesInfo(
-    val id: Long, // Unique ID for Lazy columns.
-    val stopInfo: BusStopInfo,
+    val fakeId: Long, // Unique ID for Lazy columns.
     val tripId: String,
-    val departureTime: String,
-    val arrivalTime: String,
+    // In seconds since beginning of day (for ordering and to handle after 24:00 time).
+    val departureTime: Int,
+    val arrivalTime: Int,
     val sequence: Int,
-)
+) {
+    fun formatGtfsTime(seconds: Int): String {
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        return "%02d:%02d:%02d".format(h, m, s)
+    }
+    fun formatArrivalTime(): String = formatGtfsTime(arrivalTime)
+    fun formatDepartureTime(): String = formatGtfsTime(departureTime)
+    companion object {
+        fun parseGtfsTime(time: String): Int {
+            val parts = time.split(":")
+            return parts[0].toInt() * 3600 +
+                    parts[1].toInt() * 60 +
+                    parts[2].toInt()
+        }
+    }
+}
 
+@Serializable
 @Immutable
 data class BusTripInfo(
-    val tripId: String,
     val routeId: String,
-    val stops: List<BusStopTimesInfo>,
-    val routeShortName: String,
-    val routeLongName: String,
+    val serviceId: String,
+    val tripId: String,
+    val tripHeadsign: String
 )
 
 class GtfsStaticRepository(
@@ -187,7 +203,7 @@ class GtfsStaticRepository(
         return true
     }
 
-    inline fun parseCols(line: String, colCount: Int): Array<String> {
+    fun parseCols(line: String, colCount: Int): Array<String> {
         val result = Array(colCount) { "" }
         var col = 0
         var start = 0
@@ -219,10 +235,7 @@ class GtfsStaticRepository(
             val busStopInfo = BusStopInfo(
                 stopId = lineArray[0] ,
                 stopName = lineArray[1] ,
-                stopLoc = Location("static").apply {
-                    latitude = lineArray[2].toDouble()
-                    longitude = lineArray[3].toDouble()
-                },
+                stopLoc = LatLon(lineArray[2].toDouble(), lineArray[3].toDouble()),
                 wheelchairBoarding = when(lineArray[6]) {
                     "1" -> true
                     else -> false
@@ -233,132 +246,8 @@ class GtfsStaticRepository(
         }
     }
 
-    fun createWeeklySchedule(
-        startDay: DayOfWeek,
-        rawTime: String,
-        startDate: String,
-        endDate: String
-    ): WeeklySchedule {
-        // 1. Split "26:30" into hours and minutes
-        val parts = rawTime.split(":")
-        val rawHours = parts[0].toLong()
-        val rawMinutes = parts[1].toLong()
-
-        // 2. Convert everything to total minutes to handle cases like "23:90"
-        val totalMinutes = (rawHours * 60) + rawMinutes
-
-        // 3. Calculate how many days to add
-        val daysToAdd = totalMinutes / (24 * 60)
-
-        // 4. Calculate the time remaining in the final day
-        val minutesIntoDay = totalMinutes % (24 * 60)
-
-        // 5. Shift the day (DayOfWeek handles the Mon-Sun wrapping automatically)
-        val newDay = startDay.plus(daysToAdd)
-
-        // 6. Create the normalized time
-        val newTime = LocalTime.of((minutesIntoDay / 60).toInt(), (minutesIntoDay % 60).toInt())
-
-        return WeeklySchedule(
-            newTime,
-            newDay,
-            LocalDate.parse(startDate, DateTimeFormatter.BASIC_ISO_DATE),
-            LocalDate.parse(endDate, DateTimeFormatter.BASIC_ISO_DATE)
-        )
-    }
-
-    private fun convertRawQueryToScheduledStopTimesInfo(rawquerylist: List<RawQueryResultScheduledStopTimes>): List<ScheduledStopTimesInfo> {
-       return rawquerylist.flatMap {
-                buildList {
-                    if (it.calendarMonday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Monday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.MONDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.MONDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-
-                    if (it.calendarTuesday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Tuesday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.TUESDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.TUESDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-
-                    if (it.calendarWednesday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Wednesday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.WEDNESDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.WEDNESDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-
-                    if (it.calendarThursday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Thursday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.THURSDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.THURSDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-
-                    if (it.calendarFriday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Friday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.FRIDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.FRIDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-
-                    if (it.calendarSaturday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Saturday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.SATURDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.SATURDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-
-                    if (it.calendarSunday != "") add(
-                        ScheduledStopTimesInfo(
-                            id = "${it.id}-Sunday",
-                            stopId = it.stopId,
-                            tripId =  it.tripId,
-                            tripHeadsign = it.tripHeadsign,
-                            routeShortName = it.routeShortName,
-                            departureTime = createWeeklySchedule(DayOfWeek.SUNDAY, it.departureTime, it.calendarStartDate, it.calendarEndDate),
-                            arrivalTime = createWeeklySchedule(DayOfWeek.SUNDAY, it.arrivalTime, it.calendarStartDate, it.calendarEndDate),
-                        )
-                    )
-                }
-           }
-    }
-
     // This is now lightning fast
-    suspend fun getAssociatedTrips(stopId: String, time: LocalDateTime): Pair<List<ScheduledStopTimesInfo>, Int> {
+    suspend fun getAssociatedTrips(busStopInfo: BusStopInfo, time: LocalDateTime): Pair<List<BusStopTimesRecord>, Int> {
         Log.d("GTFS", "Started getAssociatedTrips")
         val nowDay = time.dayOfWeek
         val nowTime = time.toLocalTime()
@@ -366,15 +255,15 @@ class GtfsStaticRepository(
         val fileStr: String = fileRepository.runShellCommand(
             "sh",
             "-c",
-            """grep "\"$stopId\"" $absPath/stop_times.txt | awk -F, '$4 == "\"$stopId\""'"""
+            """grep "\"${busStopInfo.stopId}\"" $absPath/stop_times.txt | awk -F, '$4 == "\"${busStopInfo.stopId}\""'"""
             )
         val routesCache = ConcurrentHashMap<String, String>()
         val serviceCache = ConcurrentHashMap<String, String>()
 
-        val entities: List<RawQueryResultScheduledStopTimes> = coroutineScope {
+        val entities: List<BusStopTimesRecord> = coroutineScope {
             fileStr.trimEnd().lines().mapIndexed { i, it ->
                 async {
-                    val stopLineArray: Array<String> = parseCols(it, 4)
+                    val stopLineArray: Array<String> = parseCols(it, 5)
                     val tripId: String = stopLineArray[0]
                     val tripFileStr = fileRepository.runShellCommand(
                         "sh",
@@ -387,7 +276,6 @@ class GtfsStaticRepository(
                         val routeId: String = tripLineArray[0]
 
                         // These should be one line :)
-
                         val routeFileStrDeferred = async {
                             routesCache.getOrPut(routeId) {
                                 fileRepository.runShellCommand(
@@ -411,26 +299,39 @@ class GtfsStaticRepository(
 
                         val routeFileStr = routeFileStrDeferred.await()
                         val serviceIdStr = serviceIdStrDeferred.await()
-                        val routeLineArray: Array<String> = parseCols(routeFileStr.trimEnd(), 3)
+                        val routeLineArray: Array<String> = parseCols(routeFileStr.trimEnd(), 4)
                         val serviceLineArray: Array<String> = parseCols(serviceIdStr.trimEnd(), 10)
 
-                        val result = RawQueryResultScheduledStopTimes(
-                            id = i.toLong(),
-                            stopId = stopLineArray[3],
-                            tripId = stopLineArray[0],
-                            departureTime = stopLineArray[1],
-                            arrivalTime = stopLineArray[2],
-                            tripHeadsign = tripLineArray[4],
-                            routeShortName = routeLineArray[2],
-                            calendarStartDate = serviceLineArray[8],
-                            calendarEndDate = serviceLineArray[9],
-                            calendarMonday = serviceLineArray[1],
-                            calendarTuesday = serviceLineArray[2],
-                            calendarWednesday = serviceLineArray[3],
-                            calendarThursday = serviceLineArray[4],
-                            calendarFriday = serviceLineArray[5],
-                            calendarSaturday = serviceLineArray[6],
-                            calendarSunday = serviceLineArray[7]
+                        val result = BusStopTimesRecord(
+                           fakeId = i,
+                           stopTimesInfo = BusStopTimesInfo(
+                               fakeId = i.toLong(),
+                               tripId = stopLineArray[0],
+                               departureTime = parseGtfsTime(stopLineArray[1]),
+                               arrivalTime = parseGtfsTime(stopLineArray[2]),
+                               sequence = stopLineArray[4].toInt()
+                           ),
+                           stopInfo = busStopInfo,
+                           tripInfo = BusTripInfo(
+                               routeId = tripLineArray[0],
+                               serviceId = tripLineArray[1],
+                               tripId = tripLineArray[2],
+                               tripHeadsign = tripLineArray[4]
+                           ),
+                           routeInfo = BusRouteInfo(
+                               routeId = routeLineArray[0],
+                               routeShortName = routeLineArray[2],
+                               routeLongName = routeLineArray[3]
+                           ),
+                           calendarInfo = BusCalenderInfo(
+                               monday = serviceLineArray[0] != "",
+                               tuesday = serviceLineArray[1] != "",
+                               wednesday = serviceLineArray[2] != "",
+                               thursday = serviceLineArray[3] != "",
+                               friday = serviceLineArray[4] != "",
+                               saturday = serviceLineArray[5] != "",
+                               sunday = serviceLineArray[6] != ""
+                           )
                         )
 
                         return@map result
@@ -438,26 +339,29 @@ class GtfsStaticRepository(
                 }
             }.awaitAll().flatten()
         }
+        .filter {
+            when(nowDay) {
+                DayOfWeek.MONDAY -> it.calendarInfo.monday
+                DayOfWeek.TUESDAY -> it.calendarInfo.tuesday
+                DayOfWeek.WEDNESDAY -> it.calendarInfo.wednesday
+                DayOfWeek.THURSDAY -> it.calendarInfo.thursday
+                DayOfWeek.FRIDAY -> it.calendarInfo.friday
+                DayOfWeek.SATURDAY -> it.calendarInfo.saturday
+                DayOfWeek.SUNDAY -> it.calendarInfo.sunday
+                else -> false
+            }
+        }
 
-        val sortedList = convertRawQueryToScheduledStopTimesInfo(entities).sortedWith(
-            compareBy<ScheduledStopTimesInfo> {it.arrivalTime.day}.thenBy {it.arrivalTime.time}
-        )
-        val prefix = sortedList.indexOfFirst { it.arrivalTime.time > nowTime && it.arrivalTime.day >= nowDay }
+        val sortedList = entities.sortedWith(compareBy {it.stopTimesInfo.arrivalTime})
+        val prefix = sortedList.indexOfFirst { it.stopTimesInfo.arrivalTime > nowTime.toSecondOfDay()}
 
         return Pair(sortedList, if (prefix == -1) 0 else prefix)
     }
 
-    suspend fun getTripInfo(tripId: String): BusTripInfo = withContext(Dispatchers.IO) {
-        Log.d("GTFS", "Started getTripInfo")
+    suspend fun getByTrip(busStopInfo: BusStopTimesRecord): List<BusStopTimesRecord> = withContext(Dispatchers.IO) {
+        Log.d("GTFS", "Started getByTrip")
         val absPath = fileRepository.directory.absolutePath
-        val tripFileStrDeferred = async {
-            fileRepository.runShellCommand(
-                "sh",
-                "-c",
-                """grep "\"$tripId\"" $absPath/trips.txt | awk -F, '$3 == "\"$tripId\""'"""
-            )
-        }
-
+        val tripId = busStopInfo.tripInfo.tripId
         val stopTimesFileStrDeferred = async {
             fileRepository.runShellCommand(
                 "sh",
@@ -466,19 +370,7 @@ class GtfsStaticRepository(
             )
         }
 
-        val tripLineArray = parseCols(tripFileStrDeferred.await(), 5)
-        val routeId: String = tripLineArray[0]
-
-        val routesFileStrDeferred = async {
-            fileRepository.runShellCommand(
-                "sh",
-                "-c",
-                """grep "\"$routeId\"" $absPath/routes.txt | awk -F, '$1 == "\"$routeId\""'"""
-            )
-        }
-
-
-        val listOfStopTimes = stopTimesFileStrDeferred
+        return@withContext stopTimesFileStrDeferred
             .await()
             .trimEnd()
             .lines()
@@ -497,40 +389,31 @@ class GtfsStaticRepository(
                     }
                     val stopLineArray = parseCols(stopFileStrDeferred.await(), 7)
 
-                    return@async BusStopTimesInfo(
-                        id = i.toLong(),
-                        stopInfo = BusStopInfo(
-                           stopId = stopId,
-                           stopName = stopLineArray[1],
-                            stopLoc = Location("static").apply {
-                                latitude = stopLineArray[2].toDouble()
-                                longitude = stopLineArray[3].toDouble()
-                            },
-                           wheelchairBoarding = when(stopLineArray[6]) {
-                               "1" -> true
-                               else -> false
-                           }
+                    return@async BusStopTimesRecord(
+                        fakeId = i,
+                        stopTimesInfo = BusStopTimesInfo(
+                            fakeId = i.toLong(),
+                            tripId = busStopInfo.tripInfo.tripId,
+                            departureTime = parseGtfsTime(stopTimesArray[2]),
+                            arrivalTime = parseGtfsTime(stopTimesArray[1]),
+                            sequence = stopTimesArray[4].toInt()
                         ),
-                        tripId = tripId,
-                        departureTime = stopTimesArray[2],
-                        arrivalTime =  stopTimesArray[1],
-                        sequence = stopTimesArray[4].toInt()
+                        stopInfo = BusStopInfo(
+                            stopId = stopLineArray[0],
+                            stopName = stopLineArray[1],
+                            stopLoc = LatLon(stopLineArray[2].toDouble(), stopLineArray[3].toDouble()),
+                            wheelchairBoarding = when(stopLineArray[6]) {
+                                "1" -> true
+                                else -> false
+                            }
+                        ),
+                        tripInfo = busStopInfo.tripInfo,
+                        routeInfo = busStopInfo.routeInfo,
+                        calendarInfo = busStopInfo.calendarInfo
                     )
                 }
-            }.awaitAll().sortedBy { it.sequence }
-
-        val routeFileStr = routesFileStrDeferred.await()
-        val routesLineArray = parseCols(routeFileStr, 6)
-
-        val final = BusTripInfo(
-            tripId = tripId ,
-            routeId = routeId,
-            stops = listOfStopTimes,
-            routeShortName = routesLineArray[2],
-            routeLongName = routesLineArray[3]
-        )
-
-        return@withContext final
-
+            }
+        .awaitAll()
+        .sortedBy { it.stopTimesInfo.sequence }
     }
 }

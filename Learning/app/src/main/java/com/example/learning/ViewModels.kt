@@ -5,12 +5,16 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.learning.database.BusStopInfo
+import com.example.learning.database.BusStopTimesRecord
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.BusTripInfo
 import com.example.learning.repos.FileRepository
@@ -113,14 +117,23 @@ class TripsViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
 
-    private val _tripInfo = MutableStateFlow<BusTripInfo?>(null)
-    val tripInfo = _tripInfo.asStateFlow()
+    private val _busStopTimesRecord = MutableStateFlow<List<BusStopTimesRecord>>(emptyList())
+    val busStopTimesRecord = _busStopTimesRecord.asStateFlow()
 
-    fun updateTripInfo(tripId: String) {
+    fun updateBusStopTimesRecord(busStopTimesRecord: BusStopTimesRecord) {
         viewModelScope.launch {
-            _tripInfo.update {
-                busInfo.getTripInfo(tripId)
+            _busStopTimesRecord.update {
+                busInfo.getByTrip(busStopTimesRecord)
             }
         }
+    }
+}
+
+class SharedViewModel : ViewModel() {
+    var selectedRecord: BusStopTimesRecord? by mutableStateOf(null)
+        private set
+
+    fun select(record: BusStopTimesRecord) {
+        selectedRecord = record
     }
 }
