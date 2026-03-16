@@ -272,7 +272,7 @@ fun CardHeader(
                 .fillMaxSize()
         ) {
             Text(
-                text = closestBusStop?.name ?: "Loading local stop...",
+                text = closestBusStop?.stopName ?: "Loading local stop...",
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Start,
                 style = MaterialTheme.typography.titleSmall,
@@ -284,7 +284,7 @@ fun CardHeader(
         ) {
             allBusStops.take(10).forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option.name) },
+                    text = { Text(option.stopName) },
                     onClick = { expanded = false; stopChangeCallback(option) }
                 )
             }

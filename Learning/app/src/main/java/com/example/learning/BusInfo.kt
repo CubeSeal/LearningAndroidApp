@@ -2,7 +2,6 @@ package com.example.learning
 
 import android.location.Location
 import com.example.learning.database.BusStopInfo
-import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.database.TripInfo
@@ -44,7 +43,7 @@ class BusInfo(
     private fun updateClosestBusStops(): StateFlow<List<BusStopInfo>> {
         return location.map { loc ->
             loc?.let {allBusStops.sortedBy {
-                (loc.latitude - it.latitude.toDouble()).pow(2) + (loc.longitude - it.longitude.toDouble()).pow(2)
+                (loc.latitude - it.stopLoc.latitude).pow(2) + (loc.longitude - it.stopLoc.longitude).pow(2)
             }.take(10)
             } ?: emptyList()
         }.stateIn(
@@ -62,7 +61,7 @@ class BusInfo(
             .transformLatest { busStop ->
                 emit(emptyList())
                 val time = LocalDateTime.now()
-                val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.id, time)
+                val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop.stopId, time)
                 emit(trips.drop(index) + trips.take(index))
             }
             .stateIn(

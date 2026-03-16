@@ -10,10 +10,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.room.Room
-import com.example.learning.database.AppDatabase
 import com.example.learning.database.BusStopInfo
-import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.TripInfo
 import com.example.learning.repos.FileRepository
@@ -32,15 +29,10 @@ import okhttp3.OkHttpClient
 
 class ApplicationRepos(private val applicationContext: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val database = Room.databaseBuilder(
-        applicationContext,
-        AppDatabase::class.java, "bus-stuff"
-    ).build()
     val locationRepo = LocationRepository(applicationContext, applicationScope)
     val fileRepository = FileRepository(applicationContext, "busStops")
     val httpClient = OkHttpClient()
     val gtfsStaticRepository = GtfsStaticRepository(
-        database = database,
         fileRepository = fileRepository,
         httpClient = httpClient
     )

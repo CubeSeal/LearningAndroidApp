@@ -32,14 +32,6 @@ data class WeeklySchedule (
 )
 
 @Immutable
-data class BusStopInfo(
-    val id: String,
-    val name: String,
-    val latitude: String,
-    val longitude: String
-)
-
-@Immutable
 data class ScheduledStopTimesInfo(
     val id: String, // Unique ID for Lazy columns.
     val stopId: String,
@@ -71,7 +63,7 @@ data class RawQueryResultScheduledStopTimes(
 )
 
 @Immutable
-data class StopInfo(
+data class BusStopInfo(
     val stopId: String,
     val stopName: String,
     val stopLoc: Location,
@@ -81,7 +73,7 @@ data class StopInfo(
 @Immutable
 data class StopTimesInfo(
     val id: Long, // Unique ID for Lazy columns.
-    val stopInfo: StopInfo,
+    val stopInfo: BusStopInfo,
     val tripId: String,
     val departureTime: String,
     val arrivalTime: String,
@@ -223,12 +215,18 @@ class GtfsStaticRepository(
         val fileStr: String = fileRepository.readFile("stops.txt") ?: return emptyList()
 
         return fileStr.trimEnd().lines().drop(1).map {
-            val lineArray: Array<String> = parseCols(it, 4)
+            val lineArray: Array<String> = parseCols(it, 7)
             val busStopInfo = BusStopInfo(
-                id = lineArray[0] ,
-                name = lineArray[1] ,
-                latitude = lineArray[2] ,
-                longitude = lineArray[3] ,
+                stopId = lineArray[0] ,
+                stopName = lineArray[1] ,
+                stopLoc = Location("static").apply {
+                    latitude = lineArray[2].toDouble()
+                    longitude = lineArray[3].toDouble()
+                },
+                wheelchairBoarding = when(lineArray[6]) {
+                    "1" -> true
+                    else -> false
+                }
             )
 
             return@map busStopInfo
@@ -501,10 +499,10 @@ class GtfsStaticRepository(
 
                     return@async StopTimesInfo(
                         id = i.toLong(),
-                        stopInfo = StopInfo(
+                        stopInfo = BusStopInfo(
                            stopId = stopId,
                            stopName = stopLineArray[1],
-                            stopLoc = Location("location").apply {
+                            stopLoc = Location("static").apply {
                                 latitude = stopLineArray[2].toDouble()
                                 longitude = stopLineArray[3].toDouble()
                             },
