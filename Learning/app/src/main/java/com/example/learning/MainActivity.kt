@@ -54,7 +54,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.example.learning.database.BusStopInfo
-import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.ui.theme.LearningTheme
 import kotlinx.coroutines.launch

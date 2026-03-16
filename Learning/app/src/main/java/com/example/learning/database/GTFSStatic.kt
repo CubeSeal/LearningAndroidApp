@@ -98,7 +98,6 @@ data class TripInfo(
 )
 
 class GtfsStaticRepository(
-    val database: AppDatabase,
     private val fileRepository: FileRepository,
     private val httpClient: OkHttpClient
 ) {
