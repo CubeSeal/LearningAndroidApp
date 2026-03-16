@@ -53,6 +53,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.example.learning.database.BusStopInfo
 import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.ScheduledStopTimesInfo
 import com.example.learning.ui.theme.LearningTheme
@@ -60,6 +61,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.collections.take
 
 @Serializable
 data object Home
@@ -250,9 +252,9 @@ fun HOMEScreen(
 
 @Composable
 fun CardHeader(
-    closestBusStop: BusStopInfoEntity?,
-    allBusStops: List<BusStopInfoEntity>,
-    stopChangeCallback: (BusStopInfoEntity) -> Unit
+    closestBusStop: BusStopInfo?,
+    allBusStops: List<BusStopInfo>,
+    stopChangeCallback: (BusStopInfo) -> Unit
 ) {
     var expanded by remember {mutableStateOf(false)}
 

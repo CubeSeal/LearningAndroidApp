@@ -1,6 +1,7 @@
 package com.example.learning
 
 import android.location.Location
+import com.example.learning.database.BusStopInfo
 import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.ScheduledStopTimesInfo
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
+import kotlin.collections.sortedBy
 import kotlin.math.pow
 
 class BusInfo(
@@ -25,12 +27,12 @@ class BusInfo(
     private val location: StateFlow<Location?>,
     private val scope: CoroutineScope,
 ) {
-    var allBusStops: List<BusStopInfoEntity> = emptyList()
-    private val _focusedBusStop = MutableStateFlow<BusStopInfoEntity?>(null)
+    var allBusStops: List<BusStopInfo> = emptyList()
+    private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
     // Derived state - automatically updates when location or allBusStops change
-    val closestBusStops: StateFlow<List<BusStopInfoEntity>> = updateClosestBusStops()
+    val closestBusStops: StateFlow<List<BusStopInfo>> = updateClosestBusStops()
     val associatedStopTimes: StateFlow<List<ScheduledStopTimesInfo>> = updateAssociatedStopTimes()
 
     init {
@@ -39,7 +41,7 @@ class BusInfo(
         }
     }
 
-    private fun updateClosestBusStops(): StateFlow<List<BusStopInfoEntity>> {
+    private fun updateClosestBusStops(): StateFlow<List<BusStopInfo>> {
         return location.map { loc ->
             loc?.let {allBusStops.sortedBy {
                 (loc.latitude - it.latitude.toDouble()).pow(2) + (loc.longitude - it.longitude.toDouble()).pow(2)
@@ -70,7 +72,7 @@ class BusInfo(
             )
     }
 
-    fun updateFocusedBusStop(busStopInfo: BusStopInfoEntity) {
+    fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
         _focusedBusStop.value = busStopInfo
     }
 

@@ -32,6 +32,14 @@ data class WeeklySchedule (
 )
 
 @Immutable
+data class BusStopInfo(
+    val id: String,
+    val name: String,
+    val latitude: String,
+    val longitude: String
+)
+
+@Immutable
 data class ScheduledStopTimesInfo(
     val id: String, // Unique ID for Lazy columns.
     val stopId: String,
@@ -101,11 +109,6 @@ class GtfsStaticRepository(
         .url(gtfsUrl)
         .header("Authorization", value = "apikey $apiKey")
         .build()
-    private val stopTimesDao = database.stopTimesDao()
-    private val stopsDao = database.stopsDao()
-    private val tripsDao = database.tripsDao()
-    private val routesDao = database.routesDao()
-    private val calendarDao = database.routesDao()
 
     /**
      * Call this when the app starts. It checks if DB is empty.
@@ -217,19 +220,19 @@ class GtfsStaticRepository(
     }
 
 
-    suspend fun getStops(): List<BusStopInfoEntity> {
+    suspend fun getStops(): List<BusStopInfo> {
         val fileStr: String = fileRepository.readFile("stops.txt") ?: return emptyList()
 
         return fileStr.trimEnd().lines().drop(1).map {
             val lineArray: Array<String> = parseCols(it, 4)
-            val busStopInfoEntity = BusStopInfoEntity(
+            val busStopInfo = BusStopInfo(
                 id = lineArray[0] ,
                 name = lineArray[1] ,
                 latitude = lineArray[2] ,
                 longitude = lineArray[3] ,
             )
 
-            return@map busStopInfoEntity
+            return@map busStopInfo
         }
     }
 

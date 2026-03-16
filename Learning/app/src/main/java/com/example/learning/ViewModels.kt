@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.room.Room
 import com.example.learning.database.AppDatabase
+import com.example.learning.database.BusStopInfo
 import com.example.learning.database.BusStopInfoEntity
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.TripInfo
@@ -105,7 +106,7 @@ class HomeViewModel(
     val focusedBusStop = busInfo.focusedBusStop
     val closestBusStops = busInfo.closestBusStops
     val associatedStopTimes = busInfo.associatedStopTimes
-    fun updateFocusedBusStop(stop: BusStopInfoEntity) = busInfo.updateFocusedBusStop(stop)
+    fun updateFocusedBusStop(stop: BusStopInfo) = busInfo.updateFocusedBusStop(stop)
 
     init {
         viewModelScope.launch {
