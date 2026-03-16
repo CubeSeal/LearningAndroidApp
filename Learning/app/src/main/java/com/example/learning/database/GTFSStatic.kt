@@ -71,7 +71,7 @@ data class BusStopInfo(
 )
 
 @Immutable
-data class StopTimesInfo(
+data class BusStopTimesInfo(
     val id: Long, // Unique ID for Lazy columns.
     val stopInfo: BusStopInfo,
     val tripId: String,
@@ -81,10 +81,10 @@ data class StopTimesInfo(
 )
 
 @Immutable
-data class TripInfo(
+data class BusTripInfo(
     val tripId: String,
     val routeId: String,
-    val stops: List<StopTimesInfo>,
+    val stops: List<BusStopTimesInfo>,
     val routeShortName: String,
     val routeLongName: String,
 )
@@ -447,7 +447,7 @@ class GtfsStaticRepository(
         return Pair(sortedList, if (prefix == -1) 0 else prefix)
     }
 
-    suspend fun getTripInfo(tripId: String): TripInfo = withContext(Dispatchers.IO) {
+    suspend fun getTripInfo(tripId: String): BusTripInfo = withContext(Dispatchers.IO) {
         Log.d("GTFS", "Started getTripInfo")
         val absPath = fileRepository.directory.absolutePath
         val tripFileStrDeferred = async {
@@ -497,7 +497,7 @@ class GtfsStaticRepository(
                     }
                     val stopLineArray = parseCols(stopFileStrDeferred.await(), 7)
 
-                    return@async StopTimesInfo(
+                    return@async BusStopTimesInfo(
                         id = i.toLong(),
                         stopInfo = BusStopInfo(
                            stopId = stopId,
@@ -522,7 +522,7 @@ class GtfsStaticRepository(
         val routeFileStr = routesFileStrDeferred.await()
         val routesLineArray = parseCols(routeFileStr, 6)
 
-        val final = TripInfo(
+        val final = BusTripInfo(
             tripId = tripId ,
             routeId = routeId,
             stops = listOfStopTimes,

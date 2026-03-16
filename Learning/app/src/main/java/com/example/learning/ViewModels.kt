@@ -12,7 +12,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.learning.database.BusStopInfo
 import com.example.learning.database.GtfsStaticRepository
-import com.example.learning.database.TripInfo
+import com.example.learning.database.BusTripInfo
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
@@ -113,7 +113,7 @@ class TripsViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
 
-    private val _tripInfo = MutableStateFlow<TripInfo?>(null)
+    private val _tripInfo = MutableStateFlow<BusTripInfo?>(null)
     val tripInfo = _tripInfo.asStateFlow()
 
     fun updateTripInfo(tripId: String) {

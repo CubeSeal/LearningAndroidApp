@@ -4,7 +4,7 @@ import android.location.Location
 import com.example.learning.database.BusStopInfo
 import com.example.learning.database.GtfsStaticRepository
 import com.example.learning.database.ScheduledStopTimesInfo
-import com.example.learning.database.TripInfo
+import com.example.learning.database.BusTripInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,7 +75,7 @@ class BusInfo(
         _focusedBusStop.value = busStopInfo
     }
 
-    suspend fun getTripInfo(tripId: String): TripInfo {
+    suspend fun getTripInfo(tripId: String): BusTripInfo {
         return gtfsStaticRepository.getTripInfo(tripId)
     }
 }
