@@ -240,7 +240,7 @@ fun HOMEScreen(
                 .padding(it)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp)
+                .padding(vertical = 16.dp)
         ) {
             CardHeader(
                 focusedBusStop,
@@ -260,14 +260,11 @@ fun CardHeader(
 ) {
     var expanded by remember {mutableStateOf(false)}
 
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        ),
+    Box(
         modifier = Modifier
-            .height(50.dp)
             .fillMaxWidth()
+            .height(50.dp)
+            .background(MaterialTheme.colorScheme.primaryContainer)
     ) {
         TextButton(
             onClick = { expanded = !expanded },
@@ -276,6 +273,7 @@ fun CardHeader(
         ) {
             Text(
                 text = closestBusStop?.stopName ?: "Loading local stop...",
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Start,
                 style = MaterialTheme.typography.titleSmall,
@@ -307,10 +305,8 @@ fun ArrivalsTable(
         listState.scrollToItem(0)
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(400.dp)
+    Box(
+        modifier = Modifier.fillMaxSize()
     ) {
         if (associatedBusStopTimes.isEmpty()) {
             LoadingScreen("Loading trips...")
@@ -320,20 +316,20 @@ fun ArrivalsTable(
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
             ) {
-                stickyHeader() {
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(8.dp)
-                    ) {
-                        Text("Time", style = MaterialTheme.typography.titleSmall)
-                        Text("Bus", style = MaterialTheme.typography.titleSmall)
-                    }
-                }
+//                stickyHeader() {
+//                    Row(
+//                        horizontalArrangement = Arrangement.SpaceBetween,
+//                        modifier = Modifier
+//                            .fillMaxWidth()
+//                            .height(50.dp)
+//                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+//                            .padding(8.dp)
+//                    ) {
+//                        Text("Time", style = MaterialTheme.typography.titleMedium)
+//                        Text("Bus", style = MaterialTheme.typography.titleMedium)
+//                    }
+//                }
                 items(
                     items = associatedBusStopTimes,
                     key = { it.fakeId }
@@ -352,18 +348,35 @@ fun BusCard(
     item: BusStopTimesRecord
 ) {
     val arrivalTime: String = item.stopTimesInfo.formatArrivalTime()
-    val busId: String = item.routeInfo.routeShortName + "-" +item.tripInfo.tripHeadsign
 
-    Row(
-        horizontalArrangement = Arrangement.SpaceBetween,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(100.dp)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
             .clickable {
                 sharedViewModel.select(item)
                 navController.navigate(Trips)
             }
+            .padding(16.dp)
     ) {
-        Text(arrivalTime, style = MaterialTheme.typography.bodySmall)
-        Text(busId, style = MaterialTheme.typography.bodySmall)
+        Text(
+            text = item.routeInfo.routeShortName,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.displaySmall,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+        Text(
+            text = item.tripInfo.tripHeadsign,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.align(Alignment.BottomStart)
+        )
+        Text(
+            text = arrivalTime,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.align(Alignment.TopEnd)
+        )
     }
 }
