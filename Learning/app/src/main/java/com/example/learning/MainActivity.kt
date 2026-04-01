@@ -317,19 +317,6 @@ fun ArrivalsTable(
                 modifier = Modifier
                     .fillMaxSize()
             ) {
-//                stickyHeader() {
-//                    Row(
-//                        horizontalArrangement = Arrangement.SpaceBetween,
-//                        modifier = Modifier
-//                            .fillMaxWidth()
-//                            .height(50.dp)
-//                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-//                            .padding(8.dp)
-//                    ) {
-//                        Text("Time", style = MaterialTheme.typography.titleMedium)
-//                        Text("Bus", style = MaterialTheme.typography.titleMedium)
-//                    }
-//                }
                 items(
                     items = associatedBusStopTimes,
                     key = { it.fakeId }
