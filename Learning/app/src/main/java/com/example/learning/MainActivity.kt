@@ -263,8 +263,8 @@ fun CardHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .height(250.dp)
+//            .background(MaterialTheme.colorScheme.primaryContainer)
     ) {
         TextButton(
             onClick = { expanded = !expanded },
@@ -272,11 +272,11 @@ fun CardHeader(
                 .fillMaxSize()
         ) {
             Text(
-                text = closestBusStop?.stopName ?: "Loading local stop...",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                text = closestBusStop?.stopName ?: "Loading\nlocal\nstop...",
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Start,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.displayMedium,
             )
         }
         DropdownMenu(
