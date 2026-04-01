@@ -17,12 +17,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -45,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,10 +59,9 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
 import com.example.learning.database.BusStopInfo
 import com.example.learning.database.BusStopTimesRecord
-import com.example.learning.ui.theme.LearningTheme
+import com.example.learning.ui.theme.TfNSWTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlin.collections.take
@@ -102,7 +106,7 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            LearningTheme(dynamicColor = false) {
+            TfNSWTheme() {
                 val app = application as LearningApplication
                 val isAppReady by app.repos
                     .isLoaded
@@ -251,51 +255,48 @@ fun HOMEScreen(
     }
 
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-    ) { paddingValues ->
-        Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(vertical = 16.dp)
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background
+    ) { _ ->
+        Box(
+            modifier = Modifier.fillMaxSize()
         ) {
+            if (associatedBusStopTimes.isEmpty()) {
+                LoadingScreen("Loading trips...")
+            } else {
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    item() {
+                        Box(
+                            modifier = Modifier
+                                .graphicsLayer { alpha = headerAlpha }
+                                .windowInsetsPadding(WindowInsets.statusBars)
+                                .padding(16.dp)
+                        ) {
+                            CardHeader(
+                                focusedBusStop,
+                                closestBusStops,
+                                viewModel::updateFocusedBusStop
+                            )
+                        }
+                    }
+                    items(
+                        items = associatedBusStopTimes,
+                        key = { it.fakeId }
+                    ) { item ->
+                        BusCard(navController, sharedViewModel, item)
+                    }
 
-            Box(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (associatedBusStopTimes.isEmpty()) {
-                    LoadingScreen("Loading trips...")
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                    ) {
-                        item() {
-                            Box(
-                                modifier = Modifier.graphicsLayer { alpha = headerAlpha }
-                            ) {
-                                CardHeader(
-                                    focusedBusStop,
-                                    closestBusStops,
-                                    viewModel::updateFocusedBusStop
-                                )
-                            }
-                        }
-                        items(
-                            items = associatedBusStopTimes,
-                            key = { it.fakeId }
-                        ) { item ->
-                            BusCard(navController, sharedViewModel, item)
-                        }
+                    item {
+                        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
                     }
                 }
             }
-        }
+            }
     }
 }
 
@@ -341,15 +342,6 @@ fun CardHeader(
 }
 
 @Composable
-fun ArrivalsTable(
-    sharedViewModel: SharedViewModel,
-    associatedBusStopTimes: List<BusStopTimesRecord>,
-    navController: NavController
-) {
-
-}
-
-@Composable
 fun BusCard(
     navController: NavController,
     sharedViewModel: SharedViewModel,
@@ -357,34 +349,39 @@ fun BusCard(
 ) {
     val arrivalTime: String = item.stopTimesInfo.formatArrivalTime()
 
-    Box(
+    Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(100.dp)
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .clickable {
-                sharedViewModel.select(item)
-                navController.navigate(Trips)
-            }
-            .padding(16.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        Text(
-            text = item.routeInfo.routeShortName,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            style = MaterialTheme.typography.displaySmall,
-            modifier = Modifier.align(Alignment.TopStart)
-        )
-        Text(
-            text = item.tripInfo.tripHeadsign,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.align(Alignment.BottomStart)
-        )
-        Text(
-            text = arrivalTime,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+                .clickable {
+                    sharedViewModel.select(item)
+                    navController.navigate(Trips)
+                }
+                .padding(16.dp)
+        ) {
+            Text(
+                text = item.routeInfo.routeShortName,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                style = MaterialTheme.typography.displaySmall,
+                modifier = Modifier.align(Alignment.TopStart)
+            )
+            Text(
+                text = item.tripInfo.tripHeadsign,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.BottomStart)
+            )
+            Text(
+                text = arrivalTime,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
+        }
     }
 }
