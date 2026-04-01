@@ -37,12 +37,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -229,25 +231,70 @@ fun HOMEScreen(
     val closestBusStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    val headerAlpha by remember {
+        derivedStateOf {
+            // If we've scrolled past the first item, it's completely invisible
+            if (listState.firstVisibleItemIndex > 0) {
+                0f
+            } else {
+                // How fast it fades out (in pixels). Tweak this number to your liking!
+                val fadeDistance = 400f
+                val offset = listState.firstVisibleItemScrollOffset
+                // Calculate opacity: 1f (fully visible) down to 0f (invisible)
+                (1f - (offset / fadeDistance)).coerceIn(0f, 1f)
+            }
+        }
+    }
+    LaunchedEffect(associatedBusStopTimes) {
+        listState.scrollToItem(0)
+    }
 
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-    ) {
+    ) { paddingValues ->
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
-                .padding(it)
+                .padding(paddingValues)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(vertical = 16.dp)
         ) {
-            CardHeader(
-                focusedBusStop,
-                closestBusStops,
-                viewModel::updateFocusedBusStop
-            )
-            ArrivalsTable(sharedViewModel, associatedBusStopTimes, navController)
+
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (associatedBusStopTimes.isEmpty()) {
+                    LoadingScreen("Loading trips...")
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                    ) {
+                        item() {
+                            Box(
+                                modifier = Modifier.graphicsLayer { alpha = headerAlpha }
+                            ) {
+                                CardHeader(
+                                    focusedBusStop,
+                                    closestBusStops,
+                                    viewModel::updateFocusedBusStop
+                                )
+                            }
+                        }
+                        items(
+                            items = associatedBusStopTimes,
+                            key = { it.fakeId }
+                        ) { item ->
+                            BusCard(navController, sharedViewModel, item)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -299,33 +346,7 @@ fun ArrivalsTable(
     associatedBusStopTimes: List<BusStopTimesRecord>,
     navController: NavController
 ) {
-    val listState = rememberLazyListState()
 
-    LaunchedEffect(associatedBusStopTimes) {
-        listState.scrollToItem(0)
-    }
-
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        if (associatedBusStopTimes.isEmpty()) {
-            LoadingScreen("Loading trips...")
-        } else {
-            LazyColumn(
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                items(
-                    items = associatedBusStopTimes,
-                    key = { it.fakeId }
-                ) { item ->
-                    BusCard(navController, sharedViewModel, item)
-                }
-            }
-        }
-    }
 }
 
 @Composable
