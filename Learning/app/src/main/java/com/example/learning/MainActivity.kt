@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
@@ -30,11 +33,17 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -49,7 +58,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,7 +86,7 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         when {
             permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true -> {
+                    permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true -> {
                 println("Location permission granted")
                 // NOW initialize repos after permission is granted
                 lifecycleScope.launch {
@@ -176,48 +184,61 @@ fun TripsScreen(
         val routeShortName = stopTimesByTrip[0].routeInfo.routeShortName
         val routeLongName = stopTimesByTrip[0].routeInfo.routeLongName
 
-        Scaffold(
-            modifier = Modifier.fillMaxSize()
-        ) { padding ->
-            Column(
+        Box(
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+        ) {
+            LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(16.dp)
             ) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    modifier = Modifier
-                        .height(200.dp)
-                        .fillMaxWidth()
-                ) {
-                    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        Text(routeShortName, modifier = Modifier.align(Alignment.TopStart))
-                        Text(routeLongName, modifier = Modifier.align(Alignment.BottomStart))
+                item() {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .height(50.dp)
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        IconButton(
+                            onClick = { navController.popBackStack() },
+                            modifier = Modifier.align(Alignment.BottomStart)
+                        ) {
+                            Icon(
+                                Icons.Filled.ArrowBack,
+                                "Go back",
+                                Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                ) {
-                    items(
-                        items = stopTimesByTrip,
-                        key = { it.stopTimesInfo.sequence }
-                    ) { item ->
-                        Card(
-                           modifier = Modifier.fillMaxSize().height(100.dp)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                Text(item.stopTimesInfo.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
-                                Text(item.stopInfo.stopName, modifier = Modifier.align(Alignment.CenterStart), style = MaterialTheme.typography.bodyMedium )
-                                Text(item.stopTimesInfo.formatDepartureTime(), modifier = Modifier.align(Alignment.BottomStart))
-                            }
+                item() {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier
+                            .height(200.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                            Text(routeShortName, modifier = Modifier.align(Alignment.TopStart))
+                            Text(routeLongName, modifier = Modifier.align(Alignment.BottomStart))
+                        }
+                    }
+                }
+                items(
+                    items = stopTimesByTrip,
+                    key = { it.stopTimesInfo.sequence }
+                ) { item ->
+                    Card(
+                        modifier = Modifier.fillMaxSize().height(100.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                            Text(item.stopTimesInfo.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
+                            Text(item.stopInfo.stopName, modifier = Modifier.align(Alignment.CenterStart), style = MaterialTheme.typography.bodyMedium )
+                            Text(item.stopTimesInfo.formatDepartureTime(), modifier = Modifier.align(Alignment.BottomStart))
                         }
                     }
                 }
@@ -239,7 +260,7 @@ fun HOMEScreen(
     val headerAlpha by remember {
         derivedStateOf {
             // If we've scrolled past the first item, it's completely invisible
-            if (listState.firstVisibleItemIndex > 0) {
+            if (listState.firstVisibleItemIndex > 1) {
                 0f
             } else {
                 // How fast it fades out (in pixels). Tweak this number to your liking!
@@ -254,90 +275,92 @@ fun HOMEScreen(
         listState.scrollToItem(0)
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { _ ->
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (associatedBusStopTimes.isEmpty()) {
-                LoadingScreen("Loading trips...")
-            } else {
-                LazyColumn(
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                ) {
-                    item() {
-                        Box(
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+    ) {
+        if (associatedBusStopTimes.isEmpty()) {
+            LoadingScreen("Loading trips...")
+        } else {
+            LazyColumn(
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                item() {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .graphicsLayer { alpha = headerAlpha }
+                            .height(50.dp)
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Create,
+                            "Edit Stop.",
                             modifier = Modifier
-                                .graphicsLayer { alpha = headerAlpha }
-                                .windowInsetsPadding(WindowInsets.statusBars)
-                                .padding(16.dp)
-                        ) {
-                            CardHeader(
-                                focusedBusStop,
-                                closestBusStops,
-                                viewModel::updateFocusedBusStop
-                            )
-                        }
-                    }
-                    items(
-                        items = associatedBusStopTimes,
-                        key = { it.fakeId }
-                    ) { item ->
-                        BusCard(navController, sharedViewModel, item)
-                    }
-
-                    item {
-                        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
+                                .align(Alignment.BottomEnd)
+                                .size(24.dp)
+                        )
                     }
                 }
+
+                item() {
+                    Box(
+                        modifier = Modifier
+                            .graphicsLayer { alpha = headerAlpha }
+                            .padding(16.dp)
+                    ) {
+                        StopTitle(
+                            focusedBusStop,
+                            closestBusStops,
+                            viewModel::updateFocusedBusStop
+                        )
+                    }
+                }
+
+                items(
+                    items = associatedBusStopTimes,
+                    key = { it.fakeId }
+                ) { item ->
+                    BusCard(navController, sharedViewModel, item)
+                }
+
+                item {
+                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
+                }
             }
-            }
+        }
     }
 }
 
 @Composable
-fun CardHeader(
+fun EditScreen(
     closestBusStop: BusStopInfo?,
     allBusStops: List<BusStopInfo>,
     stopChangeCallback: (BusStopInfo) -> Unit
 ) {
-    var expanded by remember {mutableStateOf(false)}
+}
 
+@Composable
+fun StopTitle(
+    closestBusStop: BusStopInfo?,
+    allBusStops: List<BusStopInfo>,
+    stopChangeCallback: (BusStopInfo) -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(250.dp)
-//            .background(MaterialTheme.colorScheme.primaryContainer)
+            .heightIn(100.dp)
     ) {
-        TextButton(
-            onClick = { expanded = !expanded },
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
-            Text(
-                text = closestBusStop?.stopName ?: "Loading\nlocal\nstop...",
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Start,
-                style = MaterialTheme.typography.displayMedium,
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            allBusStops.take(10).forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option.stopName) },
-                    onClick = { expanded = false; stopChangeCallback(option) }
-                )
-            }
-        }
+        Text(
+            text = closestBusStop?.stopName ?: "Loading\nlocal\nstop...",
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Start,
+            style = MaterialTheme.typography.displayMedium,
+        )
     }
 }
 
@@ -351,7 +374,7 @@ fun BusCard(
 
     Card(
         modifier = Modifier
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Box(
             modifier = Modifier
