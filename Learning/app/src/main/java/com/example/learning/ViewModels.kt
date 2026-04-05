@@ -23,9 +23,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,6 +99,11 @@ object AppViewModelProvider {
 
             TripsViewModel(app.repos.busInfo)
         }
+        initializer {
+            val app = (this[APPLICATION_KEY] as LearningApplication)
+
+            PickStopViewModel(app.repos.busInfo)
+        }
     }
 }
 
@@ -111,6 +123,28 @@ class HomeViewModel(
             }
         }
     }
+}
+
+class PickStopViewModel(
+    private val busInfo: BusInfo
+) : ViewModel() {
+
+    val busStops = busInfo.allBusStops
+    val closestBusStops = busInfo.closestBusStops
+    // ViewModel
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query
+
+    val filteredBusStops: StateFlow<List<BusStopInfo>> = _query
+        .map { query ->
+            if (query.isEmpty()) busStops
+            else busStops.filter { it.stopName.contains(query, ignoreCase = true) }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), busStops)
+
+    fun updateFocusedBusStop(stop: BusStopInfo) = busInfo.updateFocusedBusStop(stop)
+    fun onQueryChange(q: String) { _query.value = q }
 }
 
 class TripsViewModel(
