@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Create
@@ -205,9 +206,9 @@ fun TripsScreen(
                             modifier = Modifier.align(Alignment.BottomStart)
                         ) {
                             Icon(
-                                Icons.Filled.ArrowBack,
-                                "Go back",
-                                Modifier.size(24.dp)
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onBackground // or onBackground, onPrimary, etc.
                             )
                         }
                     }
@@ -299,6 +300,7 @@ fun HOMEScreen(
                         Icon(
                             Icons.Filled.Create,
                             "Edit Stop.",
+                            tint = MaterialTheme.colorScheme.onBackground, // or onBackground, onPrimary, etc.
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .size(24.dp)
