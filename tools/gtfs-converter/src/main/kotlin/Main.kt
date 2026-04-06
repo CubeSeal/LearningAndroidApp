@@ -40,7 +40,7 @@ fun main() {
     println("⬇ Downloading GTFS bundle from TfNSW...")
     val zipFile = File(workDir, "gtfs.zip")
     downloadFile(
-        url = "https://api.transport.nsw.gov.au/v1/gtfs/schedule/full",
+        url = "https://api.transport.nsw.gov.au/v1/gtfs/schedule/buses",
         dest = zipFile,
         headers = mapOf("Authorization" to "apikey $apiKey"),
     )
