@@ -59,7 +59,7 @@ fun main() {
     // ── 4. Compress ──────────────────────────────────────────────────
     println("🗜  Compressing...")
     gzipFile(dbFile, gzFile)
-    val sha256 = sha256(gzFile)
+    val sha256 = sha256(dbFile)
     println("  ${gzFile.name}: ${gzFile.length() / 1_048_576}MB (sha256: ${sha256.take(12)}…)")
 
     // ── 5. Upload as GitHub Release (CI only) ────────────────────────
