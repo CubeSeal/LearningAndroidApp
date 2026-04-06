@@ -1,0 +1,35 @@
+name: Build GTFS Database
+
+on:
+  schedule:
+    # Daily at 4am AEST (18:00 UTC)
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed for gh release create
+
+env:
+  TFNSW_API_KEY: ${{ secrets.TFNSW_API_KEY }}
+
+jobs:
+  build-db:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/gtfs-converter
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build GTFS database and upload release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gradle run
+

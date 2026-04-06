@@ -29,7 +29,11 @@
       in
       {
         devShell = pkgs.mkShell {
-          buildInputs = [ pkgs.android-studio androidSdk ];
+          buildInputs = [
+            pkgs.android-studio
+            androidSdk
+            pkgs.kotlin-language-server
+          ];
           ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
           ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
         };
