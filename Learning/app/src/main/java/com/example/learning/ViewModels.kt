@@ -14,6 +14,9 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.room.Room
+import com.example.learning.db.GtfsDatabase
+import com.example.learning.db.syncGtfsDatabase
 import com.example.learning.repos.BusStopInfo
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GtfsStaticRepository
@@ -36,16 +39,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import kotlin.jvm.java
 
 class ApplicationRepos(private val applicationContext: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val locationRepo = LocationRepository(applicationContext, applicationScope)
     val fileRepository = FileRepository(applicationContext, "busStops")
     val httpClient = OkHttpClient()
-    val gtfsStaticRepository = GtfsStaticRepository(
-        fileRepository = fileRepository,
-        httpClient = httpClient
-    )
+
+    // Don't create DB here — sync needs to run first
+    lateinit var db: GtfsDatabase
+        private set
+
+    lateinit var gtfsStaticRepository: GtfsStaticRepository
+        private set
+
     val gtfsRealtimeRepository = GtfsRealtimeRepository(httpClient = httpClient)
     val busInfo by lazy {
         BusInfo(
@@ -62,11 +70,12 @@ class ApplicationRepos(private val applicationContext: Context) {
 
         withContext(Dispatchers.Default) {
             Log.d("INIT", "Start loading...")
-            val job1 = async { gtfsStaticRepository.updateBusStopData() }
-//            val job2 = async { busResource.init(applicationContext) }
 
-            job1.await()
-//            job2.await()
+            syncGtfsDatabase(fileRepository, httpClient, "CubeSeal", "LearningAndroidApp")
+
+            db = GtfsDatabase.getInstance(applicationContext)
+            gtfsStaticRepository = GtfsStaticRepository(fileRepository, httpClient, db)
+
             isLoaded.value = true
             Log.d("INIT", "Finished loading.")
         }

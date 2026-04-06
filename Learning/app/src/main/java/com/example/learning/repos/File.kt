@@ -5,7 +5,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 
-class FileRepository(private val context: Context, private val directoryStr: String) {
+class FileRepository(val context: Context, private val directoryStr: String) {
     val directory = File(context.filesDir, directoryStr)
 
     init {
