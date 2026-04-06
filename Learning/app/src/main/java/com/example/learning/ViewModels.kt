@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +18,7 @@ import com.example.learning.repos.BusStopInfo
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.FileRepository
+import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,9 +46,11 @@ class ApplicationRepos(private val applicationContext: Context) {
         fileRepository = fileRepository,
         httpClient = httpClient
     )
+    val gtfsRealtimeRepository = GtfsRealtimeRepository(httpClient = httpClient)
     val busInfo by lazy {
         BusInfo(
             gtfsStaticRepository = gtfsStaticRepository,
+            gtfsRealtimeRepository = gtfsRealtimeRepository,
             location = locationRepo.currentLocation,
             scope = applicationScope
         )

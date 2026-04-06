@@ -1,5 +1,6 @@
 package com.example.learning.ui
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +44,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
+import com.example.learning.RealtimeBusStopTimesRecord
 import com.example.learning.SharedViewModel
 import com.example.learning.Trips
 import com.example.learning.repos.BusStopInfo
@@ -78,6 +81,7 @@ fun HOMEScreen(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
     ) {
         if (associatedBusStopTimes.isEmpty()) {
+            Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
             LoadingScreen("Loading trips...")
         } else {
             LazyColumn(
@@ -119,9 +123,16 @@ fun HOMEScreen(
                     }
                 }
 
+                item() {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp), // Adds space on left/right
+                        thickness = 2.dp,                               // Sets line thickness
+                    )
+                }
+
                 items(
                     items = associatedBusStopTimes,
-                    key = { it.fakeId }
+                    key = { it.busStopTimesRecord.fakeId }
                 ) { item ->
                     BusCard(navController, sharedViewModel, item)
                 }
@@ -148,7 +159,7 @@ fun StopTitle(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Start,
-            style = MaterialTheme.typography.displayMedium,
+            style = MaterialTheme.typography.headlineLarge,
         )
     }
 }
@@ -157,9 +168,9 @@ fun StopTitle(
 fun BusCard(
     navController: NavController,
     sharedViewModel: SharedViewModel,
-    item: BusStopTimesRecord
+    item: RealtimeBusStopTimesRecord
 ) {
-    val arrivalTime: String = item.stopTimesInfo.formatArrivalTime()
+    val arrivalTime: String = item.busStopTimesRecord.stopTimesInfo.formatArrivalTime()
 
     Card(
         modifier = Modifier
@@ -171,23 +182,31 @@ fun BusCard(
                 .height(100.dp)
                 .background(MaterialTheme.colorScheme.secondaryContainer)
                 .clickable {
-                    sharedViewModel.select(item)
+                    sharedViewModel.select(item.busStopTimesRecord)
                     navController.navigate(Trips)
                 }
                 .padding(16.dp)
         ) {
             Text(
-                text = item.routeInfo.routeShortName,
+                text = item.busStopTimesRecord.routeInfo.routeShortName,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 style = MaterialTheme.typography.displaySmall,
                 modifier = Modifier.align(Alignment.TopStart)
             )
             Text(
-                text = item.tripInfo.tripHeadsign,
+                text = item.busStopTimesRecord.tripInfo.tripHeadsign,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.BottomStart)
             )
+            if (item.realtimeBusInfo != null) {
+                Text(
+                    text = item.realtimeBusInfo.distance.toString(),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
             Text(
                 text = arrivalTime,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
