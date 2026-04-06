@@ -1,9 +1,7 @@
-package com.example.learning.database
+package com.example.learning.repos
 
-import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
-import com.example.learning.repos.FileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -14,15 +12,13 @@ import okhttp3.Request
 import java.io.IOException
 import java.time.DayOfWeek
 import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipInputStream
 import com.example.learning.BuildConfig
-import com.example.learning.database.BusStopTimesInfo.Companion.parseGtfsTime
+import com.example.learning.repos.BusStopTimesInfo.Companion.parseGtfsTime
 import kotlinx.serialization.Serializable
 
 @Serializable

@@ -1,10 +1,9 @@
 package com.example.learning
 
 import android.location.Location
-import com.example.learning.database.BusStopInfo
-import com.example.learning.database.BusStopTimesRecord
-import com.example.learning.database.GtfsStaticRepository
-import com.example.learning.database.BusTripInfo
+import com.example.learning.repos.BusStopInfo
+import com.example.learning.repos.BusStopTimesRecord
+import com.example.learning.repos.GtfsStaticRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
