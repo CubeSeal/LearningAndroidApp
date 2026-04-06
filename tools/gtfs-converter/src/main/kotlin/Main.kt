@@ -160,11 +160,12 @@ private fun runCommand(vararg args: String, allowFailure: Boolean = false) {
 
 private fun buildDatabase(gtfsDir: File, dbFile: File) {
     DriverManager.getConnection("jdbc:sqlite:${dbFile.absolutePath}").use { conn ->
-        conn.autoCommit = false
+        // In buildDatabase(), change the opening to:
         conn.pragma("journal_mode = OFF")
         conn.pragma("synchronous = OFF")
         conn.pragma("cache_size = -64000")
         conn.pragma("page_size = 4096")
+        conn.autoCommit = false
 
         createTables(conn)
         conn.commit()
@@ -192,8 +193,8 @@ private fun buildDatabase(gtfsDir: File, dbFile: File) {
         createIndices(conn)
         conn.commit()
 
-        conn.pragma("journal_mode = WAL")
         conn.autoCommit = true
+        conn.pragma("journal_mode = WAL")
         conn.pragma("wal_checkpoint(TRUNCATE)")
 
         println("  DB: ${dbFile.length() / 1_048_576}MB")
