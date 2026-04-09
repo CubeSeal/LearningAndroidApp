@@ -1,6 +1,7 @@
 package com.example.learning.ui
 
 import android.util.Log
+import android.util.Log.i
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,10 @@ import com.example.learning.SharedViewModel
 import com.example.learning.Trips
 import com.example.learning.repos.BusStopInfo
 import com.example.learning.repos.BusStopTimesRecord
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 @Composable
 fun HOMEScreen(
@@ -80,66 +85,66 @@ fun HOMEScreen(
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
     ) {
-        if (associatedBusStopTimes.isEmpty()) {
-            Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
-            LoadingScreen("Loading trips...")
-        } else {
-            LazyColumn(
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                item() {
-                    Box(
+        LazyColumn(
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            item() {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .graphicsLayer { alpha = headerAlpha }
+                        .height(50.dp)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Create,
+                        "Edit Stop.",
+                        tint = MaterialTheme.colorScheme.onBackground, // or onBackground, onPrimary, etc.
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .graphicsLayer { alpha = headerAlpha }
-                            .height(50.dp)
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.Create,
-                            "Edit Stop.",
-                            tint = MaterialTheme.colorScheme.onBackground, // or onBackground, onPrimary, etc.
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(24.dp)
-                                .clickable {
-                                    navController.navigate(PickStop)
-                                }
-                        )
-                    }
-                }
-
-                item() {
-                    Box(
-                        modifier = Modifier
-                            .graphicsLayer { alpha = headerAlpha }
-                            .padding(16.dp)
-                    ) {
-                        StopTitle(focusedBusStop)
-                    }
-                }
-
-                item() {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp), // Adds space on left/right
-                        thickness = 2.dp,                               // Sets line thickness
+                            .align(Alignment.BottomEnd)
+                            .size(24.dp)
+                            .clickable {
+                                navController.navigate(PickStop)
+                            }
                     )
                 }
+            }
 
+            item() {
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer { alpha = headerAlpha }
+                        .padding(16.dp)
+                ) {
+                    StopTitle(focusedBusStop)
+                }
+            }
+
+            item() {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp), // Adds space on left/right
+                    thickness = 2.dp,                               // Sets line thickness
+                )
+            }
+
+            if (associatedBusStopTimes.isEmpty()) {
+                Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
+                item() {LoadingScreen("Loading trips...")}
+            } else {
                 items(
                     items = associatedBusStopTimes,
                     key = { it.busStopTimesRecord.fakeId }
                 ) { item ->
                     BusCard(navController, sharedViewModel, item)
                 }
+            }
 
-                item {
-                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
-                }
+            item {
+                Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
             }
         }
     }
@@ -170,6 +175,17 @@ fun BusCard(
     sharedViewModel: SharedViewModel,
     item: RealtimeBusStopTimesRecord
 ) {
+    val localDateNow = LocalDate.now()
+    val printTime = item.busStopTimesRecord.stopTimesInfo.departureTime.let {
+        val time = it.format(DateTimeFormatter.ofPattern("h:mm a"))
+        when {
+            it.toLocalDate() == localDateNow -> time
+            it.toLocalDate() == localDateNow.plusDays(1) -> "Tomorrow $time"
+            it.toLocalDate() < localDateNow.plusWeeks(1) -> "${it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())} $time"
+            else -> "${it.format(DateTimeFormatter.ofPattern("dd/MM"))} $time"
+        }
+    }
+
     Card(
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -206,7 +222,7 @@ fun BusCard(
                 )
             }
             Text(
-                text = item.busStopTimesRecord.stopTimesInfo.departureTime.toString(),
+                text = printTime,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.TopEnd)
