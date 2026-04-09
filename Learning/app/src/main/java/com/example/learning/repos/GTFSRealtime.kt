@@ -14,7 +14,6 @@ import okhttp3.Request
 import java.io.IOException
 import java.util.TreeSet
 
-@Serializable
 @Immutable
 data class RealtimeBusInfo(
     val id: String,

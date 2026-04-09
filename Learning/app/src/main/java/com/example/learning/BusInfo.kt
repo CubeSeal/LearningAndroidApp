@@ -31,7 +31,6 @@ import java.time.LocalDateTime
 import kotlin.collections.sortedBy
 import kotlin.math.pow
 
-@Serializable
 @Immutable
 data class RealtimeBusStopTimesRecord(
     val busStopTimesRecord: BusStopTimesRecord,
@@ -85,6 +84,7 @@ class BusInfo(
                 emit(emptyList())
                 coroutineScope {
                     val time = LocalDateTime.now()
+                    Log.d("BusInfo", "Local time is $time")
                     val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop, time)
                     val closestBuses = gtfsRealtimeRepository.getBusData(loc)
                     Log.d("BusInfo", "Got busInfo from repos: $trips")

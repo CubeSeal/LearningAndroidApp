@@ -210,6 +210,9 @@ interface GtfsDao {
     @Query("SELECT * FROM calendar WHERE service_id = :serviceId")
     suspend fun getCalendar(serviceId: String): CalendarEntity?
 
+    @Query("SELECT * FROM calendar")
+    suspend fun getAllCalendar(): List<CalendarEntity>
+
     @Query("SELECT * FROM calendar_dates WHERE service_id = :serviceId")
     suspend fun getCalendarDates(serviceId: String): List<CalendarDateEntity>
 

@@ -170,8 +170,6 @@ fun BusCard(
     sharedViewModel: SharedViewModel,
     item: RealtimeBusStopTimesRecord
 ) {
-    val arrivalTime: String = item.busStopTimesRecord.stopTimesInfo.formatArrivalTime()
-
     Card(
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -208,7 +206,7 @@ fun BusCard(
                 )
             }
             Text(
-                text = arrivalTime,
+                text = item.busStopTimesRecord.stopTimesInfo.departureTime.toString(),
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.TopEnd)

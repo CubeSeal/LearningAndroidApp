@@ -74,7 +74,8 @@ class ApplicationRepos(private val applicationContext: Context) {
             syncGtfsDatabase(fileRepository, httpClient, "CubeSeal", "LearningAndroidApp")
 
             db = GtfsDatabase.getInstance(applicationContext)
-            gtfsStaticRepository = GtfsStaticRepository(fileRepository, httpClient, db)
+            gtfsStaticRepository = GtfsStaticRepository(db)
+            gtfsStaticRepository.preloadCalendarDates()
 
             isLoaded.value = true
             Log.d("INIT", "Finished loading.")

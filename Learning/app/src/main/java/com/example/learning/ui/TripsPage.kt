@@ -89,6 +89,8 @@ fun TripsScreen(
                     ) {
                         Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                             Text(routeShortName, modifier = Modifier.align(Alignment.TopStart))
+                            Text(busStopTimesRecord.routeInfo.routeId, modifier = Modifier.align(Alignment.CenterStart))
+                            Text(busStopTimesRecord.tripInfo.tripId, modifier = Modifier.align(Alignment.Center))
                             Text(routeLongName, modifier = Modifier.align(Alignment.BottomStart))
                         }
                     }
@@ -103,7 +105,7 @@ fun TripsScreen(
                         Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                             Text(item.stopTimesInfo.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
                             Text(item.stopInfo.stopName, modifier = Modifier.align(Alignment.CenterStart), style = MaterialTheme.typography.bodyMedium )
-                            Text(item.stopTimesInfo.formatDepartureTime(), modifier = Modifier.align(Alignment.BottomStart))
+                            Text(item.stopTimesInfo.departureTime.toString(), modifier = Modifier.align(Alignment.BottomStart))
                         }
                     }
                 }
