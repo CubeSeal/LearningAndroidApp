@@ -87,7 +87,6 @@ fun HOMEScreen(
     ) {
         LazyColumn(
             state = listState,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
             modifier = Modifier
                 .fillMaxSize()
         ) {
@@ -133,7 +132,7 @@ fun HOMEScreen(
 
             if (associatedBusStopTimes.isEmpty()) {
                 Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
-                item() {LoadingScreen("Loading trips...")}
+                item() { LoadingScreen("Loading trips...") }
             } else {
                 items(
                     items = associatedBusStopTimes,
@@ -186,47 +185,42 @@ fun BusCard(
         }
     }
 
-    Card(
+    Box(
         modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(100.dp)
-                .background(MaterialTheme.colorScheme.secondaryContainer)
-                .clickable {
-                    sharedViewModel.select(item.busStopTimesRecord)
-                    navController.navigate(Trips)
-                }
-                .padding(16.dp)
-        ) {
-            Text(
-                text = item.busStopTimesRecord.routeInfo.routeShortName,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                style = MaterialTheme.typography.displaySmall,
-                modifier = Modifier.align(Alignment.TopStart)
-            )
-            Text(
-                text = item.busStopTimesRecord.tripInfo.tripHeadsign,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.align(Alignment.BottomStart)
-            )
-            if (item.realtimeBusInfo != null) {
-                Text(
-                    text = item.realtimeBusInfo.distance.toString(),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.align(Alignment.Center)
-                )
+            .fillMaxWidth()
+            .height(50.dp)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .clickable {
+                sharedViewModel.select(item.busStopTimesRecord)
+                navController.navigate(Trips)
             }
+            .padding(16.dp)
+    ) {
+        Text(
+            text = item.busStopTimesRecord.routeInfo.routeShortName,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+        Text(
+            text = item.busStopTimesRecord.tripInfo.tripHeadsign,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.align(Alignment.BottomStart)
+        )
+        if (item.realtimeBusInfo != null) {
             Text(
-                text = printTime,
+                text = item.realtimeBusInfo.distance.toString(),
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.align(Alignment.TopEnd)
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.Center)
             )
         }
+        Text(
+            text = printTime,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.align(Alignment.TopEnd)
+        )
     }
 }
