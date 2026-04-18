@@ -85,34 +85,26 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TfNSWTheme() {
-                val app = application as LearningApplication
-                val isAppReady by app.repos
-                    .isLoaded
-                    .collectAsStateWithLifecycle()
                 val navController = rememberNavController()
 
-                if (!isAppReady){
-                    LoadingScreen("Downloading Transport Data...")
-                } else {
-                    Log.d("INIT", "Home screen loaded.")
-                    val sharedViewModel: SharedViewModel = viewModel()
-                    NavHost(
-                        navController = navController,
-                        startDestination = Home,
-                        enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
-                        exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
-                        popEnterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) },
-                        popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) }
-                    ) {
-                        composable<Home> {
-                            HOMEScreen(navController, sharedViewModel = sharedViewModel)
-                        }
-                        composable<Trips> {
-                            TripsScreen(navController, sharedViewModel.selectedRecord!!)
-                        }
-                        composable<PickStop> {
-                            PickStopScreen(navController)
-                        }
+                Log.d("INIT", "Home screen loaded.")
+                val sharedViewModel: SharedViewModel = viewModel()
+                NavHost(
+                    navController = navController,
+                    startDestination = Home,
+                    enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
+                    exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
+                    popEnterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) },
+                    popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) }
+                ) {
+                    composable<Home> {
+                        HOMEScreen(navController, sharedViewModel = sharedViewModel)
+                    }
+                    composable<Trips> {
+                        TripsScreen(navController, sharedViewModel.selectedRecord!!)
+                    }
+                    composable<PickStop> {
+                        PickStopScreen(navController)
                     }
                 }
             }

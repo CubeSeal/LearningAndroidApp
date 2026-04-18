@@ -1,7 +1,6 @@
 package com.example.learning.db
 
 import android.content.Context
-import android.util.Log
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -12,19 +11,10 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.learning.repos.FileRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.File
-import java.security.MessageDigest
-import java.time.Instant
-import java.util.zip.GZIPInputStream
 
 // ═════════════════════════════════════════════════════════════════════
 // Entities
@@ -238,7 +228,7 @@ interface GtfsDao {
     version = 1,
     exportSchema = true,
 )
-abstract class GtfsDatabase : RoomDatabase() {
+internal abstract class GtfsDatabase : RoomDatabase() {
     abstract fun gtfsDao(): GtfsDao
 
     companion object {
@@ -263,140 +253,24 @@ abstract class GtfsDatabase : RoomDatabase() {
         }
 
         /** Close current instance and swap in a new DB file. */
-        fun replaceWith(context: Context, newDbFile: File) {
+        suspend fun replaceWith(context: Context, newDbFile: File) {
+            val old: GtfsDatabase?
             synchronized(this) {
-                instance?.close()
-                instance = null
+                // Stage the new file BEFORE touching the live instance —
+                // if copy fails, the old DB stays up.
                 val target = File(context.filesDir, "gtfs_downloaded.db")
                 newDbFile.copyTo(target, overwrite = true)
+
+                old = instance
+                instance = null
                 context.deleteDatabase(DB_NAME)
+                // Next getInstance() rebuilds from the new gtfs_downloaded.db.
+            }
+            // Let in-flight suspend queries finish before pulling the rug.
+            old?.let {
+                delay(500)
+                withContext(Dispatchers.IO) { it.close() }
             }
         }
-    }
-}
-
-
-/**
- * Check for a newer GTFS database on GitHub Releases and download it if available.
- *
- * Returns `true` if a new DB was downloaded and applied, `false` if already up to date,
- * and throws on network/IO errors.
- */
-suspend fun syncGtfsDatabase(
-    fileRepository: FileRepository,
-    httpClient: OkHttpClient,
-    ghOwner: String,
-    ghRepo: String,
-    onProgress: (bytesRead: Long, totalBytes: Long) -> Unit = { _, _ -> },
-): Boolean = withContext(Dispatchers.IO) {
-    val TAG = "GtfsSync"
-    val TIMESTAMP_FILE = "timestamp"
-    val json = Json { ignoreUnknownKeys = true }
-    val localTimestamp = fileRepository.readFile(TIMESTAMP_FILE)?.let {
-        try { Instant.parse(it) } catch (e: Exception) {
-            Log.w(TAG, "Could not parse saved timestamp, treating as stale", e)
-            null
-        }
-    }
-
-    Log.d(TAG, "Checking for GTFS update (local timestamp: $localTimestamp)")
-
-    // ── Fetch latest release metadata ────────────────────────────
-    val request = Request.Builder()
-        .url("https://api.github.com/repos/$ghOwner/$ghRepo/releases/latest")
-        .header("Accept", "application/vnd.github+json")
-        .build()
-
-    val (downloadUrl, remoteTimestamp, sha256) = httpClient.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) error("GitHub API request failed: ${response.code}")
-        val body = response.body?.string() ?: error("Empty response from GitHub API")
-        val obj = json.parseToJsonElement(body).jsonObject
-
-        val publishedAt = obj["published_at"]?.jsonPrimitive?.content
-            ?.let { Instant.parse(it) }
-            ?: error("Release missing published_at")
-
-        if (localTimestamp != null && localTimestamp >= publishedAt) {
-            Log.d(TAG, "Up to date ($localTimestamp >= $publishedAt)")
-            return@withContext false
-        }
-
-        val assets = obj["assets"]?.jsonArray ?: error("Release has no assets")
-        val dbAsset = assets
-            .map { it.jsonObject }
-            .firstOrNull { it["name"]?.jsonPrimitive?.content?.endsWith(".db.gz") == true }
-            ?: error("No .db.gz asset found in release")
-
-        val url = dbAsset["browser_download_url"]?.jsonPrimitive?.content
-            ?: error("Asset missing download URL")
-
-        val releaseBody = obj["body"]?.jsonPrimitive?.content ?: ""
-        val hash = Regex("""SHA-256:\s*`?([a-f0-9]{64})`?""")
-            .find(releaseBody)?.groupValues?.get(1)
-
-        Triple(url, publishedAt, hash)
-    }
-
-    Log.d(TAG, "New version available (published: $remoteTimestamp), downloading...")
-
-    // ── Download ─────────────────────────────────────────────────
-    val tempGzName = "gtfs_download.db.gz"
-    val tempDbName = "gtfs_download.db"
-
-    try {
-        val dlRequest = Request.Builder().url(downloadUrl).build()
-        httpClient.newCall(dlRequest).execute().use { response ->
-            if (!response.isSuccessful) error("Download failed: ${response.code}")
-            val responseBody = response.body ?: error("Empty download body")
-            val total = responseBody.contentLength()
-
-            responseBody.byteStream().use { input ->
-                File(fileRepository.directory, tempGzName).outputStream().use { output ->
-                    val buf = ByteArray(8192)
-                    var bytesRead = 0L
-                    var n: Int
-                    while (input.read(buf).also { n = it } != -1) {
-                        output.write(buf, 0, n)
-                        bytesRead += n
-                        onProgress(bytesRead, total)
-                    }
-                }
-            }
-        }
-
-        // ── Decompress ───────────────────────────────────────────
-        val gzFile = File(fileRepository.directory, tempGzName)
-        val dbFile = File(fileRepository.directory, tempDbName)
-        GZIPInputStream(gzFile.inputStream()).use { gzIn ->
-            dbFile.outputStream().use { out -> gzIn.copyTo(out, 65536) }
-        }
-        fileRepository.deleteFile(tempGzName)
-
-        // ── Verify SHA-256 ───────────────────────────────────────
-        if (sha256 != null) {
-            val digest = MessageDigest.getInstance("SHA-256")
-            dbFile.inputStream().use { input ->
-                val buf = ByteArray(8192)
-                var n: Int
-                while (input.read(buf).also { n = it } != -1) digest.update(buf, 0, n)
-            }
-            val actual = digest.digest().joinToString("") { "%02x".format(it) }
-            if (actual != sha256) {
-                error("SHA-256 mismatch: expected $sha256, got $actual")
-            }
-        }
-
-        // ── Swap into Room ───────────────────────────────────────
-        GtfsDatabase.replaceWith(fileRepository.context, dbFile)
-        fileRepository.deleteFile(tempDbName)
-
-        // ── Write timestamp only after everything succeeded ──────
-        fileRepository.writeFile(TIMESTAMP_FILE, remoteTimestamp.toString())
-        Log.i(TAG, "GTFS DB updated (published: $remoteTimestamp)")
-        true
-    } catch (e: Exception) {
-        fileRepository.deleteFile(tempGzName)
-        fileRepository.deleteFile(tempDbName)
-        throw e
     }
 }

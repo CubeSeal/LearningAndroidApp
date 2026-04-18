@@ -38,7 +38,7 @@ data class RealtimeBusStopTimesRecord(
 )
 
 class BusInfo(
-    private val gtfsStaticRepository: GtfsStaticRepository,
+    val gtfsStaticRepository: GtfsStaticRepository,
     private val gtfsRealtimeRepository: GtfsRealtimeRepository,
     private val location: StateFlow<Location?>,
     private val scope: CoroutineScope,

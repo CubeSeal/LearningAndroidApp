@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,19 +13,15 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.room.Room
-import com.example.learning.db.GtfsDatabase
-import com.example.learning.db.syncGtfsDatabase
 import com.example.learning.repos.BusStopInfo
 import com.example.learning.repos.BusStopTimesRecord
-import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.GtfsRealtimeRepository
+import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,17 +34,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import kotlin.jvm.java
 
 class ApplicationRepos(private val applicationContext: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val locationRepo = LocationRepository(applicationContext, applicationScope)
     val fileRepository = FileRepository(applicationContext, "busStops")
     val httpClient = OkHttpClient()
-
-    // Don't create DB here — sync needs to run first
-    lateinit var db: GtfsDatabase
-        private set
 
     lateinit var gtfsStaticRepository: GtfsStaticRepository
         private set
@@ -63,21 +53,21 @@ class ApplicationRepos(private val applicationContext: Context) {
             scope = applicationScope
         )
     }
-    val isLoaded = MutableStateFlow(false)
 
     suspend fun initAll() {
-        if (isLoaded.value) return
-
         withContext(Dispatchers.Default) {
             Log.d("INIT", "Start loading...")
 
-            syncGtfsDatabase(fileRepository, httpClient, "CubeSeal", "LearningAndroidApp")
+            gtfsStaticRepository = GtfsStaticRepository(
+                applicationContext,
+                fileRepository,
+                httpClient
+            )
+            gtfsStaticRepository.syncGtfsDatabase(
+                ghOwner = "CubeSeal",
+                ghRepo = "LearningAndroidApp"
+            )
 
-            db = GtfsDatabase.getInstance(applicationContext)
-            gtfsStaticRepository = GtfsStaticRepository(db)
-            gtfsStaticRepository.preloadCalendarDates()
-
-            isLoaded.value = true
             Log.d("INIT", "Finished loading.")
         }
     }
@@ -123,9 +113,8 @@ class HomeViewModel(
 ) : ViewModel() {
 
     val focusedBusStop = busInfo.focusedBusStop
-    val closestBusStops = busInfo.closestBusStops
     val associatedStopTimes = busInfo.associatedStopTimes
-    fun updateFocusedBusStop(stop: BusStopInfo) = busInfo.updateFocusedBusStop(stop)
+    val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
 
     init {
         viewModelScope.launch {

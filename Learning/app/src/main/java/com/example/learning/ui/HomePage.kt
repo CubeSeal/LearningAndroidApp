@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +64,7 @@ fun HOMEScreen(
 ) {
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
+    val isAppReady by viewModel.isUpToDate.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val headerAlpha by remember {
         derivedStateOf {
@@ -82,9 +84,28 @@ fun HOMEScreen(
         listState.scrollToItem(0)
     }
 
-    Box(
+    Column(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .height(48.dp)
+                .padding(horizontal = 16.dp)
+        ) {
+            if (!isAppReady) {
+                Text(
+                    text = "Not ready",
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            } else {
+                Text(
+                    text = "Ready",
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -94,7 +115,6 @@ fun HOMEScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.statusBars)
                         .graphicsLayer { alpha = headerAlpha }
                         .height(50.dp)
                         .padding(horizontal = 16.dp)
