@@ -53,7 +53,6 @@ class ApplicationRepos(private val applicationContext: Context) {
             scope = applicationScope
         )
     }
-
     suspend fun initAll() {
         withContext(Dispatchers.Default) {
             Log.d("INIT", "Start loading...")
@@ -76,6 +75,7 @@ class ApplicationRepos(private val applicationContext: Context) {
 class LearningApplication : Application() {
     // This holds the data layer
     lateinit var repos: ApplicationRepos
+
     // This is effectively "applicationScope"
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -131,6 +131,7 @@ class PickStopViewModel(
 
     val busStops = busInfo.allBusStops
     val closestBusStops = busInfo.closestBusStops
+
     // ViewModel
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
@@ -144,7 +145,9 @@ class PickStopViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), busStops)
 
     fun updateFocusedBusStop(stop: BusStopInfo) = busInfo.updateFocusedBusStop(stop)
-    fun onQueryChange(q: String) { _query.value = q }
+    fun onQueryChange(q: String) {
+        _query.value = q
+    }
 }
 
 class TripsViewModel(

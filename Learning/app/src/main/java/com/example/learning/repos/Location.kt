@@ -1,10 +1,12 @@
 package com.example.learning.repos
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Looper
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -13,66 +15,110 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
+enum class LocationMode {
+    HighAccuracy,   // GPS + wifi/cell — walking nav, precise stop disambiguation
+    Balanced,       // wifi/cell/bluetooth (~100m) — normal browsing
+    LowPower,       // cell/wifi only (~10km) — battery-conscious
+    Passive,        // no active request; piggyback on other apps' requests
+    Off,            // no updates; StateFlow holds last known value
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class LocationRepository(
-    private val context: Context,
-    private val scope: CoroutineScope
+    context: Context,
+    private val scope: CoroutineScope,
 ) {
-    private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+    private val appContext = context.applicationContext
+    private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(appContext)
+
+    private val _mode = MutableStateFlow(LocationMode.Balanced)
+    val mode: StateFlow<LocationMode> = _mode.asStateFlow()
+    fun setMode(m: LocationMode) {
+        _mode.value = m
+    }
 
     fun hasLocationPermission() =
-        ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-        ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(
+            appContext,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(
+                    appContext,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
 
-    val currentLocation: StateFlow<Location?> = updateLocation()
+    val currentLocation: StateFlow<Location?> = _mode
+        .flatMapLatest { locationFlowFor(it) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
 
     @SuppressLint("MissingPermission")
-    private fun updateLocation(): StateFlow<Location?> {
-        return callbackFlow {
+    private fun locationFlowFor(mode: LocationMode): Flow<Location> = when (mode) {
+        LocationMode.Off -> emptyFlow()
+        LocationMode.Passive -> updates(Priority.PRIORITY_PASSIVE, Long.MAX_VALUE, 5_000L)
+        LocationMode.LowPower -> updates(Priority.PRIORITY_LOW_POWER, 30_000L, 15_000L)
+        LocationMode.Balanced -> updates(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10_000L, 5_000L)
+        LocationMode.HighAccuracy -> updates(Priority.PRIORITY_HIGH_ACCURACY, 5_000L, 2_000L)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun updates(priority: Int, intervalMs: Long, minIntervalMs: Long): Flow<Location> =
+        callbackFlow {
             if (!hasLocationPermission()) {
-                close(SecurityException("No location permission"))
-                return@callbackFlow
+                close(SecurityException("No location permission")); return@callbackFlow
             }
 
-            @SuppressLint("MissingPermission")
-            fusedLocationClient.lastLocation.await()?.let { trySend(it) }
+            Log.d("Location", "Checked permissions.")
 
-            val cancellationToken = CancellationTokenSource()
-            fusedLocationClient.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                cancellationToken.token
-            ).await()?.let { trySend(it) }
-
-            val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10000L)
-                .setMinUpdateIntervalMillis(5000L)
+            val request = LocationRequest.Builder(priority, intervalMs)
+                .setMinUpdateIntervalMillis(minIntervalMs)
+                .setMaxUpdateAgeMillis(60_000L)
+                .setWaitForAccurateLocation(false)
                 .build()
 
             val callback = object : LocationCallback() {
                 override fun onLocationResult(result: LocationResult) {
+                    Log.d("Location", "Sending location.")
                     result.lastLocation?.let { trySend(it) }
                 }
             }
 
-            @SuppressLint("MissingPermission")
-            fusedLocationClient.requestLocationUpdates(request, callback, Looper.getMainLooper()).await()
+            Log.d("Location", "Requesting location.")
+            fusedLocationClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+
+            // Race in a cached fix — usually faster than waiting for the first callback
+            launch {
+                runCatching { fusedLocationClient.lastLocation.await() }
+                    .getOrNull()?.let { trySend(it) }
+            }
 
             awaitClose { fusedLocationClient.removeLocationUpdates(callback) }
         }
-        .stateIn(
-            scope = scope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
-        )
+
+    // One-shot fresh fix for pull-to-refresh — doesn't affect the stream
+    @SuppressLint("MissingPermission")
+    suspend fun requestFreshFix(
+        priority: Int = Priority.PRIORITY_HIGH_ACCURACY,
+    ): Location? {
+        if (!hasLocationPermission()) return null
+        val cts = CancellationTokenSource()
+        return runCatching {
+            fusedLocationClient.getCurrentLocation(priority, cts.token).await()
+        }.getOrNull()
     }
 
-    @SuppressLint("MissingPermission")
-    suspend fun getLastLocation(): Location? = runCatching {
-        fusedLocationClient.lastLocation.await()
-    }.getOrNull()
 }
