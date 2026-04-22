@@ -24,72 +24,65 @@ import androidx.core.view.WindowCompat
  */
 
 private val LightColorScheme = lightColorScheme(
-    // Metro Teal (Tone 40 for accessibility)
-    primary = Color(0xFF006A6D),
+    primary = Color(0xFF485E92),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFF6FF6F9),
-    onPrimaryContainer = Color(0xFF002021),
+    primaryContainer = Color(0xFFDAE2FF),
+    onPrimaryContainer = Color(0xFF001A41),
 
-    // Train Orange (Tone 40 - darkened significantly for text contrast)
-    secondary = Color(0xFF914D00),
+    secondary = Color(0xFF575E71),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFFFDCC0),
-    onSecondaryContainer = Color(0xFF2F1500),
+    secondaryContainer = Color(0xFFDBE2F9),
+    onSecondaryContainer = Color(0xFF141B2C),
 
-    // Bus Blue (Tone 40)
-    tertiary = Color(0xFF006684),
+    tertiary = Color(0xFF725572),
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFBFE9FF),
-    onTertiaryContainer = Color(0xFF001F2A),
+    tertiaryContainer = Color(0xFFFDD7FA),
+    onTertiaryContainer = Color(0xFF2A132C),
 
     error = Color(0xFFBA1A1A),
     onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFFFFDAD6),
     onErrorContainer = Color(0xFF410002),
 
-    // Neutrals: Teal-tinted whites/greys
-    background = Color(0xFFF4FBFA),
-    onBackground = Color(0xFF161D1D),
-    surface = Color(0xFFF4FBFA),
-    onSurface = Color(0xFF161D1D),
-    surfaceVariant = Color(0xFFDAE5E4),
-    onSurfaceVariant = Color(0xFF3F4949),
-    outline = Color(0xFF6F7979),
-    outlineVariant = Color(0xFFBEC9C8),
+    background = Color(0xFFFAF8FF),
+    onBackground = Color(0xFF1A1B21),
+    surface = Color(0xFFFAF8FF),
+    onSurface = Color(0xFF1A1B21),
+    surfaceVariant = Color(0xFFE1E2EC),
+    onSurfaceVariant = Color(0xFF44474F),
+    outline = Color(0xFF757780),
+    outlineVariant = Color(0xFFC5C6D0),
 )
 
 private val DarkColorScheme = darkColorScheme(
-    // Metro Teal (Tone 80 - glowing but legible)
-    primary = Color(0xFF4CD9DC),
-    onPrimary = Color(0xFF003738),
-    primaryContainer = Color(0xFF004F51),
-    onPrimaryContainer = Color(0xFF6FF6F9),
+    primary = Color(0xFFB1C5FF),
+    onPrimary = Color(0xFF152E60),
+    primaryContainer = Color(0xFF2F4578),
+    onPrimaryContainer = Color(0xFFDAE2FF),
 
-    // Train Orange (Tone 80 - vibrant accent)
-    secondary = Color(0xFFFFB87A),
-    onSecondary = Color(0xFF4E2600),
-    secondaryContainer = Color(0xFF6F3900),
-    onSecondaryContainer = Color(0xFFFFDCC0),
+    secondary = Color(0xFFBFC6DC),
+    onSecondary = Color(0xFF293042),
+    secondaryContainer = Color(0xFF3F4759),
+    onSecondaryContainer = Color(0xFFDBE2F9),
 
-    // Bus Blue (Tone 80)
-    tertiary = Color(0xFF6AD3FF),
-    onTertiary = Color(0xFF003546),
-    tertiaryContainer = Color(0xFF004D64),
-    onTertiaryContainer = Color(0xFFBFE9FF),
+    tertiary = Color(0xFFE0BBDD),
+    onTertiary = Color(0xFF412842),
+    tertiaryContainer = Color(0xFF593E5A),
+    onTertiaryContainer = Color(0xFFFDD7FA),
 
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     errorContainer = Color(0xFF93000A),
     onErrorContainer = Color(0xFFFFDAD6),
 
-    // Neutrals: Deep tealy-greys
-    background = Color(0xFF0E1515),
-    onBackground = Color(0xFFDEE3E3),
-    surface = Color(0xFF0E1515),
-    onSurface = Color(0xFFDEE3E3),
-    surfaceVariant = Color(0xFF3F4949),
-    onSurfaceVariant = Color(0xFFBEC9C8),
-    outline = Color(0xFF899392),
+    background = Color(0xFF121318),
+    onBackground = Color(0xFFE3E2E9),
+    surface = Color(0xFF121318),
+    onSurface = Color(0xFFE3E2E9),
+    surfaceVariant = Color(0xFF44474F),
+    onSurfaceVariant = Color(0xFFC5C6D0),
+    outline = Color(0xFF8E9099),
+    outlineVariant = Color(0xFF44474F),
 )
 
 @Composable
