@@ -1,6 +1,7 @@
 package com.example.learning.repos
 
 import android.content.Context
+import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
@@ -143,6 +144,22 @@ class GtfsStaticRepository(
                 it.wheelchairBoarding == 1
             )
         }
+    }
+
+    suspend fun getTenClosestStops(location: Location): List<BusStopInfo> {
+        return gtfsDao
+            .getNearestStops(location.latitude, location.longitude)
+            .map {
+                BusStopInfo(
+                    it.stopId,
+                    it.stopName!!,
+                    LatLon(
+                        it.stopLat!!,
+                        it.stopLon!!
+                    ),
+                    it.wheelchairBoarding == 1
+                )
+            }
     }
 
     // This is now lightning fast

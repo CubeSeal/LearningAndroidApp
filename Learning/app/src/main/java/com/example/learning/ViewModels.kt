@@ -40,6 +40,7 @@ class ApplicationRepos(private val applicationContext: Context) {
     val locationRepo = LocationRepository(applicationContext, applicationScope)
     val fileRepository = FileRepository(applicationContext, "busStops")
     val httpClient = OkHttpClient()
+    val loaded = MutableStateFlow(false)
 
     lateinit var gtfsStaticRepository: GtfsStaticRepository
         private set
@@ -69,6 +70,8 @@ class ApplicationRepos(private val applicationContext: Context) {
 
             Log.d("INIT", "Finished loading.")
         }
+
+        loaded.update { true }
     }
 }
 

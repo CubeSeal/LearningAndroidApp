@@ -53,16 +53,15 @@ class BusInfo(
 
     init {
         scope.launch {
+            Log.d("BusInfo", "Start get stops.")
             allBusStops = gtfsStaticRepository.getStops()
+            Log.d("BusInfo", "Get stops finished.")
         }
     }
 
     private fun updateClosestBusStops(): StateFlow<List<BusStopInfo>> {
         return location.map { loc ->
-            loc?.let {allBusStops.sortedBy {
-                (loc.latitude - it.stopLoc.latitude).pow(2) + (loc.longitude - it.stopLoc.longitude).pow(2)
-            }.take(10)
-            } ?: emptyList()
+            loc?.let { gtfsStaticRepository.getTenClosestStops(it) } ?: emptyList()
         }.stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,

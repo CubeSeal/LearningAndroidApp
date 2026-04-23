@@ -155,6 +155,16 @@ interface GtfsDao {
     @Query("SELECT * FROM stops")
     suspend fun getAllStops(): List<StopEntity>
 
+    @Query("""
+    SELECT *, 
+        ((stop_lat - :userLat) * (stop_lat - :userLat) + 
+         (stop_lon - :userLon) * (stop_lon - :userLon)) AS distance_sq
+    FROM stops
+    ORDER BY distance_sq ASC
+    LIMIT 10
+""")
+    suspend fun getNearestStops(userLat: Double, userLon: Double): List<StopEntity>
+
     // ── Departures ─────────────────────────────────────────
 
     @Query("""
