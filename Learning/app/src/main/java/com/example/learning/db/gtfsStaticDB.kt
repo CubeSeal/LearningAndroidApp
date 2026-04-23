@@ -101,8 +101,7 @@ data class StopEntity(
     @ColumnInfo(name = "wheelchair_boarding") val wheelchairBoarding: Int?,
     @ColumnInfo(name = "platform_code") val platformCode: String?,
 )
-
-@Entity(
+ @Entity(
     tableName = "stop_times",
     primaryKeys = ["trip_id", "stop_sequence"],
     indices = [Index("stop_id"), Index("trip_id"), Index("departure_time")],
@@ -124,6 +123,29 @@ data class StopTimeEntity(
     @ColumnInfo(name = "timepoint") val timepoint: Int?,
 )
 
+data class StopTimeWithDetails(
+    val tripId: String,
+    val departureTime: String,
+    val arrivalTime: String,
+    val stopSequence: Int,
+    val routeId: String,
+    val serviceId: String,
+    val tripHeadsign: String,
+    val routeShortName: String,
+    val routeLongName: String
+)
+
+data class StopTimeWithStop(
+    val tripId: String,
+    val departureTime: String,
+    val arrivalTime: String,
+    val stopSequence: Int,
+    val stopId: String,
+    val stopName: String,
+    val stopLat: Double,
+    val stopLon: Double,
+    val wheelchairBoarding: Int
+)
 // ═════════════════════════════════════════════════════════════════════
 // DAO
 // ═════════════════════════════════════════════════════════════════════
@@ -223,6 +245,43 @@ interface GtfsDao {
 
     @Query("SELECT COUNT(*) FROM stop_times")
     suspend fun countStopTimes(): Int
+
+    // ── Convoluted joins ───────────────────────────────────────────
+    @Query("""
+    SELECT 
+        st.trip_id        AS tripId,
+        st.departure_time AS departureTime,
+        st.arrival_time   AS arrivalTime,
+        st.stop_sequence  AS stopSequence,
+        t.route_id        AS routeId,
+        t.service_id      AS serviceId,
+        t.trip_headsign   AS tripHeadsign,
+        r.route_short_name AS routeShortName,
+        r.route_long_name  AS routeLongName
+    FROM stop_times st
+    JOIN trips t ON st.trip_id = t.trip_id
+    JOIN routes r ON t.route_id = r.route_id
+    WHERE st.stop_id = :stopId
+""")
+    suspend fun getStopTimesWithDetails(stopId: String): List<StopTimeWithDetails>
+
+    @Query("""
+    SELECT
+        st.trip_id           AS tripId,
+        st.departure_time    AS departureTime,
+        st.arrival_time      AS arrivalTime,
+        st.stop_sequence     AS stopSequence,
+        s.stop_id            AS stopId,
+        s.stop_name          AS stopName,
+        s.stop_lat           AS stopLat,
+        s.stop_lon           AS stopLon,
+        s.wheelchair_boarding AS wheelchairBoarding
+    FROM stop_times st
+    JOIN stops s ON st.stop_id = s.stop_id
+    WHERE st.trip_id = :tripId
+    ORDER BY st.stop_sequence ASC
+""")
+    suspend fun getStopTimesWithStops(tripId: String): List<StopTimeWithStop>
 }
 
 // ═════════════════════════════════════════════════════════════════════

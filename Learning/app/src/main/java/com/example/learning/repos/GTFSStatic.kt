@@ -164,93 +164,60 @@ class GtfsStaticRepository(
 
     // This is now lightning fast
     suspend fun getAssociatedTrips(busStopInfo: BusStopInfo, time: LocalDateTime): Pair<List<BusStopTimesRecord>, Int> {
-        Log.d("GTFS", "Started getAssociatedTrips")
+        val rows = gtfsDao.getStopTimesWithDetails(busStopInfo.stopId)
 
-        val busStopTimesInfo = coroutineScope {
-            gtfsDao.getStopTimesForStop(busStopInfo.stopId)
-                .map { entity ->
-                    async {
-                        val busTripInfo = gtfsDao.getTrip(entity.tripId)!!.let {
-                            BusTripInfo(
-                                routeId = it.routeId,
-                                serviceId = it.serviceId,
-                                tripId = entity.tripId,
-                                tripHeadsign = it.tripHeadsign!!
-                            )
-                        }
+        val busStopTimesInfo = rows
+            .flatMap { row ->
+                val tripInfo = BusTripInfo(row.routeId, row.serviceId, row.tripId, row.tripHeadsign)
+                val routeInfo = BusRouteInfo(row.routeId, row.routeShortName, row.routeLongName)
 
-                        val busRouteInfo = gtfsDao.getRoute(busTripInfo.routeId)!!.let {
-                            BusRouteInfo(
-                                routeId = busTripInfo.routeId,
-                                routeShortName = it.routeShortName!!,
-                                routeLongName = it.routeLongName!!,
-                            )
-                        }
-
-                        return@async calendarSequences().getValue(busTripInfo.serviceId).map {
-                            BusStopTimesRecord(
-                                fakeId = 0,
-                                stopTimesInfo = BusStopTimesInfo(
-                                    fakeId = 0.toLong(),
-                                    tripId = entity.tripId,
-                                    departureTime = parseGtfsDateTime(it, entity.departureTime!!),
-                                    arrivalTime = parseGtfsDateTime(it, entity.arrivalTime!!),
-                                    sequence = entity.stopSequence
-                                ),
-                                stopInfo = busStopInfo,
-                                tripInfo = busTripInfo,
-                                routeInfo = busRouteInfo,
-                            )
-                        }.toList()
-                    }
-                }.awaitAll().flatten().mapIndexed {i, it ->
-                    it.copy(
-                        fakeId = i,
-                        stopTimesInfo = it.stopTimesInfo.copy(fakeId = i.toLong())
+                calendarSequences().getValue(row.serviceId).map { date ->
+                    BusStopTimesRecord(
+                        fakeId = 0,
+                        stopTimesInfo = BusStopTimesInfo(
+                            fakeId = 0L,
+                            tripId = row.tripId,
+                            departureTime = parseGtfsDateTime(date, row.departureTime),
+                            arrivalTime   = parseGtfsDateTime(date, row.arrivalTime),
+                            sequence = row.stopSequence
+                        ),
+                        stopInfo  = busStopInfo,
+                        tripInfo  = tripInfo,
+                        routeInfo = routeInfo,
                     )
                 }
-        }.sortedWith(compareBy { it.stopTimesInfo.arrivalTime } )
-        Log.d("GTFS", "Finished StopTimes Parsing.")
+            }
+            .sortedBy { it.stopTimesInfo.arrivalTime }
+            .mapIndexed { i, it -> it.copy(fakeId = i, stopTimesInfo = it.stopTimesInfo.copy(fakeId = i.toLong())) }
 
         val prefix = busStopTimesInfo.indexOfFirst { it.stopTimesInfo.departureTime.isAfter(time) }
-
         return Pair(busStopTimesInfo, if (prefix == -1) 0 else prefix)
     }
 
-    suspend fun getByTrip(busStopInfo: BusStopTimesRecord): List<BusStopTimesRecord> = withContext(Dispatchers.IO) {
-        Log.d("GTFS", "Started getByTrip")
+    suspend fun getByTrip(busStopInfo: BusStopTimesRecord): List<BusStopTimesRecord> {
         val date = busStopInfo.stopTimesInfo.departureTime.toLocalDate()
-
-        return@withContext gtfsDao.getStopTimesForTrip(busStopInfo.tripInfo.tripId)
-            .mapIndexed { index, entity ->
-
-                val busStopTimesInfo = BusStopTimesInfo(
-                    fakeId = index.toLong(),
-                    tripId = entity.tripId,
-                    departureTime = parseGtfsDateTime(date, entity.departureTime!!),
-                    arrivalTime = parseGtfsDateTime(date, entity.arrivalTime!!),
-                    sequence = entity.stopSequence
-                )
-
-                val localBusStopInfo = gtfsDao.getStop(entity.stopId)!!.let {
-                    BusStopInfo(
-                        stopId = entity.stopId,
-                        stopName = it.stopName ?: "Missing stop name.",
-                        stopLoc = LatLon(it.stopLat!!, it.stopLon!!),
-                        wheelchairBoarding = it.wheelchairBoarding == 1
-                    )
-                }
-
+        return gtfsDao.getStopTimesWithStops(busStopInfo.tripInfo.tripId)
+            .mapIndexed { index, row ->
                 BusStopTimesRecord(
                     fakeId = index,
-                    stopTimesInfo = busStopTimesInfo,
-                    stopInfo = localBusStopInfo,
-                    tripInfo = busStopInfo.tripInfo,
+                    stopTimesInfo = BusStopTimesInfo(
+                        fakeId = index.toLong(),
+                        tripId = row.tripId,
+                        departureTime = parseGtfsDateTime(date, row.departureTime),
+                        arrivalTime   = parseGtfsDateTime(date, row.arrivalTime),
+                        sequence      = row.stopSequence
+                    ),
+                    stopInfo = BusStopInfo(
+                        stopId   = row.stopId,
+                        stopName = row.stopName,
+                        stopLoc  = LatLon(row.stopLat, row.stopLon),
+                        wheelchairBoarding = row.wheelchairBoarding == 1
+                    ),
+                    tripInfo  = busStopInfo.tripInfo,
                     routeInfo = busStopInfo.routeInfo
                 )
-            }.sortedWith(compareBy { it.stopTimesInfo.sequence })
+            }
     }
-
 
     /**
      * Check for a newer GTFS database on GitHub Releases and download it if available.
