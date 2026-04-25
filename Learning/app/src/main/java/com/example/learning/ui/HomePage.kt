@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -58,6 +59,8 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.compareTo
+import kotlin.div
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,21 +74,8 @@ fun HOMEScreen(
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val isAppReady by viewModel.isUpToDate.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+
     val listState = rememberLazyListState()
-    val headerAlpha by remember {
-        derivedStateOf {
-            // If we've scrolled past the first item, it's completely invisible
-            if (listState.firstVisibleItemIndex > 1) {
-                0f
-            } else {
-                // How fast it fades out (in pixels). Tweak this number to your liking!
-                val fadeDistance = 400f
-                val offset = listState.firstVisibleItemScrollOffset
-                // Calculate opacity: 1f (fully visible) down to 0f (invisible)
-                (1f - (offset / fadeDistance)).coerceIn(0f, 1f)
-            }
-        }
-    }
     LaunchedEffect(associatedBusStopTimes) {
         listState.scrollToItem(0)
     }
@@ -102,61 +92,99 @@ fun HOMEScreen(
                 .height(48.dp)
                 .padding(horizontal = 16.dp)
         ) {
-            if (!isAppReady) {
-                Text(
-                    text = "Not ready",
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            } else {
-                Text(
-                    text = "Ready",
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
+            BypassHeader(isAppReady)
         }
 
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refreshLocation() }
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                item() {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 96.dp, vertical = 16.dp),
-                        thickness = 2.dp,
-                    )
-                }
-                item() {
-                    Box(
-                        modifier = Modifier
-                            .graphicsLayer { alpha = headerAlpha }
-                            .padding(16.dp)
-                    ) {
-                        StopTitle(focusedBusStop, navController)
-                    }
-                }
+            MasterLazyColumn(
+                listState,
+                navController,
+                sharedViewModel,
+                focusedBusStop,
+                associatedBusStopTimes
+            )
+        }
+    }
+}
 
-                if (associatedBusStopTimes.isEmpty()) {
-                    Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
-                    item() { LoadingScreen("Loading trips...") }
-                } else {
-                    items(
-                        items = associatedBusStopTimes,
-                        key = { it.busStopTimesRecord.fakeId }
-                    ) { item ->
-                        BusCard(navController, sharedViewModel, item)
-                    }
-                }
-
-                item {
-                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
-                }
+@Composable
+fun MasterLazyColumn(
+    listState: LazyListState,
+    navController: NavController,
+    sharedViewModel: SharedViewModel,
+    focusedBusStop: BusStopInfo?,
+    associatedBusStopTimes: List<RealtimeBusStopTimesRecord>
+) {
+    val headerAlpha by remember {
+        derivedStateOf {
+            // If we've scrolled past the first item, it's completely invisible
+            if (listState.firstVisibleItemIndex > 1) {
+                0f
+            } else {
+                // How fast it fades out (in pixels). Tweak this number to your liking!
+                val fadeDistance = 400f
+                val offset = listState.firstVisibleItemScrollOffset
+                // Calculate opacity: 1f (fully visible) down to 0f (invisible)
+                (1f - (offset / fadeDistance)).coerceIn(0f, 1f)
             }
         }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
+        item() {
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 96.dp, vertical = 16.dp),
+                thickness = 2.dp,
+            )
+        }
+        item() {
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { alpha = headerAlpha }
+                    .padding(16.dp)
+            ) {
+                StopTitle(focusedBusStop, navController)
+            }
+        }
+
+        if (associatedBusStopTimes.isEmpty()) {
+            Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
+            item() { LoadingScreen("Loading trips...") }
+        } else {
+            items(
+                items = associatedBusStopTimes,
+                key = { it.busStopTimesRecord.fakeId }
+            ) { item ->
+                BusCard(navController, sharedViewModel, item)
+            }
+        }
+
+        item {
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
+        }
+    }
+
+}
+
+@Composable
+fun BypassHeader(isAppReady: Boolean ){
+    if (!isAppReady) {
+        Text(
+            text = "Not ready",
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+    } else {
+        Text(
+            text = "Ready",
+            color = MaterialTheme.colorScheme.onBackground,
+        )
     }
 }
 
