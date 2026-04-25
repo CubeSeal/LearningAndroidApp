@@ -187,6 +187,13 @@ interface GtfsDao {
 """)
     suspend fun getNearestStops(userLat: Double, userLon: Double, limit: Int): List<StopEntity>
 
+    @Query("""
+    SELECT *
+    FROM stops
+    LIMIT 1
+""")
+    suspend fun getOneStop(): List<StopEntity>
+
     // ── Departures ─────────────────────────────────────────
 
     @Query("""

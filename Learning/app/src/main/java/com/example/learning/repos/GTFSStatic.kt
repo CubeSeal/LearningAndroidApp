@@ -146,6 +146,22 @@ class GtfsStaticRepository(
         }
     }
 
+    suspend fun getOneStop(): List<BusStopInfo> {
+        return gtfsDao
+            .getOneStop()
+            .map {
+                BusStopInfo(
+                    it.stopId,
+                    it.stopName!!,
+                    LatLon(
+                        it.stopLat!!,
+                        it.stopLon!!
+                    ),
+                    it.wheelchairBoarding == 1
+                )
+            }
+    }
+
     suspend fun getNClosestStops(location: Location, length: Int): List<BusStopInfo> {
         return gtfsDao
             .getNearestStops(location.latitude, location.longitude, length)

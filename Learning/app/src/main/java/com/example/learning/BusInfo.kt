@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.time.LocalDateTime
@@ -95,18 +96,15 @@ class BusInfo(
     init {
         scope.launch {
             Log.d("BusInfo", "Start get stops.")
+            _focusedBusStop.update { gtfsStaticRepository.getOneStop().firstOrNull() }
             allBusStops = gtfsStaticRepository.getStops()
             Log.d("BusInfo", "Get stops finished.")
         }
     }
 
-    suspend fun refreshLocation() {
-        locationRepo.requestFreshFix()
-    }
 
-    fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
-        _focusedBusStop.value = busStopInfo
-    }
+    fun updateFocusedBusStop(busStopInfo: BusStopInfo) { _focusedBusStop.value = busStopInfo }
+    suspend fun refreshLocation() { locationRepo.requestFreshFix() }
 
     suspend fun getByTrip(busStopTimesRecord: BusStopTimesRecord): List<BusStopTimesRecord> {
         return gtfsStaticRepository.getByTrip(busStopTimesRecord)
