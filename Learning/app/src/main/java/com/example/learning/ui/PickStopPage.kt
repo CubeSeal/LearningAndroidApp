@@ -23,6 +23,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarColors
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,9 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.learning.repos.BusStopInfo
 import com.example.learning.AppViewModelProvider
 import com.example.learning.PickStopViewModel
+import com.example.learning.repos.BusStopInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,11 +66,11 @@ fun PickStopScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .heightIn(50.dp)
+                .heightIn(48.dp)
         ) {
             IconButton(
                 onClick = { navController.popBackStack() },
-                modifier = Modifier.align(Alignment.BottomStart)
+                modifier = Modifier.align(Alignment.CenterStart)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -87,7 +88,12 @@ fun PickStopScreen(
             SearchBar(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .background(color = MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 16.dp)
                     .semantics { traversalIndex = 0f },
+                colors = SearchBarDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.background
+                ),
                 inputField = {
                     // Customizable input field implementation
                     SearchBarDefaults.InputField(
@@ -119,14 +125,14 @@ fun PickStopScreen(
                             headlineContent = { Text(busStop.stopName) },
                             supportingContent = null,
                             leadingContent = null,
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                             modifier = Modifier
                                 .clickable {
                                     searchCallback(busStop)
                                     expanded = false
                                 }
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
                 }
