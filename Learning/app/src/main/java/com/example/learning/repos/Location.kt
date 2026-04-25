@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onEach
@@ -45,6 +46,8 @@ class LocationRepository(
 ) {
     private val appContext = context.applicationContext
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(appContext)
+    private val _hasPermission = MutableStateFlow(false)
+    fun onPermissionGranted() { _hasPermission.value = true }
 
     private val _mode = MutableStateFlow(LocationMode.Balanced)
     val mode: StateFlow<LocationMode> = _mode.asStateFlow()
@@ -52,19 +55,14 @@ class LocationRepository(
         _mode.value = m
     }
 
-    fun hasLocationPermission() =
-        ContextCompat.checkSelfPermission(
-            appContext,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(
-                    appContext,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
+    fun hasLocationPermission() = _hasPermission.value
 
-    val currentLocation: StateFlow<Location?> = _mode
-        .flatMapLatest { locationFlowFor(it) }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+    val currentLocation: StateFlow<Location?> =
+        combine(_hasPermission, _mode, ::Pair)
+            .flatMapLatest { (hasPerm, mode) ->
+                if (hasPerm) locationFlowFor(mode) else emptyFlow()
+            }
+            .stateIn(scope, SharingStarted.Eagerly, null)
 
     @SuppressLint("MissingPermission")
     private fun locationFlowFor(mode: LocationMode): Flow<Location> = when (mode) {

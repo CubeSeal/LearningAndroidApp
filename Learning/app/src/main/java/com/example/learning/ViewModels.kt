@@ -58,6 +58,8 @@ class ApplicationRepos(private val applicationContext: Context) {
         withContext(Dispatchers.Default) {
             Log.d("INIT", "Start loading...")
 
+            locationRepo.onPermissionGranted()
+
             gtfsStaticRepository = GtfsStaticRepository(
                 applicationContext,
                 fileRepository,
