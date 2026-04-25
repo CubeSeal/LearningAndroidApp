@@ -10,14 +10,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -30,12 +31,15 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -60,13 +64,10 @@ import com.example.learning.RealtimeBusStopTimesRecord
 import com.example.learning.SharedViewModel
 import com.example.learning.Trips
 import com.example.learning.repos.BusStopInfo
-import kotlinx.coroutines.coroutineScope
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
-import kotlin.compareTo
-import kotlin.div
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,30 +81,35 @@ fun HOMEScreen(
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val isAppReady by viewModel.isUpToDate.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-
     val listState = rememberLazyListState()
+
     LaunchedEffect(associatedBusStopTimes) {
         listState.scrollToItem(0)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .height(48.dp)
-                .padding(horizontal = 16.dp)
-        ) {
-            BypassHeader(isAppReady)
-        }
-
+    Scaffold(
+        topBar = {
+            // If BypassHeader is simple, you can keep it as-is here.
+            // If you want M3 styling/scroll behavior, use TopAppBar/CenterAlignedTopAppBar.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars) // back in
+                    .height(48.dp)
+                    .padding(horizontal = 16.dp)
+            ) {
+                BypassHeader(isAppReady)
+            }
+        },
+        floatingActionButton = {
+            EditStop {navController.navigate(PickStop)}
+        },
+        contentWindowInsets = WindowInsets.statusBars, // top only
+    ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refreshLocation() }
+            onRefresh = { viewModel.refreshLocation() },
+            modifier = Modifier.padding(innerPadding)
         ) {
             MasterLazyColumn(
                 listState,
@@ -113,6 +119,15 @@ fun HOMEScreen(
                 associatedBusStopTimes
             )
         }
+    }
+}
+
+@Composable
+fun EditStop(onClick: () -> Unit) {
+    FloatingActionButton(
+        onClick = { onClick() },
+    ) {
+        Icon(Icons.Filled.Create, "Edit Stop.")
     }
 }
 
@@ -141,6 +156,7 @@ fun MasterLazyColumn(
 
     LazyColumn(
         state = listState,
+        contentPadding = WindowInsets.navigationBars.asPaddingValues(),
         modifier = Modifier
             .fillMaxSize()
     ) {
@@ -156,7 +172,7 @@ fun MasterLazyColumn(
                     .graphicsLayer { alpha = headerAlpha }
                     .padding(16.dp)
             ) {
-                StopTitle(focusedBusStop, navController)
+                StopTitle(focusedBusStop)
             }
         }
 
@@ -195,41 +211,19 @@ fun BypassHeader(isAppReady: Boolean ){
 }
 
 @Composable
-fun StopTitle(
-    closestBusStop: BusStopInfo?,
-    navController: NavController
-) {
-    val iconSideWeight = 0.1f
-
+fun StopTitle(closestBusStop: BusStopInfo? ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(96.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(modifier = Modifier.weight(1 - iconSideWeight)) {
-                Text(
-                    text = closestBusStop?.stopName ?: "Loading local stop...",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Start,
-                    style = MaterialTheme.typography.headlineLarge,
-                )
-            }
-
-            Box(modifier = Modifier.weight(iconSideWeight)) {
-                Icon(
-                    Icons.Filled.Create,
-                    "Edit Stop.",
-                    tint = MaterialTheme.colorScheme.onBackground, // or onBackground, onPrimary, etc.
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clickable {
-                            navController.navigate(PickStop)
-                        }
-                )
-            }
-        }
+        Text(
+            text = closestBusStop?.stopName ?: "Loading local stop...",
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.headlineLarge,
+        )
     }
 }
 
