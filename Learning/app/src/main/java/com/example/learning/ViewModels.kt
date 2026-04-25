@@ -182,7 +182,7 @@ class PickStopViewModel(
 
     val filteredBusStops: StateFlow<List<BusStopInfo>> = _query
         .map { query ->
-            if (query.isEmpty()) busStops
+            if (query.isEmpty()) closestBusStops.value
             else busStops.filter { it.stopName.contains(query, ignoreCase = true) }
         }
         .flowOn(Dispatchers.Default)
