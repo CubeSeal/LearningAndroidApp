@@ -140,7 +140,7 @@ class HomeViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
 
     val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
-    private val _isRefreshing = MutableStateFlow(false)
+    private val _isRefreshing = MutableStateFlow(true)
 
     val isRefreshing = _isRefreshing.asStateFlow()
 
@@ -157,10 +157,15 @@ class HomeViewModel(
         }
     }
 
-    fun refreshLocation() = viewModelScope.launch {
-        _isRefreshing.update { true }
-        busInfo.refreshLocation()
-        _isRefreshing.update { false }
+    fun refreshLocation() {
+        viewModelScope.launch {
+            _isRefreshing.update { true }
+            try {
+                busInfo.refreshLocation() // the real suspend call
+            } finally {
+                _isRefreshing.update { false }
+            }
+        }
     }
 }
 

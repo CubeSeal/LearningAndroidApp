@@ -1,6 +1,11 @@
 package com.example.learning.ui
 
 import android.util.Log
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +25,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -228,7 +234,7 @@ fun StopTitle(
 }
 
 @Composable
-fun BusCard(
+fun LazyItemScope.BusCard(
     navController: NavController,
     sharedViewModel: SharedViewModel,
     item: Pair<Boolean, RealtimeBusStopTimesRecord>
@@ -260,6 +266,11 @@ fun BusCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .animateItem(
+                fadeInSpec = tween(300, easing = LinearOutSlowInEasing),
+                fadeOutSpec = tween(300, easing = FastOutLinearInEasing),
+                placementSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            )
     ) {
         Box(
             modifier = Modifier
