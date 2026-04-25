@@ -3,10 +3,12 @@ package com.example.learning.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -32,6 +34,7 @@ import com.example.learning.LoadingScreen
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.AppViewModelProvider
 import com.example.learning.TripsViewModel
+import com.example.learning.printTime
 
 @Composable
 fun TripsScreen(
@@ -50,12 +53,12 @@ fun TripsScreen(
         val routeLongName = stopTimesByTrip[0].routeInfo.routeLongName
 
         Box(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
                 item() {
                     Box(
@@ -78,34 +81,63 @@ fun TripsScreen(
                     }
                 }
                 item() {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
+                    Column(
                         modifier = Modifier
-                            .height(200.dp)
-                            .fillMaxWidth()
+                            .heightIn(128.dp)
+                            .fillMaxSize()
+                            .padding(16.dp)
                     ) {
-                        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                            Text(routeShortName, modifier = Modifier.align(Alignment.TopStart))
-                            Text(busStopTimesRecord.routeInfo.routeId, modifier = Modifier.align(Alignment.CenterStart))
-                            Text(busStopTimesRecord.tripInfo.tripId, modifier = Modifier.align(Alignment.Center))
-                            Text(routeLongName, modifier = Modifier.align(Alignment.BottomStart))
-                        }
+                        Text(
+                            routeShortName,
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            routeLongName,
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     }
                 }
                 items(
                     items = stopTimesByTrip,
                     key = { it.stopTimesInfo.sequence }
                 ) { item ->
+                    val (dynamicContainer, onDynamicContainer) = when (item.stopInfo.stopId == busStopTimesRecord.stopInfo.stopId) {
+                        true -> MaterialTheme.colorScheme.secondaryContainer to
+                                MaterialTheme.colorScheme.onSecondaryContainer
+
+                        false -> MaterialTheme.colorScheme.surfaceContainerHigh to
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
                     Card(
-                        modifier = Modifier.fillMaxSize().height(100.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                            Text(item.stopTimesInfo.sequence.toString(), modifier = Modifier.align(Alignment.TopStart))
-                            Text(item.stopInfo.stopName, modifier = Modifier.align(Alignment.CenterStart), style = MaterialTheme.typography.bodyMedium )
-                            Text(item.stopTimesInfo.departureTime.toString(), modifier = Modifier.align(Alignment.BottomStart))
+                        Box(modifier = Modifier
+                            .fillMaxWidth()
+                            .height(72.dp)
+                            .background(dynamicContainer)
+                            .padding(16.dp)
+                        ) {
+//                            Text(
+//                                item.stopTimesInfo.sequence.toString(),
+//                                modifier = Modifier.align(Alignment.TopStart)
+//                            )
+                            Text(
+                                item.stopInfo.stopName,
+                                modifier = Modifier.align(Alignment.TopStart),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = onDynamicContainer
+                            )
+                            Text(
+                                printTime(item.stopTimesInfo.departureTime),
+                                modifier = Modifier.align(Alignment.TopEnd),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = onDynamicContainer
+                            )
                         }
                     }
                 }

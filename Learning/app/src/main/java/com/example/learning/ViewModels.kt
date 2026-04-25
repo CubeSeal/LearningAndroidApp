@@ -138,10 +138,8 @@ class HomeViewModel(
                 (it.busStopTimesRecord.stopTimesInfo.departureTime >= currentMinute) to it
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
-
     val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
     private val _isRefreshing = MutableStateFlow(true)
-
     val isRefreshing = _isRefreshing.asStateFlow()
 
     init {

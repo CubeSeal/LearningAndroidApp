@@ -63,8 +63,10 @@ import com.example.learning.PickStop
 import com.example.learning.RealtimeBusStopTimesRecord
 import com.example.learning.SharedViewModel
 import com.example.learning.Trips
+import com.example.learning.printTime
 import com.example.learning.repos.BusStopInfo
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -233,22 +235,13 @@ fun LazyItemScope.BusCard(
     sharedViewModel: SharedViewModel,
     item: Pair<Boolean, RealtimeBusStopTimesRecord>
 ) {
-    val localDateNow = LocalDate.now()
     val realTimeAvailable = item.second.realtimeBusInfo != null
-    val printTime = item.second.busStopTimesRecord.stopTimesInfo.departureTime.let {
-        val time = it.format(DateTimeFormatter.ofPattern("h:mm a"))
-        when {
-            it.toLocalDate() == localDateNow -> time
-            it.toLocalDate() == localDateNow.plusDays(1) -> "Tomorrow $time"
-            it.toLocalDate() < localDateNow.plusWeeks(1) -> "${it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())} $time"
-            else -> "${it.format(DateTimeFormatter.ofPattern("dd/MM"))} $time"
-        }
-    }
+    val printTime = printTime(item.second.busStopTimesRecord.stopTimesInfo.departureTime)
 
     val (dynamicContainer, onDynamicContainer) = when (item.first) {
         true -> when (realTimeAvailable) {
-            true -> MaterialTheme.colorScheme.primaryContainer to
-                    MaterialTheme.colorScheme.onPrimaryContainer
+            true -> MaterialTheme.colorScheme.secondaryContainer to
+                    MaterialTheme.colorScheme.onSecondaryContainer
             false -> MaterialTheme.colorScheme.surfaceContainerHigh to
                     MaterialTheme.colorScheme.onSurfaceVariant
         }

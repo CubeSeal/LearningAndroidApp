@@ -40,6 +40,11 @@ import com.example.learning.ui.TripsScreen
 import com.example.learning.ui.theme.TfNSWTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 @Serializable
 data object Home
@@ -160,4 +165,15 @@ fun LoadingScreen(loadingTxt: String) {
     }
 }
 
+fun printTime(timeToFormat: LocalDateTime, currentTime: LocalDate = LocalDate.now()): String {
+    val timeStr = timeToFormat.format(DateTimeFormatter.ofPattern("h:mm a"))
+
+    return when {
+        timeToFormat.toLocalDate() == currentTime -> timeStr
+        timeToFormat.toLocalDate() == currentTime.plusDays(1) -> "Tomorrow $timeStr"
+        timeToFormat.toLocalDate() < currentTime.plusWeeks(1) -> "${timeToFormat.dayOfWeek.getDisplayName(
+            TextStyle.SHORT, Locale.getDefault())} $timeStr"
+        else -> "${timeToFormat.format(DateTimeFormatter.ofPattern("dd/MM"))} $timeStr"
+    }
+}
 
