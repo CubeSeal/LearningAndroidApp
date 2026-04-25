@@ -60,9 +60,9 @@ class GtfsRealtimeRepository(
 
                 // Keep only closest 100
                 closestBuses.add(bus)
-                if (closestBuses.size > maxSize) {
-                    closestBuses.pollLast()
-                }
+//                if (closestBuses.size > maxSize) {
+//                    closestBuses.pollLast()
+//                }
 
                 cis.popLimit(oldLimit)
             } else {
