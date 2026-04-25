@@ -50,7 +50,7 @@ class ApplicationRepos(private val applicationContext: Context) {
         BusInfo(
             gtfsStaticRepository = gtfsStaticRepository,
             gtfsRealtimeRepository = gtfsRealtimeRepository,
-            location = locationRepo.currentLocation,
+            locationRepo = locationRepo,
             scope = applicationScope
         )
     }
@@ -120,6 +120,9 @@ class HomeViewModel(
     val focusedBusStop = busInfo.focusedBusStop
     val associatedStopTimes = busInfo.associatedStopTimes
     val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing = _isRefreshing.asStateFlow()
+
 
     init {
         viewModelScope.launch {
@@ -127,6 +130,12 @@ class HomeViewModel(
                 busInfo.updateFocusedBusStop(it)
             }
         }
+    }
+
+    fun refreshLocation() = viewModelScope.launch {
+        _isRefreshing.update { true }
+        busInfo.refreshLocation()
+        _isRefreshing.update { false }
     }
 }
 

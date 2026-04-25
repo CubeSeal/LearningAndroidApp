@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -42,20 +43,18 @@ enum class LocationMode {
 @OptIn(ExperimentalCoroutinesApi::class)
 class LocationRepository(
     context: Context,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
 ) {
     private val appContext = context.applicationContext
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(appContext)
     private val _hasPermission = MutableStateFlow(false)
     fun onPermissionGranted() { _hasPermission.value = true }
 
-    private val _mode = MutableStateFlow(LocationMode.Balanced)
+    private val _mode = MutableStateFlow(LocationMode.Off)
     val mode: StateFlow<LocationMode> = _mode.asStateFlow()
     fun setMode(m: LocationMode) {
         _mode.value = m
     }
-
-    fun hasLocationPermission() = _hasPermission.value
 
     val currentLocation: StateFlow<Location?> =
         combine(_hasPermission, _mode, ::Pair)
@@ -66,7 +65,9 @@ class LocationRepository(
 
     @SuppressLint("MissingPermission")
     private fun locationFlowFor(mode: LocationMode): Flow<Location> = when (mode) {
-        LocationMode.Off -> emptyFlow()
+        // One time update
+        LocationMode.Off -> flow { requestFreshFix()?.let { emit(it) } }
+        // Continuous updates
         LocationMode.Passive -> updates(Priority.PRIORITY_PASSIVE, Long.MAX_VALUE, 5_000L)
         LocationMode.LowPower -> updates(Priority.PRIORITY_LOW_POWER, 30_000L, 15_000L)
         LocationMode.Balanced -> updates(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10_000L, 5_000L)
@@ -76,7 +77,7 @@ class LocationRepository(
     @SuppressLint("MissingPermission")
     private fun updates(priority: Int, intervalMs: Long, minIntervalMs: Long): Flow<Location> =
         callbackFlow {
-            if (!hasLocationPermission()) {
+            if (!_hasPermission.value) {
                 close(SecurityException("No location permission")); return@callbackFlow
             }
 
@@ -112,7 +113,7 @@ class LocationRepository(
     suspend fun requestFreshFix(
         priority: Int = Priority.PRIORITY_HIGH_ACCURACY,
     ): Location? {
-        if (!hasLocationPermission()) return null
+        if (!_hasPermission.value) return null
         val cts = CancellationTokenSource()
         return runCatching {
             fusedLocationClient.getCurrentLocation(priority, cts.token).await()

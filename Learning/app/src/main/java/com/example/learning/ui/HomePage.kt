@@ -25,10 +25,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -51,12 +53,14 @@ import com.example.learning.RealtimeBusStopTimesRecord
 import com.example.learning.SharedViewModel
 import com.example.learning.Trips
 import com.example.learning.repos.BusStopInfo
+import kotlinx.coroutines.coroutineScope
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HOMEScreen(
     navController: NavController,
@@ -66,6 +70,7 @@ fun HOMEScreen(
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val isAppReady by viewModel.isUpToDate.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val headerAlpha by remember {
         derivedStateOf {
@@ -109,40 +114,47 @@ fun HOMEScreen(
                 )
             }
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 96.dp, vertical = 16.dp),
-            thickness = 2.dp,
-        )
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refreshLocation() }
         ) {
-            item() {
-                Box(
-                    modifier = Modifier
-                        .graphicsLayer { alpha = headerAlpha }
-                        .padding(16.dp)
-                ) {
-                    StopTitle(focusedBusStop,navController)
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                item() {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 96.dp, vertical = 16.dp),
+                        thickness = 2.dp,
+                    )
                 }
-            }
-
-            if (associatedBusStopTimes.isEmpty()) {
-                Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
-                item() { LoadingScreen("Loading trips...") }
-            } else {
-                items(
-                    items = associatedBusStopTimes,
-                    key = { it.busStopTimesRecord.fakeId }
-                ) { item ->
-                    BusCard(navController, sharedViewModel, item)
+                item() {
+                    Box(
+                        modifier = Modifier
+                            .graphicsLayer { alpha = headerAlpha }
+                            .padding(16.dp)
+                    ) {
+                        StopTitle(focusedBusStop, navController)
+                    }
                 }
-            }
 
-            item {
-                Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
+                if (associatedBusStopTimes.isEmpty()) {
+                    Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
+                    item() { LoadingScreen("Loading trips...") }
+                } else {
+                    items(
+                        items = associatedBusStopTimes,
+                        key = { it.busStopTimesRecord.fakeId }
+                    ) { item ->
+                        BusCard(navController, sharedViewModel, item)
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
+                }
             }
         }
     }

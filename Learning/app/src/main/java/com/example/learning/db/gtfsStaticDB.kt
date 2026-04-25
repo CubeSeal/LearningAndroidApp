@@ -183,9 +183,9 @@ interface GtfsDao {
          (stop_lon - :userLon) * (stop_lon - :userLon)) AS distance_sq
     FROM stops
     ORDER BY distance_sq ASC
-    LIMIT 10
+    LIMIT :limit
 """)
-    suspend fun getNearestStops(userLat: Double, userLon: Double): List<StopEntity>
+    suspend fun getNearestStops(userLat: Double, userLon: Double, limit: Int): List<StopEntity>
 
     // ── Departures ─────────────────────────────────────────
 

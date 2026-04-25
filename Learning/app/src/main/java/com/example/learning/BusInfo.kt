@@ -8,6 +8,7 @@ import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LatLon
+import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.RealtimeBusInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,7 +41,7 @@ data class RealtimeBusStopTimesRecord(
 class BusInfo(
     val gtfsStaticRepository: GtfsStaticRepository,
     private val gtfsRealtimeRepository: GtfsRealtimeRepository,
-    private val location: StateFlow<Location?>,
+    private val locationRepo: LocationRepository,
     private val scope: CoroutineScope,
 ) {
     var allBusStops: List<BusStopInfo> = emptyList()
@@ -48,8 +49,48 @@ class BusInfo(
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
     // Derived state - automatically updates when location or allBusStops change
-    val closestBusStops: StateFlow<List<BusStopInfo>> = updateClosestBusStops()
-    val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> = updateAssociatedStopTimes()
+    val closestBusStops: StateFlow<List<BusStopInfo>> = locationRepo.currentLocation.map { loc ->
+            loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
+        }.stateIn(
+            scope = scope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> = combine(
+            focusedBusStop.filterNotNull(),
+            locationRepo.currentLocation.filterNotNull().take(1)
+        ) { busStop, loc ->
+            Pair(busStop, loc)
+        }
+            .distinctUntilChanged()
+            .transformLatest { (busStop, loc) ->
+                emit(emptyList())
+                val time = LocalDateTime.now()
+                Log.d("BusInfo", "Local time is $time")
+                val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop, time)
+                val closestBuses = gtfsRealtimeRepository.getBusData(loc)
+                Log.d("BusInfo", "Got busInfo from repos: $trips")
+                val returnVal = trips
+                    .let { trips.drop(index) + trips.take(index) }
+                    .also { Log.d("BusInfo", "Got sorted list of associated trips: $it") }
+                    .map { busStopTimesRecord ->
+                        RealtimeBusStopTimesRecord(
+                            busStopTimesRecord,
+                            closestBuses.firstOrNull {
+                                it.tripId == busStopTimesRecord.tripInfo.tripId
+                            }
+                        )
+                    }
+                    .also { Log.d("BusInfo", "Finished expensive map with $it.") }
+                emit(returnVal)
+            }
+            .stateIn(
+                scope = scope,
+                started = SharingStarted.Eagerly,
+                initialValue = emptyList()
+            )
 
     init {
         scope.launch {
@@ -59,54 +100,8 @@ class BusInfo(
         }
     }
 
-    private fun updateClosestBusStops(): StateFlow<List<BusStopInfo>> {
-        return location.map { loc ->
-            loc?.let { gtfsStaticRepository.getTenClosestStops(it) } ?: emptyList()
-        }.stateIn(
-            scope = scope,
-            started = SharingStarted.Eagerly,
-            initialValue = emptyList()
-        )
-    }
-
-    @OptIn(FlowPreview::class)
-    private fun updateAssociatedStopTimes(): StateFlow<List<RealtimeBusStopTimesRecord>> {
-        @OptIn(ExperimentalCoroutinesApi::class)
-        return combine(
-            focusedBusStop.filterNotNull(),
-            location.filterNotNull().take(1)
-        ) { busStop, loc ->
-            Pair(busStop, loc)
-        }
-            .distinctUntilChanged()
-            .transformLatest { (busStop, loc) ->
-                emit(emptyList())
-                coroutineScope {
-                    val time = LocalDateTime.now()
-                    Log.d("BusInfo", "Local time is $time")
-                    val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop, time)
-                    val closestBuses = gtfsRealtimeRepository.getBusData(loc)
-                    Log.d("BusInfo", "Got busInfo from repos: $trips")
-                    val returnVal = trips
-                        .let { trips.drop(index) + trips.take(index) }
-                        .also { Log.d("BusInfo", "Got sorted list of associated trips: $it") }
-                        .map { busStopTimesRecord ->
-                            RealtimeBusStopTimesRecord(
-                                busStopTimesRecord,
-                                closestBuses.firstOrNull {
-                                    it.tripId == busStopTimesRecord.tripInfo.tripId
-                                }
-                            )
-                        }
-                        .also { Log.d("BusInfo", "Finished expensive map with $it.") }
-                    emit(returnVal)
-                }
-            }
-            .stateIn(
-                scope = scope,
-                started = SharingStarted.Eagerly,
-                initialValue = emptyList()
-            )
+    suspend fun refreshLocation() {
+        locationRepo.requestFreshFix()
     }
 
     fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
