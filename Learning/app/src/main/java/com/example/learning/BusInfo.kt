@@ -3,6 +3,7 @@ package com.example.learning
 import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
+import androidx.lifecycle.viewModelScope
 import com.example.learning.repos.BusStopInfo
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GtfsRealtimeRepository
@@ -14,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.take
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import kotlin.collections.sortedBy
 import kotlin.math.pow
 
@@ -45,6 +49,14 @@ class BusInfo(
     private val locationRepo: LocationRepository,
     private val scope: CoroutineScope,
 ) {
+    val currentMinute: StateFlow<LocalDateTime> = flow {
+        while (true) {
+            val now = LocalDateTime.now()
+            emit(now.truncatedTo(ChronoUnit.MINUTES))
+            val nextMinute = now.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1)
+            delay(ChronoUnit.MILLIS.between(now, nextMinute))
+        }
+    }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
     var allBusStops: List<BusStopInfo> = emptyList()
     private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
@@ -68,23 +80,16 @@ class BusInfo(
             .distinctUntilChanged()
             .transformLatest { (busStop, loc) ->
                 emit(emptyList())
-                val time = LocalDateTime.now()
-                Log.d("BusInfo", "Local time is $time")
-                val (trips, index) = gtfsStaticRepository.getAssociatedTrips(busStop, time)
+                val trips = gtfsStaticRepository.getAssociatedTrips(busStop)
                 val closestBuses = gtfsRealtimeRepository.getBusData(loc)
-                Log.d("BusInfo", "Got busInfo from repos: $trips")
-                val returnVal = trips
-                    .let { trips.drop(index) + trips.take(index) }
-                    .also { Log.d("BusInfo", "Got sorted list of associated trips: $it") }
-                    .map { busStopTimesRecord ->
-                        RealtimeBusStopTimesRecord(
-                            busStopTimesRecord,
-                            closestBuses.firstOrNull {
-                                it.tripId == busStopTimesRecord.tripInfo.tripId
-                            }
-                        )
-                    }
-                    .also { Log.d("BusInfo", "Finished expensive map with $it.") }
+                val returnVal = trips.map { busStopTimesRecord ->
+                    RealtimeBusStopTimesRecord(
+                        busStopTimesRecord,
+                        closestBuses.firstOrNull {
+                            it.tripId == busStopTimesRecord.tripInfo.tripId
+                        }
+                    )
+                }
                 emit(returnVal)
             }
             .stateIn(

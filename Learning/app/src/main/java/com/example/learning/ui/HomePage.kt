@@ -116,7 +116,7 @@ fun MasterLazyColumn(
     navController: NavController,
     sharedViewModel: SharedViewModel,
     focusedBusStop: BusStopInfo?,
-    associatedBusStopTimes: List<RealtimeBusStopTimesRecord>
+    associatedBusStopTimes: List<Pair<Boolean, RealtimeBusStopTimesRecord>>
 ) {
     val headerAlpha by remember {
         derivedStateOf {
@@ -160,7 +160,7 @@ fun MasterLazyColumn(
         } else {
             items(
                 items = associatedBusStopTimes,
-                key = { it.busStopTimesRecord.fakeId }
+                key = { it.second.busStopTimesRecord.fakeId }
             ) { item ->
                 BusCard(navController, sharedViewModel, item)
             }
@@ -231,11 +231,11 @@ fun StopTitle(
 fun BusCard(
     navController: NavController,
     sharedViewModel: SharedViewModel,
-    item: RealtimeBusStopTimesRecord
+    item: Pair<Boolean, RealtimeBusStopTimesRecord>
 ) {
     val localDateNow = LocalDate.now()
-    val realTimeAvailable = item.realtimeBusInfo != null
-    val printTime = item.busStopTimesRecord.stopTimesInfo.departureTime.let {
+    val realTimeAvailable = item.second.realtimeBusInfo != null
+    val printTime = item.second.busStopTimesRecord.stopTimesInfo.departureTime.let {
         val time = it.format(DateTimeFormatter.ofPattern("h:mm a"))
         when {
             it.toLocalDate() == localDateNow -> time
@@ -245,11 +245,15 @@ fun BusCard(
         }
     }
 
-    val (dynamicContainer, onDynamicContainer) = when (realTimeAvailable) {
-        true -> MaterialTheme.colorScheme.primaryContainer to
-                MaterialTheme.colorScheme.onPrimaryContainer
-        false -> MaterialTheme.colorScheme.surfaceContainerHigh to
-                MaterialTheme.colorScheme.onSurfaceVariant
+    val (dynamicContainer, onDynamicContainer) = when (item.first) {
+        true -> when (realTimeAvailable) {
+            true -> MaterialTheme.colorScheme.primaryContainer to
+                    MaterialTheme.colorScheme.onPrimaryContainer
+            false -> MaterialTheme.colorScheme.surfaceContainerHigh to
+                    MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        false -> MaterialTheme.colorScheme.surfaceContainerLow to
+                MaterialTheme.colorScheme.onSurface
     }
 
     Card (
@@ -263,15 +267,15 @@ fun BusCard(
                 .height(72.dp)
                 .background(dynamicContainer)
                 .clickable {
-                    sharedViewModel.select(item.busStopTimesRecord)
+                    sharedViewModel.select(item.second.busStopTimesRecord)
                     navController.navigate(Trips)
                 }
                 .padding(16.dp)
         ) {
             val leftText =
-                "${item.busStopTimesRecord.routeInfo.routeShortName} - ${item.busStopTimesRecord.tripInfo.tripHeadsign}"
+                "${item.second.busStopTimesRecord.routeInfo.routeShortName} - ${item.second.busStopTimesRecord.tripInfo.tripHeadsign}"
             val underLeftText =
-                if (realTimeAvailable) "${item.realtimeBusInfo.distance.roundToInt()}m" else "Untracked"
+                if (realTimeAvailable) "${item.second.realtimeBusInfo!!.distance.roundToInt()}m" else "Untracked"
             Text(
                 text = leftText,
                 color = onDynamicContainer,

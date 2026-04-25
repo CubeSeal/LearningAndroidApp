@@ -179,7 +179,7 @@ class GtfsStaticRepository(
     }
 
     // This is now lightning fast
-    suspend fun getAssociatedTrips(busStopInfo: BusStopInfo, time: LocalDateTime): Pair<List<BusStopTimesRecord>, Int> {
+    suspend fun getAssociatedTrips(busStopInfo: BusStopInfo): List<BusStopTimesRecord> {
         val rows = gtfsDao.getStopTimesWithDetails(busStopInfo.stopId)
 
         val busStopTimesInfo = rows
@@ -206,8 +206,7 @@ class GtfsStaticRepository(
             .sortedBy { it.stopTimesInfo.arrivalTime }
             .mapIndexed { i, it -> it.copy(fakeId = i, stopTimesInfo = it.stopTimesInfo.copy(fakeId = i.toLong())) }
 
-        val prefix = busStopTimesInfo.indexOfFirst { it.stopTimesInfo.departureTime.isAfter(time) }
-        return Pair(busStopTimesInfo, if (prefix == -1) 0 else prefix)
+        return busStopTimesInfo
     }
 
     suspend fun getByTrip(busStopInfo: BusStopTimesRecord): List<BusStopTimesRecord> {
