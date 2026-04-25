@@ -5,10 +5,8 @@ import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
+import com.example.learning.db.StopEntity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -26,7 +24,6 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.GZIPInputStream
 
@@ -94,13 +91,24 @@ class GtfsStaticRepository(
     private val gtfsDao get() = db.gtfsDao()
     private var _calendarSequences: Map<String, Sequence<LocalDate>>? = null
     private val calMutex = Mutex()
-
     val isUpToDate = MutableStateFlow(false)
 
     private suspend fun calendarSequences(): Map<String, Sequence<LocalDate>> =
         _calendarSequences ?: calMutex.withLock {
             _calendarSequences ?: preloadCalendarDates().also { _calendarSequences = it }
         }
+
+    private inline fun StopEntity.toBusStopInfo(): BusStopInfo {
+        return BusStopInfo(
+            this.stopId,
+            this.stopName!!,
+            LatLon(
+                this.stopLat!!,
+                this.stopLon!!
+            ),
+            this.wheelchairBoarding == 1
+        )
+    }
 
     private suspend fun preloadCalendarDates(): Map<String, Sequence<LocalDate>> {
         return gtfsDao.getAllCalendar().associate { calendarEntity ->
@@ -131,51 +139,21 @@ class GtfsStaticRepository(
     }
 
     suspend fun getStops(): List<BusStopInfo> {
-        return gtfsDao
-        .getAllStops()
-        .map {
-            BusStopInfo(
-                it.stopId,
-                it.stopName!!,
-                LatLon(
-                    it.stopLat!!,
-                    it.stopLon!!
-                ),
-                it.wheelchairBoarding == 1
-            )
-        }
+        return gtfsDao.getAllStops().map { it.toBusStopInfo() }
     }
 
     suspend fun getOneStop(): List<BusStopInfo> {
-        return gtfsDao
-            .getOneStop()
-            .map {
-                BusStopInfo(
-                    it.stopId,
-                    it.stopName!!,
-                    LatLon(
-                        it.stopLat!!,
-                        it.stopLon!!
-                    ),
-                    it.wheelchairBoarding == 1
-                )
-            }
+        return gtfsDao.getOneStop().map { it.toBusStopInfo() }
+    }
+
+    suspend fun getStopsByName(stopName: String): List<BusStopInfo> {
+        return gtfsDao.getStopsByName(stopName).map { it.toBusStopInfo() }
     }
 
     suspend fun getNClosestStops(location: Location, length: Int): List<BusStopInfo> {
         return gtfsDao
             .getNearestStops(location.latitude, location.longitude, length)
-            .map {
-                BusStopInfo(
-                    it.stopId,
-                    it.stopName!!,
-                    LatLon(
-                        it.stopLat!!,
-                        it.stopLon!!
-                    ),
-                    it.wheelchairBoarding == 1
-                )
-            }
+            .map { it.toBusStopInfo() }
     }
 
     // This is now lightning fast

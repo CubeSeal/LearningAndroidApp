@@ -194,6 +194,15 @@ interface GtfsDao {
 """)
     suspend fun getOneStop(): List<StopEntity>
 
+    @Query(
+        """
+    SELECT *
+    FROM stops
+    WHERE stop_name LIKE '%' || :stopName || '%' COLLATE NOCASE
+    """
+    )
+    suspend fun getStopsByName(stopName: String): List<StopEntity>
+
     // ── Departures ─────────────────────────────────────────
 
     @Query("""

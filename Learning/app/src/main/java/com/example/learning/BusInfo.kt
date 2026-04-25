@@ -1,27 +1,21 @@
 package com.example.learning
 
-import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
-import androidx.lifecycle.viewModelScope
 import com.example.learning.repos.BusStopInfo
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
-import com.example.learning.repos.LatLon
 import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.RealtimeBusInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
@@ -31,16 +25,8 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
-import java.util.Locale
-import kotlin.collections.sortedBy
-import kotlin.compareTo
-import kotlin.math.pow
 
 @Immutable
 data class RealtimeBusStopTimesRecord(
@@ -62,7 +48,6 @@ class BusInfo(
             delay(ChronoUnit.MILLIS.between(now, nextMinute))
         }
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
-    var allBusStops: List<BusStopInfo> = emptyList()
     private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
@@ -107,7 +92,6 @@ class BusInfo(
         scope.launch {
             Log.d("BusInfo", "Start get stops.")
             _focusedBusStop.update { gtfsStaticRepository.getOneStop().firstOrNull() }
-            allBusStops = gtfsStaticRepository.getStops()
             Log.d("BusInfo", "Get stops finished.")
         }
     }
@@ -115,7 +99,7 @@ class BusInfo(
 
     fun updateFocusedBusStop(busStopInfo: BusStopInfo) { _focusedBusStop.value = busStopInfo }
     suspend fun refreshLocation() { locationRepo.requestFreshFix() }
-
+    suspend fun searchStops(stopName: String): List<BusStopInfo> { return gtfsStaticRepository.getStopsByName(stopName) }
     suspend fun getByTrip(busStopTimesRecord: BusStopTimesRecord): List<BusStopTimesRecord> {
         return gtfsStaticRepository.getByTrip(busStopTimesRecord)
     }

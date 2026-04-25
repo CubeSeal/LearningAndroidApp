@@ -22,14 +22,12 @@ import com.example.learning.repos.LocationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -38,8 +36,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.time.Duration
-import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 class ApplicationRepos(private val applicationContext: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -171,7 +167,6 @@ class PickStopViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
 
-    val busStops = busInfo.allBusStops
     val closestBusStops = busInfo.closestBusStops
 
     // ViewModel
@@ -181,15 +176,17 @@ class PickStopViewModel(
     val filteredBusStops: StateFlow<List<BusStopInfo>> = _query
         .map { query ->
             if (query.isEmpty()) closestBusStops.value
-            else busStops.filter { it.stopName.contains(query, ignoreCase = true) }
+            else busInfo.searchStops(query)
         }
         .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), busStops)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            closestBusStops.value
+        )
 
     fun updateFocusedBusStop(stop: BusStopInfo) = busInfo.updateFocusedBusStop(stop)
-    fun onQueryChange(q: String) {
-        _query.value = q
-    }
+    fun onQueryChange(q: String) { _query.value = q }
 }
 
 class TripsViewModel(
