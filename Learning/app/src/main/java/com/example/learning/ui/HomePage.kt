@@ -1,12 +1,12 @@
 package com.example.learning.ui
 
 import android.util.Log
-import android.util.Log.i
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,11 +51,11 @@ import com.example.learning.RealtimeBusStopTimesRecord
 import com.example.learning.SharedViewModel
 import com.example.learning.Trips
 import com.example.learning.repos.BusStopInfo
-import com.example.learning.repos.BusStopTimesRecord
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun HOMEScreen(
@@ -85,7 +86,9 @@ fun HOMEScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Box(
             modifier = Modifier
@@ -106,6 +109,11 @@ fun HOMEScreen(
                 )
             }
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 96.dp, vertical = 16.dp),
+            thickness = 2.dp,
+        )
+
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -114,40 +122,11 @@ fun HOMEScreen(
             item() {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer { alpha = headerAlpha }
-                        .height(50.dp)
-                        .padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Create,
-                        "Edit Stop.",
-                        tint = MaterialTheme.colorScheme.onBackground, // or onBackground, onPrimary, etc.
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(24.dp)
-                            .clickable {
-                                navController.navigate(PickStop)
-                            }
-                    )
-                }
-            }
-
-            item() {
-                Box(
-                    modifier = Modifier
                         .graphicsLayer { alpha = headerAlpha }
                         .padding(16.dp)
                 ) {
-                    StopTitle(focusedBusStop)
+                    StopTitle(focusedBusStop,navController)
                 }
-            }
-
-            item() {
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp), // Adds space on left/right
-                    thickness = 2.dp,                               // Sets line thickness
-                )
             }
 
             if (associatedBusStopTimes.isEmpty()) {
@@ -171,20 +150,40 @@ fun HOMEScreen(
 
 @Composable
 fun StopTitle(
-    closestBusStop: BusStopInfo?
+    closestBusStop: BusStopInfo?,
+    navController: NavController
 ) {
+    val iconSideWeight = 0.1f
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(100.dp)
+            .heightIn(96.dp)
     ) {
-        Text(
-            text = closestBusStop?.stopName ?: "Loading\nlocal\nstop...",
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Start,
-            style = MaterialTheme.typography.headlineLarge,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(modifier = Modifier.weight(1 - iconSideWeight)) {
+                Text(
+                    text = closestBusStop?.stopName ?: "Loading local stop...",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Start,
+                    style = MaterialTheme.typography.headlineLarge,
+                )
+            }
+
+            Box(modifier = Modifier.weight(iconSideWeight)) {
+                Icon(
+                    Icons.Filled.Create,
+                    "Edit Stop.",
+                    tint = MaterialTheme.colorScheme.onBackground, // or onBackground, onPrimary, etc.
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            navController.navigate(PickStop)
+                        }
+                )
+            }
+        }
     }
 }
 
@@ -195,6 +194,7 @@ fun BusCard(
     item: RealtimeBusStopTimesRecord
 ) {
     val localDateNow = LocalDate.now()
+    val realTimeAvailable = item.realtimeBusInfo != null
     val printTime = item.busStopTimesRecord.stopTimesInfo.departureTime.let {
         val time = it.format(DateTimeFormatter.ofPattern("h:mm a"))
         when {
@@ -205,42 +205,51 @@ fun BusCard(
         }
     }
 
-    Box(
+    val (dynamicContainer, onDynamicContainer) = when (realTimeAvailable) {
+        true -> MaterialTheme.colorScheme.primaryContainer to
+                MaterialTheme.colorScheme.onPrimaryContainer
+        false -> MaterialTheme.colorScheme.surfaceContainerHigh to
+                MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card (
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .clickable {
-                sharedViewModel.select(item.busStopTimesRecord)
-                navController.navigate(Trips)
-            }
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Text(
-            text = item.busStopTimesRecord.routeInfo.routeShortName,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.align(Alignment.TopStart)
-        )
-        Text(
-            text = item.busStopTimesRecord.tripInfo.tripHeadsign,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.align(Alignment.BottomStart)
-        )
-        if (item.realtimeBusInfo != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .background(dynamicContainer)
+                .clickable {
+                    sharedViewModel.select(item.busStopTimesRecord)
+                    navController.navigate(Trips)
+                }
+                .padding(16.dp)
+        ) {
+            val leftText =
+                "${item.busStopTimesRecord.routeInfo.routeShortName} - ${item.busStopTimesRecord.tripInfo.tripHeadsign}"
+            val underLeftText =
+                if (realTimeAvailable) "${item.realtimeBusInfo.distance.roundToInt()}m" else "Untracked"
             Text(
-                text = item.realtimeBusInfo.distance.toString(),
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                text = leftText,
+                color = onDynamicContainer,
+                style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+                modifier = Modifier.align(Alignment.TopStart)
+            )
+            Text(
+                text = underLeftText,
+                color = onDynamicContainer,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier.align(Alignment.BottomStart)
+            )
+            Text(
+                text = printTime,
+                color = onDynamicContainer,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.TopEnd)
             )
         }
-        Text(
-            text = printTime,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
     }
 }
