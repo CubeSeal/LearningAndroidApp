@@ -90,12 +90,12 @@ fun TripsScreen(
                         Text(
                             routeShortName,
                             style = MaterialTheme.typography.headlineLarge,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
                             routeLongName,
                             style = MaterialTheme.typography.headlineLarge,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
                 }
