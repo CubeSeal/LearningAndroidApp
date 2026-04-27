@@ -6,7 +6,6 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +36,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
@@ -243,63 +244,67 @@ fun LazyItemScope.BusCard(
     sharedViewModel: SharedViewModel,
     item: Pair<Boolean, RealtimeBusStopTimesRecord>
 ) {
-    val realTimeAvailable = item.second.realtimeBusInfo != null
-    val printTime = printTime(item.second.busStopTimesRecord.stopTimesInfo.departureTime)
+    val (isFirst, record) = item
+    val realtime = record.realtimeBusInfo
+    val realTimeAvailable = realtime != null
 
-    val (dynamicContainer, onDynamicContainer) = when (item.first) {
-        true -> when (realTimeAvailable) {
-            true -> MaterialTheme.colorScheme.secondaryContainer to
+    val (dynamicContainer, onDynamicContainer) = when {
+        isFirst && realTimeAvailable ->
+            MaterialTheme.colorScheme.secondaryContainer to
                     MaterialTheme.colorScheme.onSecondaryContainer
-            false -> MaterialTheme.colorScheme.surfaceContainerHigh to
+        isFirst ->
+            MaterialTheme.colorScheme.surfaceContainerHigh to
                     MaterialTheme.colorScheme.onSurfaceVariant
-        }
-        false -> MaterialTheme.colorScheme.surfaceContainerLow to
-                MaterialTheme.colorScheme.onSurface
+        else ->
+            MaterialTheme.colorScheme.surfaceContainerLow to
+                    MaterialTheme.colorScheme.onSurface
     }
 
-    Card (
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .animateItem(
                 fadeInSpec = tween(300, easing = LinearOutSlowInEasing),
                 fadeOutSpec = tween(300, easing = FastOutLinearInEasing),
                 placementSpec = spring(stiffness = Spring.StiffnessMediumLow)
             )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp)
-                .background(dynamicContainer)
-                .clickable {
-                    sharedViewModel.select(item.second.busStopTimesRecord)
-                    navController.navigate(Trips)
-                }
-                .padding(16.dp)
-        ) {
-            val leftText =
-                "${item.second.busStopTimesRecord.routeInfo.routeShortName} - ${item.second.busStopTimesRecord.tripInfo.tripHeadsign}"
-            val underLeftText =
-                if (realTimeAvailable) "${item.second.realtimeBusInfo!!.distance.roundToInt()}m" else "Untracked"
-            Text(
-                text = leftText,
-                color = onDynamicContainer,
-                style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-                modifier = Modifier.align(Alignment.TopStart)
-            )
-            Text(
-                text = underLeftText,
-                color = onDynamicContainer,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.align(Alignment.BottomStart)
-            )
-            Text(
-                text = printTime,
-                color = onDynamicContainer,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.align(Alignment.TopEnd)
-            )
-        }
+        ListItem(
+            modifier = Modifier.clickable {
+                sharedViewModel.select(record.busStopTimesRecord)
+                navController.navigate(Trips)
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = dynamicContainer,
+                headlineColor = onDynamicContainer,
+                supportingColor = onDynamicContainer,
+                trailingIconColor = onDynamicContainer,
+                overlineColor = onDynamicContainer
+            ),
+            overlineContent = {
+                Text(record.busStopTimesRecord.tripInfo.tripHeadsign)
+            },
+            headlineContent = {
+                Text(
+                    record.busStopTimesRecord.routeInfo.routeShortName,
+                    style = MaterialTheme.typography.bodyLarge
+                        .copy(fontStyle = FontStyle.Italic)
+                )
+            },
+            supportingContent = {
+                Text(
+                    if (realTimeAvailable) "${realtime.distance.roundToInt()} m away"
+                    else "Untracked"
+                )
+            },
+            trailingContent = {
+                Text(
+                    printTime(record.busStopTimesRecord.stopTimesInfo.departureTime),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = onDynamicContainer
+                )
+            }
+        )
     }
 }

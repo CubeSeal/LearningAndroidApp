@@ -151,7 +151,7 @@ class HomeViewModel(
         refreshLocation()
     }
 
-    fun focusOnClosestStop() = viewModelScope.launch {
+    private suspend fun focusOnClosestStop() {
         busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
             busInfo.updateFocusedBusStop(it)
         }
