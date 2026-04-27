@@ -20,13 +20,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -36,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.learning.ui.HOMEScreen
 import com.example.learning.ui.PickStopScreen
+import com.example.learning.ui.SavedStopsScreen
 import com.example.learning.ui.TripsScreen
 import com.example.learning.ui.theme.TfNSWTheme
 import kotlinx.coroutines.launch
@@ -54,6 +64,15 @@ data object Trips
 
 @Serializable
 data object PickStop
+
+enum class AppDestinations(
+    val label: String,
+    val icon: ImageVector,
+    val contentDescription: String
+) {
+    HOME("Home", Icons.Default.Home, "Home"),
+    SAVEDSTOPS("Saved", Icons.Default.Menu, "Saved"),
+}
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -92,47 +111,28 @@ class MainActivity : ComponentActivity() {
         setContent {
             TfNSWTheme() {
                 val loaded by app.repos.loaded.collectAsStateWithLifecycle()
+                var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
                 if (loaded) {
-                    val navController = rememberNavController()
-
-                    Log.d("INIT", "Home screen loaded.")
-                    val sharedViewModel: SharedViewModel = viewModel()
-                    NavHost(
-                        navController = navController,
-                        startDestination = Home,
-                        enterTransition = {
-                            slideIntoContainer(
-                                AnimatedContentTransitionScope.SlideDirection.Start,
-                                tween(300)
-                            )
-                        },
-                        exitTransition = {
-                            slideOutOfContainer(
-                                AnimatedContentTransitionScope.SlideDirection.Start,
-                                tween(300)
-                            )
-                        },
-                        popEnterTransition = {
-                            slideIntoContainer(
-                                AnimatedContentTransitionScope.SlideDirection.End,
-                                tween(300)
-                            )
-                        },
-                        popExitTransition = {
-                            slideOutOfContainer(
-                                AnimatedContentTransitionScope.SlideDirection.End,
-                                tween(300)
-                            )
+                    NavigationSuiteScaffold(
+                        navigationSuiteItems = {
+                            AppDestinations.entries.forEach {
+                                item(
+                                    icon = {
+                                        Icon(
+                                            it.icon,
+                                            contentDescription = it.contentDescription
+                                        )
+                                    },
+                                    label = { Text(it.label) },
+                                    selected = it == currentDestination,
+                                    onClick = { currentDestination = it }
+                                )
+                            }
                         }
                     ) {
-                        composable<Home> {
-                            HOMEScreen(navController, sharedViewModel = sharedViewModel)
-                        }
-                        composable<Trips> {
-                            TripsScreen(navController, sharedViewModel.selectedRecord!!)
-                        }
-                        composable<PickStop> {
-                            PickStopScreen(navController)
+                        when (currentDestination) {
+                            AppDestinations.HOME -> HomeNavHost()
+                            AppDestinations.SAVEDSTOPS -> SavedStopsScreen()
                         }
                     }
                 } else {
@@ -142,6 +142,51 @@ class MainActivity : ComponentActivity() {
         }
 
     }
+}
+ @Composable
+fun HomeNavHost(){
+    val navController = rememberNavController()
+    val sharedViewModel: SharedViewModel = viewModel()
+    Log.d("INIT", "Home screen loaded.")
+    NavHost(
+        navController = navController,
+        startDestination = Home,
+        enterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Start,
+                tween(300)
+            )
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Start,
+                tween(300)
+            )
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.End,
+                tween(300)
+            )
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.End,
+                tween(300)
+            )
+        }
+    ) {
+        composable<Home> {
+            HOMEScreen(navController, sharedViewModel = sharedViewModel)
+        }
+        composable<Trips> {
+            TripsScreen(navController, sharedViewModel.selectedRecord!!)
+        }
+        composable<PickStop> {
+            PickStopScreen(navController)
+        }
+    }
+
 }
 
 @Composable

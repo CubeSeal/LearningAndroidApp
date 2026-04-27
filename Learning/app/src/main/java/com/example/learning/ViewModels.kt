@@ -20,6 +20,7 @@ import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.SettingsRepository
+import com.example.learning.ui.SavedStopsScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,6 +116,11 @@ object AppViewModelProvider {
 
             PickStopViewModel(app.repos.busInfo)
         }
+        initializer {
+            val app = (this[APPLICATION_KEY] as LearningApplication)
+
+            SavedStopsViewModel(app.repos.busInfo)
+        }
     }
 }
 
@@ -160,6 +166,10 @@ class HomeViewModel(
             _isRefreshing.update { false }
         }
     }
+
+    fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
+        busInfo.addSavedStop(busStopInfo)
+    }
 }
 
 class PickStopViewModel(
@@ -201,6 +211,20 @@ class TripsViewModel(
                 busInfo.getByTrip(busStopTimesRecord)
             }
         }
+    }
+}
+
+class SavedStopsViewModel(
+    private val busInfo: BusInfo
+) : ViewModel() {
+    val savedStops = busInfo.savedStops
+
+    fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
+        busInfo.addSavedStop(busStopInfo)
+    }
+
+    fun removeSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
+        busInfo.removeSavedStop(busStopInfo)
     }
 }
 

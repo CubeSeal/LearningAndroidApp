@@ -90,6 +90,16 @@ class BusInfo(
                 initialValue = emptyList()
             )
 
+    val savedStops: StateFlow<List<BusStopInfo>> = settingsRepo.savedStops
+        .map { ids ->
+            ids.mapNotNull { id -> gtfsStaticRepository.getStopByStopId(id) }
+        }
+        .stateIn(
+            scope = scope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
     init {
         scope.launch {
             Log.d("BusInfo", "Populate stop from settings.")
@@ -116,5 +126,13 @@ class BusInfo(
     suspend fun searchStops(stopName: String): List<BusStopInfo> { return gtfsStaticRepository.getStopsByName(stopName) }
     suspend fun getByTrip(busStopTimesRecord: BusStopTimesRecord): List<BusStopTimesRecord> {
         return gtfsStaticRepository.getByTrip(busStopTimesRecord)
+    }
+
+    suspend fun addSavedStop(busStopInfo: BusStopInfo) {
+        settingsRepo.addSavedStop(busStopInfo.stopId)
+    }
+
+    suspend fun removeSavedStop(busStopInfo: BusStopInfo) {
+        settingsRepo.removeSavedStop(busStopInfo.stopId)
     }
 }
