@@ -33,7 +33,11 @@ data class AgencyEntity(
 @Entity(
     tableName = "routes",
     indices = [Index("agency_id")],
-    foreignKeys = [ForeignKey(entity = AgencyEntity::class, parentColumns = ["agency_id"], childColumns = ["agency_id"])],
+    foreignKeys = [ForeignKey(
+        entity = AgencyEntity::class,
+        parentColumns = ["agency_id"],
+        childColumns = ["agency_id"]
+    )],
 )
 data class RouteEntity(
     @PrimaryKey @ColumnInfo(name = "route_id") val routeId: String,
@@ -71,7 +75,11 @@ data class CalendarDateEntity(
 @Entity(
     tableName = "trips",
     indices = [Index("route_id"), Index("service_id")],
-    foreignKeys = [ForeignKey(entity = RouteEntity::class, parentColumns = ["route_id"], childColumns = ["route_id"])],
+    foreignKeys = [ForeignKey(
+        entity = RouteEntity::class,
+        parentColumns = ["route_id"],
+        childColumns = ["route_id"]
+    )],
 )
 data class TripEntity(
     @PrimaryKey @ColumnInfo(name = "trip_id") val tripId: String,
@@ -101,13 +109,22 @@ data class StopEntity(
     @ColumnInfo(name = "wheelchair_boarding") val wheelchairBoarding: Int?,
     @ColumnInfo(name = "platform_code") val platformCode: String?,
 )
- @Entity(
+
+@Entity(
     tableName = "stop_times",
     primaryKeys = ["trip_id", "stop_sequence"],
     indices = [Index("stop_id"), Index("trip_id"), Index("departure_time")],
     foreignKeys = [
-        ForeignKey(entity = TripEntity::class, parentColumns = ["trip_id"], childColumns = ["trip_id"]),
-        ForeignKey(entity = StopEntity::class, parentColumns = ["stop_id"], childColumns = ["stop_id"]),
+        ForeignKey(
+            entity = TripEntity::class,
+            parentColumns = ["trip_id"],
+            childColumns = ["trip_id"]
+        ),
+        ForeignKey(
+            entity = StopEntity::class,
+            parentColumns = ["stop_id"],
+            childColumns = ["stop_id"]
+        ),
     ],
 )
 data class StopTimeEntity(
@@ -161,12 +178,14 @@ interface GtfsDao {
     @Query("SELECT * FROM stops WHERE stop_name LIKE '%' || :query || '%' LIMIT :limit")
     suspend fun searchStops(query: String, limit: Int = 30): List<StopEntity>
 
-    @Query("""
+    @Query(
+        """
         SELECT * FROM stops
         WHERE stop_lat BETWEEN :minLat AND :maxLat
           AND stop_lon BETWEEN :minLon AND :maxLon
           AND (location_type IS NULL OR location_type = 0)
-    """)
+    """
+    )
     suspend fun getStopsInBounds(
         minLat: Double, maxLat: Double, minLon: Double, maxLon: Double,
     ): List<StopEntity>
@@ -177,22 +196,27 @@ interface GtfsDao {
     @Query("SELECT * FROM stops")
     suspend fun getAllStops(): List<StopEntity>
 
-    @Query("""
+    @Query(
+        """
     SELECT *, 
         ((stop_lat - :userLat) * (stop_lat - :userLat) + 
          (stop_lon - :userLon) * (stop_lon - :userLon)) AS distance_sq
     FROM stops
     ORDER BY distance_sq ASC
     LIMIT :limit
-""")
+"""
+    )
     suspend fun getNearestStops(userLat: Double, userLon: Double, limit: Int): List<StopEntity>
 
-    @Query("""
+    @Query(
+        """
     SELECT *
     FROM stops
+    WHERE stop_id = :stopId
     LIMIT 1
-""")
-    suspend fun getOneStop(): List<StopEntity>
+"""
+    )
+    suspend fun getStopByStopId(stopId: String): List<StopEntity>
 
     @Query(
         """
@@ -205,7 +229,8 @@ interface GtfsDao {
 
     // ── Departures ─────────────────────────────────────────
 
-    @Query("""
+    @Query(
+        """
         SELECT st.* FROM stop_times st
         INNER JOIN trips t ON st.trip_id = t.trip_id
         WHERE st.stop_id = :stopId
@@ -213,7 +238,8 @@ interface GtfsDao {
           AND st.departure_time < :beforeTime
         ORDER BY st.departure_time ASC
         LIMIT :limit
-    """)
+    """
+    )
     suspend fun getDepartures(
         stopId: String, afterTime: String,
         beforeTime: String = "28:00:00", limit: Int = 50,
@@ -224,12 +250,14 @@ interface GtfsDao {
     @Query("SELECT * FROM routes WHERE route_id = :routeId")
     suspend fun getRoute(routeId: String): RouteEntity?
 
-    @Query("""
+    @Query(
+        """
         SELECT DISTINCT r.* FROM routes r
         INNER JOIN trips t ON r.route_id = t.route_id
         INNER JOIN stop_times st ON t.trip_id = st.trip_id
         WHERE st.stop_id = :stopId
-    """)
+    """
+    )
     suspend fun getRoutesForStop(stopId: String): List<RouteEntity>
 
     // ── Trips ──────────────────────────────────────────────
@@ -263,7 +291,8 @@ interface GtfsDao {
     suspend fun countStopTimes(): Int
 
     // ── Convoluted joins ───────────────────────────────────────────
-    @Query("""
+    @Query(
+        """
     SELECT 
         st.trip_id        AS tripId,
         st.departure_time AS departureTime,
@@ -278,10 +307,12 @@ interface GtfsDao {
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
     WHERE st.stop_id = :stopId
-""")
+"""
+    )
     suspend fun getStopTimesWithDetails(stopId: String): List<StopTimeWithDetails>
 
-    @Query("""
+    @Query(
+        """
     SELECT
         st.trip_id           AS tripId,
         st.departure_time    AS departureTime,
@@ -296,7 +327,8 @@ interface GtfsDao {
     JOIN stops s ON st.stop_id = s.stop_id
     WHERE st.trip_id = :tripId
     ORDER BY st.stop_sequence ASC
-""")
+"""
+    )
     suspend fun getStopTimesWithStops(tripId: String): List<StopTimeWithStop>
 }
 
@@ -319,7 +351,8 @@ internal abstract class GtfsDatabase : RoomDatabase() {
     companion object {
         private const val DB_NAME = "gtfs.db"
 
-        @Volatile private var instance: GtfsDatabase? = null
+        @Volatile
+        private var instance: GtfsDatabase? = null
 
         fun getInstance(context: Context): GtfsDatabase =
             instance ?: synchronized(this) {

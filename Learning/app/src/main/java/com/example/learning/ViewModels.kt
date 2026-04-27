@@ -19,6 +19,7 @@ import com.example.learning.repos.FileRepository
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
+import com.example.learning.repos.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +42,7 @@ class ApplicationRepos(private val applicationContext: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val locationRepo = LocationRepository(applicationContext, applicationScope)
     val fileRepository = FileRepository(applicationContext, "busStops")
+    val settingsRepo = SettingsRepository(applicationContext)
     val httpClient = OkHttpClient()
     val loaded = MutableStateFlow(false)
 
@@ -53,6 +55,7 @@ class ApplicationRepos(private val applicationContext: Context) {
             gtfsStaticRepository = gtfsStaticRepository,
             gtfsRealtimeRepository = gtfsRealtimeRepository,
             locationRepo = locationRepo,
+            settingsRepo = settingsRepo,
             scope = applicationScope
         )
     }
@@ -143,22 +146,18 @@ class HomeViewModel(
         focusOnClosestStop()
     }
 
-    fun focusOnClosestStop() {
-        viewModelScope.launch {
-            busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
-                busInfo.updateFocusedBusStop(it)
-            }
+    fun focusOnClosestStop() = viewModelScope.launch {
+        busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
+            busInfo.updateFocusedBusStop(it)
         }
     }
 
-    fun refreshLocation() {
-        viewModelScope.launch {
-            _isRefreshing.update { true }
-            try {
-                busInfo.refreshLocation() // the real suspend call
-            } finally {
-                _isRefreshing.update { false }
-            }
+    fun refreshLocation() = viewModelScope.launch {
+        _isRefreshing.update { true }
+        try {
+            busInfo.refreshLocation()
+        } finally {
+            _isRefreshing.update { false }
         }
     }
 }
@@ -185,7 +184,7 @@ class PickStopViewModel(
             closestBusStops.value
         )
 
-    fun updateFocusedBusStop(stop: BusStopInfo) = busInfo.updateFocusedBusStop(stop)
+    fun updateFocusedBusStop(stop: BusStopInfo) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
     fun onQueryChange(q: String) { _query.value = q }
 }
 

@@ -50,7 +50,7 @@ fun PickStopScreen(
     navController: NavController,
     viewModel: PickStopViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    val searchCallback = fun(busStop: BusStopInfo) {
+    fun searchCallback(busStop: BusStopInfo) {
         viewModel.updateFocusedBusStop(busStop)
         navController.popBackStack()
     }

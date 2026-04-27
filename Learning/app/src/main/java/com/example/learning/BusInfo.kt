@@ -8,6 +8,7 @@ import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.RealtimeBusInfo
+import com.example.learning.repos.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -38,6 +39,7 @@ class BusInfo(
     val gtfsStaticRepository: GtfsStaticRepository,
     private val gtfsRealtimeRepository: GtfsRealtimeRepository,
     private val locationRepo: LocationRepository,
+    private val settingsRepo: SettingsRepository,
     private val scope: CoroutineScope,
 ) {
     val currentMinute: StateFlow<LocalDateTime> = flow {
@@ -90,14 +92,26 @@ class BusInfo(
 
     init {
         scope.launch {
-            Log.d("BusInfo", "Start get stops.")
-            _focusedBusStop.update { gtfsStaticRepository.getOneStop().firstOrNull() }
-            Log.d("BusInfo", "Get stops finished.")
+            Log.d("BusInfo", "Populate stop from settings.")
+            settingsRepo.homeStopId.collect {
+                it?.let { stopId ->
+                    Log.d("BusInfo", "Will try to populate stop id = $stopId")
+                    val busStop = gtfsStaticRepository.getStopByStopId(stopId)
+                    Log.d("BusInfo", "Got busStop $busStop.")
+                    _focusedBusStop.update { busStop }
+                }
+            }
+            Log.d("BusInfo", "Populated stop from settings.")
         }
     }
 
 
-    fun updateFocusedBusStop(busStopInfo: BusStopInfo) { _focusedBusStop.value = busStopInfo }
+    suspend fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
+        _focusedBusStop.value = busStopInfo
+        Log.d("BusInfo", "Will save bus stop to ${busStopInfo.stopId}")
+        settingsRepo.setHomeStopId(busStopInfo.stopId)
+        Log.d("BusInfo", "Setting saved bus stop to ${busStopInfo.stopId}")
+    }
     suspend fun refreshLocation() { locationRepo.requestFreshFix() }
     suspend fun searchStops(stopName: String): List<BusStopInfo> { return gtfsStaticRepository.getStopsByName(stopName) }
     suspend fun getByTrip(busStopTimesRecord: BusStopTimesRecord): List<BusStopTimesRecord> {

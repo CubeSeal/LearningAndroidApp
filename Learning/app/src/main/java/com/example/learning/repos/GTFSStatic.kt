@@ -138,12 +138,12 @@ class GtfsStaticRepository(
         }
     }
 
-    suspend fun getStops(): List<BusStopInfo> {
+    suspend fun getAllStops(): List<BusStopInfo> {
         return gtfsDao.getAllStops().map { it.toBusStopInfo() }
     }
 
-    suspend fun getOneStop(): List<BusStopInfo> {
-        return gtfsDao.getOneStop().map { it.toBusStopInfo() }
+    suspend fun getStopByStopId(stopId: String): BusStopInfo? {
+        return gtfsDao.getStopByStopId(stopId).map { it.toBusStopInfo() }.firstOrNull()
     }
 
     suspend fun getStopsByName(stopName: String): List<BusStopInfo> {
