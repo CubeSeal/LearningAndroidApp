@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -63,32 +64,25 @@ class BusInfo(
         )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> = combine(
-            focusedBusStop.filterNotNull(),
-            locationRepo.currentLocation.filterNotNull().take(1)
-        ) { busStop, loc ->
-            Pair(busStop, loc)
+    val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> = focusedBusStop
+        .filterNotNull()
+        .distinctUntilChanged()
+        .transformLatest { busStop ->
+            // Emit static trips immediately — no location needed
+            val trips = gtfsStaticRepository.getAssociatedTrips(busStop)
+            emit(trips.map { RealtimeBusStopTimesRecord(it, realtimeBusInfo = null) })
+
+            // Then enrich with realtime once we have a location
+            val loc = locationRepo.currentLocation.filterNotNull().first()
+            val closestBuses = gtfsRealtimeRepository.getBusData(loc)
+            emit(trips.map { record ->
+                RealtimeBusStopTimesRecord(
+                    record,
+                    closestBuses.firstOrNull { it.tripId == record.tripInfo.tripId }
+                )
+            })
         }
-            .distinctUntilChanged()
-            .transformLatest { (busStop, loc) ->
-                emit(emptyList())
-                val trips = gtfsStaticRepository.getAssociatedTrips(busStop)
-                val closestBuses = gtfsRealtimeRepository.getBusData(loc)
-                val returnVal = trips.map { busStopTimesRecord ->
-                    RealtimeBusStopTimesRecord(
-                        busStopTimesRecord,
-                        closestBuses.firstOrNull {
-                            it.tripId == busStopTimesRecord.tripInfo.tripId
-                        }
-                    )
-                }
-                emit(returnVal)
-            }
-            .stateIn(
-                scope = scope,
-                started = SharingStarted.Eagerly,
-                initialValue = emptyList()
-            )
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     val savedStops: StateFlow<List<BusStopInfo>> = settingsRepo.savedStops
         .map { ids ->

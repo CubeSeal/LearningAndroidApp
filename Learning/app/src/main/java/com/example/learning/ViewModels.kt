@@ -149,7 +149,6 @@ class HomeViewModel(
 
     init {
         refreshLocation()
-        focusOnClosestStop()
     }
 
     fun focusOnClosestStop() = viewModelScope.launch {
@@ -162,6 +161,7 @@ class HomeViewModel(
         _isRefreshing.update { true }
         try {
             busInfo.refreshLocation()
+            focusOnClosestStop()
         } finally {
             _isRefreshing.update { false }
         }
