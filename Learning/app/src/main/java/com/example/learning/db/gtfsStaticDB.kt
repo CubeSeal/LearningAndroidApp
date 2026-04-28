@@ -149,20 +149,14 @@ data class StopTimeWithDetails(
     val serviceId: String,
     val tripHeadsign: String,
     val routeShortName: String,
-    val routeLongName: String
-)
-
-data class StopTimeWithStop(
-    val tripId: String,
-    val departureTime: String,
-    val arrivalTime: String,
-    val stopSequence: Int,
+    val routeLongName: String,
     val stopId: String,
     val stopName: String,
     val stopLat: Double,
     val stopLon: Double,
     val wheelchairBoarding: Int
 )
+
 // ═════════════════════════════════════════════════════════════════════
 // DAO
 // ═════════════════════════════════════════════════════════════════════
@@ -302,10 +296,16 @@ interface GtfsDao {
         t.service_id      AS serviceId,
         t.trip_headsign   AS tripHeadsign,
         r.route_short_name AS routeShortName,
-        r.route_long_name  AS routeLongName
+        r.route_long_name  AS routeLongName,
+        s.stop_id AS stopId,
+        s.stop_name AS stopName,
+        s.stop_lat AS stopLat,
+        s.stop_lon AS stopLon,
+        s.wheelchair_boarding AS wheelchairBoarding
     FROM stop_times st
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
+    JOIN stops s ON st.stop_id = s.stop_id
     WHERE st.stop_id = :stopId
 """
     )
@@ -313,23 +313,29 @@ interface GtfsDao {
 
     @Query(
         """
-    SELECT
-        st.trip_id           AS tripId,
-        st.departure_time    AS departureTime,
-        st.arrival_time      AS arrivalTime,
-        st.stop_sequence     AS stopSequence,
-        s.stop_id            AS stopId,
-        s.stop_name          AS stopName,
-        s.stop_lat           AS stopLat,
-        s.stop_lon           AS stopLon,
+    SELECT 
+        st.trip_id        AS tripId,
+        st.departure_time AS departureTime,
+        st.arrival_time   AS arrivalTime,
+        st.stop_sequence  AS stopSequence,
+        t.route_id        AS routeId,
+        t.service_id      AS serviceId,
+        t.trip_headsign   AS tripHeadsign,
+        r.route_short_name AS routeShortName,
+        r.route_long_name  AS routeLongName,
+        s.stop_id AS stopId,
+        s.stop_name AS stopName,
+        s.stop_lat AS stopLat,
+        s.stop_lon AS stopLon,
         s.wheelchair_boarding AS wheelchairBoarding
     FROM stop_times st
+    JOIN trips t ON st.trip_id = t.trip_id
+    JOIN routes r ON t.route_id = r.route_id
     JOIN stops s ON st.stop_id = s.stop_id
     WHERE st.trip_id = :tripId
-    ORDER BY st.stop_sequence ASC
 """
     )
-    suspend fun getStopTimesWithStops(tripId: String): List<StopTimeWithStop>
+    suspend fun getStopTimesWithDetailsByTrip(tripId: String): List<StopTimeWithDetails>
 }
 
 // ═════════════════════════════════════════════════════════════════════

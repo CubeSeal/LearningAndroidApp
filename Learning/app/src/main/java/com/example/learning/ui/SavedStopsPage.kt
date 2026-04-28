@@ -1,6 +1,10 @@
 package com.example.learning.ui
 
+import android.R.attr.onClick
+import android.net.http.SslCertificate.restoreState
+import android.net.http.SslCertificate.saveState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,9 +51,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.example.learning.LoadingScreen
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.AppViewModelProvider
+import com.example.learning.Home
 import com.example.learning.PickStop
 import com.example.learning.SavedStopsViewModel
 import com.example.learning.TripsViewModel
@@ -59,6 +65,7 @@ import com.example.learning.repos.BusStopInfo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedStopsScreen(
+    navController: NavController,
     viewModel: SavedStopsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val savedStops by viewModel.savedStops.collectAsStateWithLifecycle()
@@ -85,6 +92,16 @@ fun SavedStopsScreen(
                 ) { stop ->
                     SavedStopRow(
                         stop = stop,
+                        onTap = {
+                            viewModel.focusStop(stop)
+                            navController.navigate(Home) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                         onRemove = { viewModel.removeSavedStop(stop) }
                     )
                     HorizontalDivider(
@@ -99,9 +116,11 @@ fun SavedStopsScreen(
 @Composable
 private fun SavedStopRow(
     stop: BusStopInfo,
+    onTap: () -> Unit,
     onRemove: () -> Unit
 ) {
     ListItem(
+        modifier = Modifier.clickable(onClick = onTap),
         headlineContent = { Text(stop.stopName) },
         supportingContent = { Text("Stop ${stop.stopId}") },
         leadingContent = {

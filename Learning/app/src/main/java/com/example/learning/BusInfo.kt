@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
@@ -54,12 +55,12 @@ class BusInfo(
 
     // Derived state - automatically updates when location or allBusStops change
     val closestBusStops: StateFlow<List<BusStopInfo>> = locationRepo.currentLocation.map { loc ->
-            loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
-        }.stateIn(
-            scope = scope,
-            started = SharingStarted.Eagerly,
-            initialValue = emptyList()
-        )
+        loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
+    }.stateIn(
+        scope = scope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> = focusedBusStop
@@ -114,10 +115,17 @@ class BusInfo(
         settingsRepo.setHomeStopId(busStopInfo.stopId)
         Log.d("BusInfo", "Setting saved bus stop to ${busStopInfo.stopId}")
     }
-    suspend fun refreshLocation() { locationRepo.requestFreshFix() }
-    suspend fun searchStops(stopName: String): List<BusStopInfo> { return gtfsStaticRepository.getStopsByName(stopName) }
-    suspend fun getByTrip(busStopTimesRecord: BusStopTimesRecord): List<BusStopTimesRecord> {
-        return gtfsStaticRepository.getByTrip(busStopTimesRecord)
+
+    suspend fun refreshLocation() {
+        locationRepo.requestFreshFix()
+    }
+
+    suspend fun searchStops(stopName: String): List<BusStopInfo> {
+        return gtfsStaticRepository.getStopsByName(stopName)
+    }
+
+    suspend fun getByTrip(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
+        return gtfsStaticRepository.getByTrip(tripId, date)
     }
 
     suspend fun addSavedStop(busStopInfo: BusStopInfo) {

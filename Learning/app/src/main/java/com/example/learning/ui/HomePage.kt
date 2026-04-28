@@ -62,7 +62,6 @@ import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
 import com.example.learning.RealtimeBusStopTimesRecord
-import com.example.learning.SharedViewModel
 import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.BusStopInfo
@@ -73,7 +72,6 @@ import kotlin.math.roundToInt
 fun HOMEScreen(
     navController: NavController,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
-    sharedViewModel: SharedViewModel,
 ) {
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
@@ -115,7 +113,6 @@ fun HOMEScreen(
             MasterLazyColumn(
                 listState,
                 navController,
-                sharedViewModel,
                 focusedBusStop,
                 associatedBusStopTimes
             )
@@ -146,7 +143,6 @@ fun EditStop(onClick: () -> Unit) {
 fun MasterLazyColumn(
     listState: LazyListState,
     navController: NavController,
-    sharedViewModel: SharedViewModel,
     focusedBusStop: BusStopInfo?,
     associatedBusStopTimes: List<Pair<Boolean, RealtimeBusStopTimesRecord>>
 ) {
@@ -195,7 +191,7 @@ fun MasterLazyColumn(
                 items = associatedBusStopTimes,
                 key = { it.second.busStopTimesRecord.fakeId }
             ) { item ->
-                BusCard(navController, sharedViewModel, item)
+                BusCard(navController, item)
             }
         }
 
@@ -241,7 +237,6 @@ fun StopTitle(closestBusStop: BusStopInfo? ) {
 @Composable
 fun LazyItemScope.BusCard(
     navController: NavController,
-    sharedViewModel: SharedViewModel,
     item: Pair<Boolean, RealtimeBusStopTimesRecord>
 ) {
     val (isFirst, record) = item
@@ -272,8 +267,13 @@ fun LazyItemScope.BusCard(
     ) {
         ListItem(
             modifier = Modifier.clickable {
-                sharedViewModel.select(record.busStopTimesRecord)
-                navController.navigate(Trips)
+                navController.navigate(
+                    Trips(
+                        item.second.busStopTimesRecord.tripInfo.tripId,
+                        item.second.busStopTimesRecord.stopInfo.stopId,
+                        item.second.busStopTimesRecord.stopTimesInfo.departureTime.toLocalDate().toString(),
+                    )
+                )
             },
             colors = ListItemDefaults.colors(
                 containerColor = dynamicContainer,

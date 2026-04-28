@@ -187,27 +187,30 @@ class GtfsStaticRepository(
         return busStopTimesInfo
     }
 
-    suspend fun getByTrip(busStopInfo: BusStopTimesRecord): List<BusStopTimesRecord> {
-        val date = busStopInfo.stopTimesInfo.departureTime.toLocalDate()
-        return gtfsDao.getStopTimesWithStops(busStopInfo.tripInfo.tripId)
-            .mapIndexed { index, row ->
+    suspend fun getByTrip(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
+        return gtfsDao.getStopTimesWithDetailsByTrip(tripId)
+            .map { row ->
+                val tripInfo = BusTripInfo(row.routeId, row.serviceId, row.tripId, row.tripHeadsign)
+                val routeInfo = BusRouteInfo(row.routeId, row.routeShortName, row.routeLongName)
+                val stopInfo = BusStopInfo(
+                    row.stopId,
+                    row.stopName,
+                    LatLon(row.stopLat, row.stopLon),
+                    row.wheelchairBoarding == 1
+                )
+
                 BusStopTimesRecord(
-                    fakeId = index,
+                    fakeId = 0,
                     stopTimesInfo = BusStopTimesInfo(
-                        fakeId = index.toLong(),
+                        fakeId = 0L,
                         tripId = row.tripId,
                         departureTime = parseGtfsDateTime(date, row.departureTime),
                         arrivalTime   = parseGtfsDateTime(date, row.arrivalTime),
-                        sequence      = row.stopSequence
+                        sequence = row.stopSequence
                     ),
-                    stopInfo = BusStopInfo(
-                        stopId   = row.stopId,
-                        stopName = row.stopName,
-                        stopLoc  = LatLon(row.stopLat, row.stopLon),
-                        wheelchairBoarding = row.wheelchairBoarding == 1
-                    ),
-                    tripInfo  = busStopInfo.tripInfo,
-                    routeInfo = busStopInfo.routeInfo
+                    stopInfo  = stopInfo,
+                    tripInfo  = tripInfo,
+                    routeInfo = routeInfo,
                 )
             }
     }

@@ -29,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,20 +43,15 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.LoadingScreen
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
-import com.example.learning.repos.BusStopTimesRecord
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripsScreen(
     navController: NavController,
-    busStopTimesRecord: BusStopTimesRecord,
     viewModel: TripsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val stopTimesByTrip by viewModel.busStopTimesRecord.collectAsStateWithLifecycle()
-
-    LaunchedEffect(busStopTimesRecord) {
-        viewModel.updateBusStopTimesRecord(busStopTimesRecord)
-    }
+    val stopId = viewModel.stopId
 
     Scaffold(
         topBar = {
@@ -114,7 +108,7 @@ fun TripsScreen(
                     items = stopTimesByTrip,
                     key = { _, item -> item.stopTimesInfo.sequence }
                 ) { index, item ->
-                    val isFocused = item.stopInfo.stopId == busStopTimesRecord.stopInfo.stopId
+                    val isFocused = item.stopInfo.stopId == stopId
                     val (container, onContainer) = if (isFocused) {
                         MaterialTheme.colorScheme.secondaryContainer to
                                 MaterialTheme.colorScheme.onSecondaryContainer

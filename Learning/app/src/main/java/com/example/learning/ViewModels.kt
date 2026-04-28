@@ -5,22 +5,20 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.toRoute
 import com.example.learning.repos.BusStopInfo
-import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.SettingsRepository
-import com.example.learning.ui.SavedStopsScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -38,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.time.Duration
+import java.time.LocalDate
 
 class ApplicationRepos(private val applicationContext: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -109,7 +109,7 @@ object AppViewModelProvider {
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
 
-            TripsViewModel(app.repos.busInfo)
+            TripsViewModel(createSavedStateHandle(), app.repos.busInfo)
         }
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
@@ -199,19 +199,20 @@ class PickStopViewModel(
 }
 
 class TripsViewModel(
+    savedStateHandle: SavedStateHandle,
     private val busInfo: BusInfo
 ) : ViewModel() {
 
-    private val _busStopTimesRecord = MutableStateFlow<List<BusStopTimesRecord>>(emptyList())
-    val busStopTimesRecord = _busStopTimesRecord.asStateFlow()
+    private val args: Trips = savedStateHandle.toRoute()
+    val tripId = args.tripId
+    val stopId = args.stopId
+    val date = LocalDate.parse(args.date)
+    val busStopTimesRecord = flow {
+        val result = busInfo.getByTrip(tripId, date)
+        emit(result)
+        Log.d("VM", result.toString())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun updateBusStopTimesRecord(busStopTimesRecord: BusStopTimesRecord) {
-        viewModelScope.launch {
-            _busStopTimesRecord.update {
-                busInfo.getByTrip(busStopTimesRecord)
-            }
-        }
-    }
 }
 
 class SavedStopsViewModel(
@@ -219,20 +220,15 @@ class SavedStopsViewModel(
 ) : ViewModel() {
     val savedStops = busInfo.savedStops
 
+    fun focusStop(stop: BusStopInfo) = viewModelScope.launch {
+        busInfo.updateFocusedBusStop(stop)
+    }
+
     fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
         busInfo.addSavedStop(busStopInfo)
     }
 
     fun removeSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
         busInfo.removeSavedStop(busStopInfo)
-    }
-}
-
-class SharedViewModel : ViewModel() {
-    var selectedRecord: BusStopTimesRecord? by mutableStateOf(null)
-        private set
-
-    fun select(record: BusStopTimesRecord) {
-        selectedRecord = record
     }
 }

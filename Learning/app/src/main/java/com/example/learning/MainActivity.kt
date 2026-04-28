@@ -5,6 +5,7 @@ package com.example.learning
 // Helper for finding the start destination in the graph
 
 import android.Manifest
+import android.net.http.SslCertificate.saveState
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -12,7 +13,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,13 +25,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,9 +51,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.example.learning.ui.HOMEScreen
 import com.example.learning.ui.PickStopScreen
 import com.example.learning.ui.SavedStopsScreen
@@ -60,18 +77,20 @@ import java.util.Locale
 data object Home
 
 @Serializable
-data object Trips
+data object SavedStops
+
+@Serializable
+data class Trips(val tripId: String, val stopId: String, val date: String)
 
 @Serializable
 data object PickStop
 
-enum class AppDestinations(
-    val label: String,
-    val icon: ImageVector,
-    val contentDescription: String
-) {
-    HOME("Home", Icons.Default.Home, "Home"),
-    SAVEDSTOPS("Saved", Icons.Default.Menu, "Saved"),
+private fun NavController.navigateTopLevel(route: Any) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -88,6 +107,7 @@ class MainActivity : ComponentActivity() {
                     app.repos.initAll()
                 }
             }
+
             else -> {
                 println("Location permission denied")
                 finish()
@@ -109,48 +129,67 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            TfNSWTheme() {
+            TfNSWTheme {
                 val loaded by app.repos.loaded.collectAsStateWithLifecycle()
-                var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-                if (loaded) {
-                    NavigationSuiteScaffold(
-                        navigationSuiteItems = {
-                            AppDestinations.entries.forEach {
-                                item(
-                                    icon = {
-                                        Icon(
-                                            it.icon,
-                                            contentDescription = it.contentDescription
-                                        )
-                                    },
-                                    label = { Text(it.label) },
-                                    selected = it == currentDestination,
-                                    onClick = { currentDestination = it }
+                if (!loaded) {
+                    LoadingScreen("Loading...")
+                    return@TfNSWTheme
+                }
+
+                val navController = rememberNavController()
+                val backStackEntry by navController.currentBackStackEntryAsState()
+                val currentDestination = backStackEntry?.destination
+
+                val isHome = currentDestination?.hasRoute<Home>() == true
+                val isSaved = currentDestination?.hasRoute<SavedStops>() == true
+                val showSuite = isHome || isSaved
+
+                Scaffold(
+                    bottomBar = {
+                        AnimatedVisibility(
+                            visible = showSuite,
+                            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)),
+                            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300))
+                        ) {
+                            NavigationBar {
+                                NavigationBarItem(
+                                    icon = { Icon(Icons.Default.Home, "Home") },
+                                    label = { Text("Home") },
+                                    selected = isHome,
+                                    onClick = { navController.navigateTopLevel(Home) }
+                                )
+                                NavigationBarItem(
+                                    icon = { Icon(Icons.Default.Bookmark, "Saved") },
+                                    label = { Text("Saved") },
+                                    selected = isSaved,
+                                    onClick = { navController.navigateTopLevel(SavedStops) }
                                 )
                             }
                         }
-                    ) {
-                        when (currentDestination) {
-                            AppDestinations.HOME -> HomeNavHost()
-                            AppDestinations.SAVEDSTOPS -> SavedStopsScreen()
-                        }
-                    }
-                } else {
-                    LoadingScreen("Loading...")
+                    },
+                    containerColor = MaterialTheme.colorScheme.background
+                ) { padding ->
+                    HomeNavHost(
+                        navController = navController,
+                        modifier = Modifier.padding(padding)
+                    )
                 }
             }
         }
-
     }
 }
- @Composable
-fun HomeNavHost(){
-    val navController = rememberNavController()
-    val sharedViewModel: SharedViewModel = viewModel()
+
+
+@Composable
+fun HomeNavHost(
+    navController: NavHostController,
+    modifier: Modifier = Modifier,
+) {
     Log.d("INIT", "Home screen loaded.")
     NavHost(
         navController = navController,
         startDestination = Home,
+        modifier = modifier,
         enterTransition = {
             slideIntoContainer(
                 AnimatedContentTransitionScope.SlideDirection.Start,
@@ -176,15 +215,10 @@ fun HomeNavHost(){
             )
         }
     ) {
-        composable<Home> {
-            HOMEScreen(navController, sharedViewModel = sharedViewModel)
-        }
-        composable<Trips> {
-            TripsScreen(navController, sharedViewModel.selectedRecord!!)
-        }
-        composable<PickStop> {
-            PickStopScreen(navController)
-        }
+        composable<Home> { HOMEScreen(navController) }
+        composable<SavedStops> { SavedStopsScreen(navController) }
+        composable<Trips> { TripsScreen(navController) }
+        composable<PickStop> { PickStopScreen(navController) }
     }
 
 }
@@ -216,8 +250,12 @@ fun printTime(timeToFormat: LocalDateTime, currentTime: LocalDate = LocalDate.no
     return when {
         timeToFormat.toLocalDate() == currentTime -> timeStr
         timeToFormat.toLocalDate() == currentTime.plusDays(1) -> "Tomorrow $timeStr"
-        timeToFormat.toLocalDate() < currentTime.plusWeeks(1) -> "${timeToFormat.dayOfWeek.getDisplayName(
-            TextStyle.SHORT, Locale.getDefault())} $timeStr"
+        timeToFormat.toLocalDate() < currentTime.plusWeeks(1) -> "${
+            timeToFormat.dayOfWeek.getDisplayName(
+                TextStyle.SHORT, Locale.getDefault()
+            )
+        } $timeStr"
+
         else -> "${timeToFormat.format(DateTimeFormatter.ofPattern("dd/MM"))} $timeStr"
     }
 }
