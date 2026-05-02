@@ -189,6 +189,10 @@ private fun buildDatabase(gtfsDir: File, dbFile: File) {
             loadTable(conn, table, file)
         }
 
+        println("  Creating globbed stops...")
+        createGlobbedStops(conn)
+        conn.commit()
+
         println("  Creating indices...")
         createIndices(conn)
         conn.commit()
@@ -298,6 +302,15 @@ private fun createTables(conn: Connection) {
             FOREIGN KEY (stop_id) REFERENCES stops(stop_id)
         )
     """)
+    conn.exec("""
+        CREATE TABLE IF NOT EXISTS globbed_stops (
+            globbed_stop_id TEXT NOT NULL,
+            globbed_stop_name TEXT NOT NULL,
+            stop_id TEXT NOT NULL,
+            PRIMARY KEY (globbed_stop_id, stop_id),
+            FOREIGN KEY (stop_id) REFERENCES stops(stop_id)
+        )
+    """)
 }
 
 private fun createIndices(conn: Connection) {
@@ -308,6 +321,8 @@ private fun createIndices(conn: Connection) {
     conn.exec("CREATE INDEX IF NOT EXISTS index_stop_times_stop_id ON stop_times(stop_id)")
     conn.exec("CREATE INDEX IF NOT EXISTS index_stop_times_trip_id ON stop_times(trip_id)")
     conn.exec("CREATE INDEX IF NOT EXISTS index_stop_times_departure_time ON stop_times(departure_time)")
+    conn.exec("CREATE INDEX IF NOT EXISTS index_globbed_stops_stop_id ON globbed_stops(stop_id)")
+    conn.exec("CREATE INDEX IF NOT EXISTS index_globbed_stops_globbed_stop_id ON globbed_stops(globbed_stop_id)")
 }
 
 // ── CSV loading ──────────────────────────────────────────────────────
@@ -448,3 +463,34 @@ private fun PreparedStatement.setNullableDouble(i: Int, v: Double?) {
     if (v == null) setNull(i, java.sql.Types.REAL) else setDouble(i, v)
 }
 
+private fun createGlobbedStops(conn: Connection) {
+    conn.exec("DELETE FROM globbed_stops")
+
+    conn.exec("""
+        INSERT OR REPLACE INTO globbed_stops (
+            globbed_stop_id,
+            globbed_stop_name,
+            stop_id
+        )
+        WITH parsed AS (
+            SELECT
+                stop_id,
+                trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) AS station_name
+            FROM stops
+            WHERE stop_name IS NOT NULL
+              AND instr(stop_name, ',') > 0
+        ),
+        stations AS (
+            SELECT
+                stop_id,
+                station_name
+            FROM parsed
+            WHERE station_name LIKE '% Station'
+        )
+        SELECT
+            replace(lower(station_name), ' ', '_') AS globbed_stop_id,
+            station_name AS globbed_stop_name,
+            stop_id
+        FROM stations
+    """)
+}
