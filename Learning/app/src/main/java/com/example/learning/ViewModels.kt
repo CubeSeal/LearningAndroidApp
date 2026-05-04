@@ -148,20 +148,20 @@ class HomeViewModel(
     val isRefreshing = _isRefreshing.asStateFlow()
 
     init {
-        refreshLocation()
+        refresh()
+        focusOnClosestStop()
     }
 
-    private suspend fun focusOnClosestStop() {
+    private fun focusOnClosestStop() = viewModelScope.launch {
         busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
             busInfo.updateFocusedBusStop(it)
         }
     }
 
-    fun refreshLocation() = viewModelScope.launch {
+    fun refresh() = viewModelScope.launch {
         _isRefreshing.update { true }
         try {
-            busInfo.refreshLocation()
-            focusOnClosestStop()
+            busInfo.refresh()
         } finally {
             _isRefreshing.update { false }
         }

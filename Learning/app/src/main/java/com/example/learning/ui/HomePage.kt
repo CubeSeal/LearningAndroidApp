@@ -107,7 +107,7 @@ fun HOMEScreen(
     ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refreshLocation() },
+            onRefresh = { viewModel.refresh() },
             modifier = Modifier.padding(innerPadding)
         ) {
             MasterLazyColumn(

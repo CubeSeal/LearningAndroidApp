@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -62,22 +63,33 @@ class BusInfo(
         initialValue = emptyList()
     )
 
+    private val closestRealTimeInfo: StateFlow<List<RealtimeBusInfo>> = locationRepo.currentLocation.map { loc ->
+        loc?.let {gtfsRealtimeRepository.getBusData(it)} ?: emptyList()
+    }.stateIn(
+        scope = scope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> = focusedBusStop
-        .filterNotNull()
+    val associatedStopTimes: StateFlow<List<RealtimeBusStopTimesRecord>> =
+        combine(
+        focusedBusStop.filterNotNull(),
+            closestRealTimeInfo
+        ) { focusedBusStop, realTimeInfo ->
+            focusedBusStop to realTimeInfo
+        }
         .distinctUntilChanged()
-        .transformLatest { busStop ->
+        .transformLatest { (busStop, realTimeInfo) ->
             // Emit static trips immediately — no location needed
             val trips = gtfsStaticRepository.getAssociatedTrips(busStop)
             emit(trips.map { RealtimeBusStopTimesRecord(it, realtimeBusInfo = null) })
 
             // Then enrich with realtime once we have a location
-            val loc = locationRepo.currentLocation.filterNotNull().first()
-            val closestBuses = gtfsRealtimeRepository.getBusData(loc)
             emit(trips.map { record ->
                 RealtimeBusStopTimesRecord(
                     record,
-                    closestBuses.firstOrNull { it.tripId == record.tripInfo.tripId }
+                    realTimeInfo.firstOrNull { it.tripId == record.tripInfo.tripId }
                 )
             })
         }
@@ -116,7 +128,7 @@ class BusInfo(
         Log.d("BusInfo", "Setting saved bus stop to ${busStopInfo.stopId}")
     }
 
-    suspend fun refreshLocation() {
+    suspend fun refresh() {
         locationRepo.requestFreshFix()
     }
 
