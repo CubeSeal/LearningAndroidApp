@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -28,11 +29,13 @@ import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -58,14 +61,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
+import com.example.learning.BusFilterOptions
+import com.example.learning.BusStopTimesRecordScheduleAndRealtime
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
-import com.example.learning.BusStopTimesRecordScheduleAndRealtime
 import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.BusStopInfo
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +78,8 @@ fun HOMEScreen(
 ) {
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
+    val availableFiltersForBusStop by viewModel.availableFiltersForBusStop.collectAsStateWithLifecycle()
+    val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
     val isAppReady by viewModel.isUpToDate.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -114,7 +119,10 @@ fun HOMEScreen(
                 listState,
                 navController,
                 focusedBusStop,
-                associatedBusStopTimes
+                associatedBusStopTimes,
+                availableFiltersForBusStop,
+                selectedFiltersForBusStop,
+                {viewModel.toggleFilterForBusStops(it) }
             )
         }
     }
@@ -144,7 +152,11 @@ fun MasterLazyColumn(
     listState: LazyListState,
     navController: NavController,
     focusedBusStop: BusStopInfo?,
-    associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordScheduleAndRealtime>>
+    associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordScheduleAndRealtime>>,
+    //TODO: Maybe combine these two into a single param. Not that important though.
+    availableFiltersForBusStop: Set<BusFilterOptions>,
+    selectedFiltersForBusStop: Set<BusFilterOptions>,
+    onToggleMode: (BusFilterOptions) -> Unit,
 ) {
     val headerAlpha by remember {
         derivedStateOf {
@@ -187,6 +199,14 @@ fun MasterLazyColumn(
             Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
             item() { LoadingScreen("Loading trips...") }
         } else {
+            item() {
+                ModeFilterChips(
+                    availableFiltersForBusStop,
+                    selectedFiltersForBusStop,
+                    onToggleMode
+                )
+            }
+
             items(
                 items = associatedBusStopTimes,
                 key = { it.second.busStopTimesRecord.fakeId }
@@ -231,6 +251,44 @@ fun StopTitle(closestBusStop: BusStopInfo? ) {
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.headlineLarge,
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ModeFilterChips(
+    availableBusFilterOptions: Set<BusFilterOptions>,
+    selectedBusFilterOptions: Set<BusFilterOptions>,
+    onToggleMode: (BusFilterOptions) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        availableBusFilterOptions.forEach { option ->
+            FilterChip(
+                selected = option in selectedBusFilterOptions,
+                onClick = { onToggleMode(option) },
+                label = {
+                    when (option) {
+                        is BusFilterOptions.RouteShortName -> Text(option.routeShortName)
+                        is BusFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
+                    }
+                },
+//                leadingIcon = if (mode in selectedModes) {
+//                    {
+//                        Icon(
+//                            imageVector = Icons.Default.Done,
+//                            contentDescription = null,
+//                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+//                        )
+//                    }
+//                } else {
+//                    null
+//                },
+            )
+        }
     }
 }
 

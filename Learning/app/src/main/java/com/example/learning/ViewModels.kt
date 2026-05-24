@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -124,7 +125,17 @@ class HomeViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
     val focusedBusStop = busInfo.focusedBusStop
-    val associatedStopTimes = combine(busInfo.associatedStopTimes, busInfo.currentMinute) { stopTimes, currentMinute ->
+
+    val availableFiltersForBusStop = busInfo.filtersForBusStop
+    // If empty then we don't filter anything, but if not empty we only include what in the set.
+    private val _selectedFiltersForBusStop = MutableStateFlow(setOf<BusFilterOptions>())
+    val selectedFiltersForBusStop = _selectedFiltersForBusStop.asStateFlow()
+
+    val associatedStopTimes = combine(
+        busInfo.associatedStopTimes,
+        busInfo.currentMinute,
+        selectedFiltersForBusStop
+    ) { stopTimes, currentMinute, selectedFilters ->
         val pastBuffer = Duration.ofMinutes(2)
         val realTimeSorted = stopTimes.sortedBy {
             val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
@@ -134,16 +145,19 @@ class HomeViewModel(
         realTimeSorted
             //TODO: Rarefy the types here so that I'm only pulling in what I need instead of mutating things
             // all over the place.
-            .filter {
-                val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
-                val newTime = it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
-                newTime > currentMinute - pastBuffer }
+            .filter { busStopTimesRecord ->
+                val delay = busStopTimesRecord.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
+                val newTime = busStopTimesRecord.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+                newTime > currentMinute - pastBuffer && (selectedFilters.isEmpty() || busStopTimesRecord.appliedFilters.any {it in selectedFilters })
+            }
             .map {
                 val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
                 val newTime = it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
                 (newTime >= currentMinute) to it
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
+
+
     val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing = _isRefreshing.asStateFlow()
@@ -171,6 +185,14 @@ class HomeViewModel(
 
     fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
         busInfo.addSavedStop(busStopInfo)
+    }
+
+    fun toggleFilterForBusStops(busStopFilterOptions: BusFilterOptions) {
+        if (busStopFilterOptions in selectedFiltersForBusStop.value) {
+            _selectedFiltersForBusStop.update { it - busStopFilterOptions}
+        } else {
+            _selectedFiltersForBusStop.update { it + busStopFilterOptions}
+        }
     }
 }
 
