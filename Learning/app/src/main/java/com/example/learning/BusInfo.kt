@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flatMap
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -64,6 +63,7 @@ class BusInfo(
 
     // Derived state - automatically updates when location or allBusStops change
     val closestBusStops: StateFlow<List<BusStopInfo>> = locationRepo.currentLocation.map { loc ->
+        Log.d("BusInfo", "Updating closest info with $loc.")
         loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
     }.stateIn(
         scope = scope,
@@ -158,6 +158,10 @@ class BusInfo(
     }
 
     suspend fun refresh() {
+        gtfsStaticRepository.syncGtfsDatabase(
+            ghOwner = "CubeSeal",
+            ghRepo = "LearningAndroidApp"
+        )
         locationRepo.requestFreshFix()
     }
 

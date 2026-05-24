@@ -60,7 +60,6 @@ class GtfsRealtimeRepository(
         response.close()
 
         Log.d("GTFS-Realtime", "Finished getBusData.")
-        Log.d("GTFS-Realtime", closestBuses.toString())
         return@withContext closestBuses
     }
 

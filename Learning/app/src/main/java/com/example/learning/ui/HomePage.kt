@@ -206,7 +206,7 @@ fun MasterLazyColumn(
 fun BypassHeader(isAppReady: Boolean ){
     if (!isAppReady) {
         Text(
-            text = "Not ready",
+            text = "Loading...",
             color = MaterialTheme.colorScheme.onBackground,
         )
     } else {

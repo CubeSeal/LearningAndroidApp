@@ -71,10 +71,6 @@ class ApplicationRepos(private val applicationContext: Context) {
                 fileRepository,
                 httpClient
             )
-            gtfsStaticRepository.syncGtfsDatabase(
-                ghOwner = "CubeSeal",
-                ghRepo = "LearningAndroidApp"
-            )
 
             Log.d("INIT", "Finished loading.")
         }
@@ -127,7 +123,6 @@ object AppViewModelProvider {
 class HomeViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
-
     val focusedBusStop = busInfo.focusedBusStop
     val associatedStopTimes = combine(busInfo.associatedStopTimes, busInfo.currentMinute) { stopTimes, currentMinute ->
         val pastBuffer = Duration.ofMinutes(2)
@@ -137,9 +132,16 @@ class HomeViewModel(
         }
 
         realTimeSorted
-            .filter { it.busStopTimesRecord.stopTimesInfo.departureTime > currentMinute - pastBuffer }
+            //TODO: Rarefy the types here so that I'm only pulling in what I need instead of mutating things
+            // all over the place.
+            .filter {
+                val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
+                val newTime = it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+                newTime > currentMinute - pastBuffer }
             .map {
-                (it.busStopTimesRecord.stopTimesInfo.departureTime >= currentMinute) to it
+                val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
+                val newTime = it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+                (newTime >= currentMinute) to it
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
     val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
@@ -153,6 +155,7 @@ class HomeViewModel(
 
     private fun focusOnClosestStop() = viewModelScope.launch {
         busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
+            Log.d("VM", "Updating focused bus stop after refresh.")
             busInfo.updateFocusedBusStop(it)
         }
     }
