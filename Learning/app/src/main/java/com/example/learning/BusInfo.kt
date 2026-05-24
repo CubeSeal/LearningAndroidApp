@@ -17,9 +17,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
@@ -43,6 +45,7 @@ data class BusStopTimesRecordScheduleAndRealtime(
     val realtimeBusStopTimesInfo: RealtimeBusStopTimesInfo?
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class BusInfo(
     val gtfsStaticRepository: GtfsStaticRepository,
     private val gtfsRealtimeRepository: GtfsRealtimeRepository,
@@ -61,13 +64,17 @@ class BusInfo(
     private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
+//    val filtersForBusStop = focusedBusStop.transformLatest {
+//        it?.
+//    }
+
     // Derived state - automatically updates when location or allBusStops change
     val closestBusStops: StateFlow<List<BusStopInfo>> = locationRepo.currentLocation.map { loc ->
         Log.d("BusInfo", "Updating closest info with $loc.")
         loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
     }.stateIn(
         scope = scope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
     )
 
@@ -88,41 +95,52 @@ class BusInfo(
                 .sortedBy { it.tripId }
         }.stateIn(
             scope = scope,
-            started = SharingStarted.Eagerly,
+            started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
         )
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    val associatedTrips: StateFlow<List<BusStopTimesRecord>> = focusedBusStop
+        .filterNotNull()
+        .mapLatest {
+            gtfsStaticRepository.getAssociatedTrips(it)
+        }.stateIn(
+            scope = scope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
     val associatedStopTimes: StateFlow<List<BusStopTimesRecordScheduleAndRealtime>> =
-        combine( focusedBusStop.filterNotNull(), realtimeBusStopTimesInfo ) {
-            focusedBusStop, realTimeInfo -> focusedBusStop to realTimeInfo
-        }
-        .distinctUntilChanged()
-        .transformLatest { (busStop, realtimeBusStopTimesInfo) ->
-            // Emit static trips immediately — no location needed
-            val trips = gtfsStaticRepository.getAssociatedTrips(busStop)
-            emit(trips.map { BusStopTimesRecordScheduleAndRealtime(it, realtimeBusStopTimesInfo = null) })
-            Log.d("BusInfo", "First emit of records")
+        combine(
+            associatedTrips,
+            realtimeBusStopTimesInfo
+        ) { associatedTrips, realTimeInfo -> associatedTrips to realTimeInfo }
+            .distinctUntilChanged()
+            .transformLatest { (trips, realtimeBusStopTimesInfo) ->
+                emit(trips.map { BusStopTimesRecordScheduleAndRealtime(it, realtimeBusStopTimesInfo = null) })
+                Log.d("BusInfo", "First emit of records")
 
-            // Then enrich with realtime once we have a location
-            emit(trips.map { record ->
-                val matchingRealTimeRecord = realtimeBusStopTimesInfo.let {
-                    val tripId = record.tripInfo.tripId.toInt()
+                // Then enrich with realtime once we have a location
+                emit(trips.map { record ->
+                    val matchingRealTimeRecord = realtimeBusStopTimesInfo.let {
+                        val tripId = record.tripInfo.tripId.toInt()
 
-                    val index = it.binarySearchBy(tripId) { realtimeRecord ->
-                        realtimeRecord.tripId.toInt()
+                        val index = it.binarySearchBy(tripId) { realtimeRecord ->
+                            realtimeRecord.tripId.toInt()
+                        }
+
+                        if (index >= 0) it[index] else null
                     }
-
-                    if (index >= 0) it[index] else null
-                }
-                BusStopTimesRecordScheduleAndRealtime(
-                    record,
-                    matchingRealTimeRecord
-                )
-            })
-            Log.d("BusInfo", "Second emit of records")
-        }
-        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+                    BusStopTimesRecordScheduleAndRealtime(
+                        record,
+                        matchingRealTimeRecord
+                    )
+                })
+                Log.d("BusInfo", "Second emit of records")
+            }.stateIn(
+                scope,
+                SharingStarted.WhileSubscribed(5_000),
+                emptyList()
+            )
 
     val savedStops: StateFlow<List<BusStopInfo>> = settingsRepo.savedStops
         .map { ids ->
@@ -130,7 +148,7 @@ class BusInfo(
         }
         .stateIn(
             scope = scope,
-            started = SharingStarted.Eagerly,
+            started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
         )
 
