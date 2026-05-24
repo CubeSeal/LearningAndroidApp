@@ -131,12 +131,11 @@ class HomeViewModel(
     val focusedBusStop = busInfo.focusedBusStop
     val associatedStopTimes = combine(busInfo.associatedStopTimes, busInfo.currentMinute) { stopTimes, currentMinute ->
         val pastBuffer = Duration.ofMinutes(2)
-        val realTimeSorted = stopTimes.sortedWith(
-            compareBy(
-                { it.busStopTimesRecord.stopTimesInfo.departureTime },
-                { it.realtimeBusInfo?.distance ?: Double.MAX_VALUE }
-            )
-        )
+        val realTimeSorted = stopTimes.sortedBy {
+            val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
+            it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+        }
+
         realTimeSorted
             .filter { it.busStopTimesRecord.stopTimesInfo.departureTime > currentMinute - pastBuffer }
             .map {

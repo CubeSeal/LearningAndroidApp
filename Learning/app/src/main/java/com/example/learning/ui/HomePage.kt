@@ -61,7 +61,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
-import com.example.learning.RealtimeBusStopTimesRecord
+import com.example.learning.BusStopTimesRecordScheduleAndRealtime
 import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.BusStopInfo
@@ -144,7 +144,7 @@ fun MasterLazyColumn(
     listState: LazyListState,
     navController: NavController,
     focusedBusStop: BusStopInfo?,
-    associatedBusStopTimes: List<Pair<Boolean, RealtimeBusStopTimesRecord>>
+    associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordScheduleAndRealtime>>
 ) {
     val headerAlpha by remember {
         derivedStateOf {
@@ -237,11 +237,13 @@ fun StopTitle(closestBusStop: BusStopInfo? ) {
 @Composable
 fun LazyItemScope.BusCard(
     navController: NavController,
-    item: Pair<Boolean, RealtimeBusStopTimesRecord>
+    item: Pair<Boolean, BusStopTimesRecordScheduleAndRealtime>
 ) {
     val (isFirst, record) = item
-    val realtime = record.realtimeBusInfo
+    val realtime = record.realtimeBusStopTimesInfo
     val realTimeAvailable = realtime != null
+    val delay = realtime?.stopTimeDelay?.second ?: 0
+    val departureTime = item.second.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
 
     val (dynamicContainer, onDynamicContainer) = when {
         isFirst && realTimeAvailable ->
@@ -265,6 +267,7 @@ fun LazyItemScope.BusCard(
                 placementSpec = spring(stiffness = Spring.StiffnessMediumLow)
             )
     ) {
+        Log.d("Home-Page", "Item is $item")
         ListItem(
             modifier = Modifier.clickable {
                 navController.navigate(
@@ -294,13 +297,12 @@ fun LazyItemScope.BusCard(
             },
             supportingContent = {
                 Text(
-                    if (realTimeAvailable) "${realtime.distance.roundToInt()} m away"
-                    else "Untracked"
+                    text = if (delay != 0) "Delayed by $delay secs." else ""
                 )
             },
             trailingContent = {
                 Text(
-                    printTime(record.busStopTimesRecord.stopTimesInfo.departureTime),
+                    text = printTime(departureTime),
                     style = MaterialTheme.typography.titleMedium,
                     color = onDynamicContainer
                 )
