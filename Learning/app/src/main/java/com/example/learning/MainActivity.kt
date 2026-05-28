@@ -12,10 +12,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -50,7 +48,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.learning.ui.HOMEScreen
 import com.example.learning.ui.PickStopScreen
-import com.example.learning.ui.SavedStopsScreen
 import com.example.learning.ui.TripsScreen
 import com.example.learning.ui.theme.TfNSWTheme
 import kotlinx.coroutines.launch
@@ -65,19 +62,19 @@ import java.util.Locale
 data object Home
 
 @Serializable
-data object SavedStops
-
-@Serializable
 data class Trips(val tripId: String, val stopId: String, val date: String)
 
 @Serializable
 data object PickStop
 
-private fun NavController.navigateTopLevel(route: Any) {
+fun NavController.resetTo(route: Any) {
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        popUpTo(graph.findStartDestination().id) {
+            inclusive = true
+            saveState = false
+        }
         launchSingleTop = true
-        restoreState = true
+        restoreState = false
     }
 }
 
@@ -128,31 +125,15 @@ class MainActivity : ComponentActivity() {
                 val backStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = backStackEntry?.destination
 
-                val isHome = currentDestination?.hasRoute<Home>() == true
-                val isSaved = currentDestination?.hasRoute<SavedStops>() == true
-                val showSuite = isHome || isSaved
-
                 Scaffold(
                     bottomBar = {
-                        AnimatedVisibility(
-                            visible = showSuite,
-                            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)),
-                            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300))
-                        ) {
-                            NavigationBar {
-                                NavigationBarItem(
-                                    icon = { Icon(Icons.Default.Home, "Home") },
-                                    label = { Text("Home") },
-                                    selected = isHome,
-                                    onClick = { navController.navigateTopLevel(Home) }
-                                )
-                                NavigationBarItem(
-                                    icon = { Icon(Icons.Default.Bookmark, "Saved") },
-                                    label = { Text("Saved") },
-                                    selected = isSaved,
-                                    onClick = { navController.navigateTopLevel(SavedStops) }
-                                )
-                            }
+                        NavigationBar {
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Home, "Home") },
+                                label = { Text("Home") },
+                                selected = currentDestination?.hasRoute<Home>() == true,
+                                onClick = { navController.resetTo(Home) }
+                            )
                         }
                     },
                     containerColor = MaterialTheme.colorScheme.background
@@ -174,39 +155,64 @@ fun HomeNavHost(
     modifier: Modifier = Modifier,
 ) {
     Log.d("INIT", "Home screen loaded.")
+    val slideDuration = 300
+    val blinkDuration = 150
     NavHost(
         navController = navController,
         startDestination = Home,
         modifier = modifier,
-        enterTransition = {
-            slideIntoContainer(
-                AnimatedContentTransitionScope.SlideDirection.Start,
-                tween(300)
-            )
-        },
-        exitTransition = {
-            slideOutOfContainer(
-                AnimatedContentTransitionScope.SlideDirection.Start,
-                tween(300)
-            )
-        },
-        popEnterTransition = {
-            slideIntoContainer(
-                AnimatedContentTransitionScope.SlideDirection.End,
-                tween(300)
-            )
-        },
-        popExitTransition = {
-            slideOutOfContainer(
-                AnimatedContentTransitionScope.SlideDirection.End,
-                tween(300)
-            )
-        }
+        enterTransition = { fadeIn(tween(blinkDuration)) },
+//        exitTransition = { fadeOut(tween(blinkDuration)) },
+//        popEnterTransition = { fadeIn(tween(blinkDuration)) },
+//        popExitTransition = { fadeOut(tween(blinkDuration)) }
     ) {
         composable<Home> { HOMEScreen(navController) }
-        composable<SavedStops> { SavedStopsScreen(navController) }
-        composable<Trips> { TripsScreen(navController) }
-        composable<PickStop> { PickStopScreen(navController) }
+
+        composable<Trips>(
+            enterTransition = {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Start,
+                    tween(slideDuration)
+                )
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Start,
+                    tween(slideDuration)
+                )
+            },
+            popEnterTransition = {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.End,
+                    tween(slideDuration)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.End,
+                    tween(slideDuration)
+                )
+            }
+        ) {
+            TripsScreen(navController)
+        }
+
+        composable<PickStop>(
+            enterTransition = {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Start,
+                    tween(slideDuration)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.End,
+                    tween(slideDuration)
+                )
+            }
+        ) {
+            PickStopScreen(navController)
+        }
     }
 
 }

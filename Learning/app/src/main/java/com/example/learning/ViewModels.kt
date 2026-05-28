@@ -199,18 +199,12 @@ class HomeViewModel(
 class PickStopViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
-
     val closestBusStops = busInfo.closestBusStops
-
-    // ViewModel
+    val savedStops = busInfo.savedStops
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
-
     val filteredBusStops: StateFlow<List<BusStopInfo>> = _query
-        .map { query ->
-            if (query.isEmpty()) closestBusStops.value
-            else busInfo.searchStops(query)
-        }
+        .map { query -> busInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
@@ -220,6 +214,12 @@ class PickStopViewModel(
 
     fun updateFocusedBusStop(stop: BusStopInfo) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
     fun onQueryChange(q: String) { _query.value = q }
+    fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
+        busInfo.addSavedStop(busStopInfo)
+    }
+    fun removeSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
+        busInfo.removeSavedStop(busStopInfo)
+    }
 }
 
 class TripsViewModel(
@@ -242,17 +242,5 @@ class TripsViewModel(
 class SavedStopsViewModel(
     private val busInfo: BusInfo
 ) : ViewModel() {
-    val savedStops = busInfo.savedStops
 
-    fun focusStop(stop: BusStopInfo) = viewModelScope.launch {
-        busInfo.updateFocusedBusStop(stop)
-    }
-
-    fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
-        busInfo.addSavedStop(busStopInfo)
-    }
-
-    fun removeSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
-        busInfo.removeSavedStop(busStopInfo)
-    }
 }
