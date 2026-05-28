@@ -1,5 +1,6 @@
 package com.example.learning.ui
 
+import android.R.attr.text
 import android.util.Log
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -63,13 +64,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BusFilterOptions
-import com.example.learning.BusStopTimesRecordScheduleAndRealtime
+import com.example.learning.BusStopTimesRecordWithRealtime
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
 import com.example.learning.Trips
 import com.example.learning.printTime
-import com.example.learning.repos.BusStopInfo
+import com.example.learning.repos.BusStopRecord
+import java.time.Duration
+import java.util.concurrent.Delayed
+import kotlin.math.round
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -152,8 +156,8 @@ fun EditStop(onClick: () -> Unit) {
 fun MasterLazyColumn(
     listState: LazyListState,
     navController: NavController,
-    focusedBusStop: BusStopInfo?,
-    associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordScheduleAndRealtime>>,
+    focusedBusStop: BusStopRecord?,
+    associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordWithRealtime>>,
     //TODO: Maybe combine these two into a single param. Not that important though.
     availableFiltersForBusStop: Set<BusFilterOptions>,
     selectedFiltersForBusStop: Set<BusFilterOptions>,
@@ -210,7 +214,7 @@ fun MasterLazyColumn(
 
             items(
                 items = associatedBusStopTimes,
-                key = { it.second.busStopTimesRecord.fakeId }
+                key = { item -> item.second.busStopTimesRecord.let { Triple(it.stopId,it.tripId, it.departureTime) } }
             ) { item ->
                 BusCard(navController, item)
             }
@@ -239,7 +243,7 @@ fun BypassHeader(isAppReady: Boolean ){
 }
 
 @Composable
-fun StopTitle(closestBusStop: BusStopInfo? ) {
+fun StopTitle(closestBusStop: BusStopRecord? ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -301,16 +305,26 @@ fun ModeFilterChips(
 @Composable
 fun LazyItemScope.BusCard(
     navController: NavController,
-    item: Pair<Boolean, BusStopTimesRecordScheduleAndRealtime>
+    item: Pair<Boolean, BusStopTimesRecordWithRealtime>
 ) {
     val (isFirst, record) = item
-    val realtime = record.realtimeBusStopTimesInfo
-    val realTimeAvailable = realtime != null
-    val delay = realtime?.stopTimeDelay?.second ?: 0
-    val departureTime = item.second.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+    val realtime = record.realtimeBusStopTimesRecord
+    val delay = realtime?.stopTimeDelay
+    // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
+    // Only make the choice to treat it as zero when re-calculating departureTimes.
+    val delayText = delay?.toMinutes()?.let {
+        when {
+            it == 1L -> "Delayed by 1 minute"
+            it == 0L -> "On time"
+            it == -1L -> "Early by 1 minute"
+            it > 1 -> "Delayed by $it minutes"
+            else -> "Early by ${-it} minutes"
+        }
+    } ?: "–"
+    val departureTime = item.second.busStopTimesRecord.departureTime + (delay ?: Duration.ZERO)
 
     val (dynamicContainer, onDynamicContainer) = when {
-        isFirst && realTimeAvailable ->
+        isFirst && realtime != null ->
             MaterialTheme.colorScheme.secondaryContainer to
                     MaterialTheme.colorScheme.onSecondaryContainer
         isFirst ->
@@ -336,9 +350,9 @@ fun LazyItemScope.BusCard(
             modifier = Modifier.clickable {
                 navController.navigate(
                     Trips(
-                        item.second.busStopTimesRecord.tripInfo.tripId,
-                        item.second.busStopTimesRecord.stopInfo.stopId,
-                        item.second.busStopTimesRecord.stopTimesInfo.departureTime.toLocalDate().toString(),
+                        item.second.busStopTimesRecord.tripId,
+                        item.second.busStopTimesRecord.stopId,
+                        item.second.busStopTimesRecord.departureTime.toLocalDate().toString(),
                     )
                 )
             },
@@ -350,20 +364,16 @@ fun LazyItemScope.BusCard(
                 overlineColor = onDynamicContainer
             ),
             overlineContent = {
-                Text(record.busStopTimesRecord.tripInfo.tripHeadsign)
+                Text(record.busStopTimesRecord.tripHeadsign)
             },
             headlineContent = {
                 Text(
-                    record.busStopTimesRecord.routeInfo.routeShortName,
+                    record.busStopTimesRecord.routeShortName,
                     style = MaterialTheme.typography.bodyLarge
                         .copy(fontStyle = FontStyle.Italic)
                 )
             },
-            supportingContent = {
-                Text(
-                    text = if (delay != 0) "Delayed by $delay secs." else ""
-                )
-            },
+            supportingContent = { Text(text = delayText) },
             trailingContent = {
                 Text(
                     text = printTime(departureTime),

@@ -86,7 +86,7 @@ private fun TripsList(
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(stopId, stopTimesByTrip.size) {
-        val targetIndex = stopTimesByTrip.indexOfFirst { it.stopInfo.stopId == stopId }
+        val targetIndex = stopTimesByTrip.indexOfFirst { it.stopId == stopId }
         if (targetIndex >= 0 && stopTimesByTrip.isNotEmpty()) {
             listState.scrollToItem(
                 index = targetIndex + 1,
@@ -99,8 +99,8 @@ private fun TripsList(
         LoadingScreen("Loading trip information...")
     } else {
         val first = stopTimesByTrip.first()
-        val routeShortName = first.routeInfo.routeShortName
-        val routeLongName = first.routeInfo.routeLongName
+        val routeShortName = first.routeShortName
+        val routeLongName = first.routeLongName
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -128,9 +128,9 @@ private fun TripsList(
 
             itemsIndexed(
                 items = stopTimesByTrip,
-                key = { _, item -> item.stopTimesInfo.sequence }
+                key = { _, item -> item.sequence }
             ) { index, item ->
-                val isFocused = item.stopInfo.stopId == stopId
+                val isFocused = item.stopId == stopId
                 val (container, onContainer) = if (isFocused) {
                     MaterialTheme.colorScheme.secondaryContainer to
                             MaterialTheme.colorScheme.onSecondaryContainer
@@ -140,8 +140,8 @@ private fun TripsList(
                 }
 
                 StopRow(
-                    stopName = item.stopInfo.stopName,
-                    departureTime = printTime(item.stopTimesInfo.departureTime),
+                    stopName = item.stopName,
+                    departureTime = printTime(item.departureTime),
                     isFirst = index == 0,
                     isLast = index == stopTimesByTrip.lastIndex,
                     isFocused = isFocused,

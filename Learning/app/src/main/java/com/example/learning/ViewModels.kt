@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -14,7 +13,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.toRoute
-import com.example.learning.repos.BusStopInfo
+import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
@@ -113,11 +112,6 @@ object AppViewModelProvider {
 
             PickStopViewModel(app.repos.busInfo)
         }
-        initializer {
-            val app = (this[APPLICATION_KEY] as LearningApplication)
-
-            SavedStopsViewModel(app.repos.busInfo)
-        }
     }
 }
 
@@ -138,21 +132,23 @@ class HomeViewModel(
     ) { stopTimes, currentMinute, selectedFilters ->
         val pastBuffer = Duration.ofMinutes(2)
         val realTimeSorted = stopTimes.sortedBy {
-            val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
-            it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+            // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
+            // Only make the choice to treat it as zero when re-calculating departureTimes.
+            it.busStopTimesRecord.departureTime + (it.realtimeBusStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
         }
 
         realTimeSorted
             //TODO: Rarefy the types here so that I'm only pulling in what I need instead of mutating things
             // all over the place.
-            .filter { busStopTimesRecord ->
-                val delay = busStopTimesRecord.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
-                val newTime = busStopTimesRecord.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
-                newTime > currentMinute - pastBuffer && (selectedFilters.isEmpty() || busStopTimesRecord.appliedFilters.any {it in selectedFilters })
+            .filter {
+                val newTime = it.busStopTimesRecord.departureTime +
+                    (it.realtimeBusStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
+                newTime > currentMinute - pastBuffer && (selectedFilters.isEmpty()
+                        || it.applicableFilters.any { filter -> filter in selectedFilters })
             }
             .map {
-                val delay = it.realtimeBusStopTimesInfo?.stopTimeDelay?.second ?: 0
-                val newTime = it.busStopTimesRecord.stopTimesInfo.departureTime.plusSeconds(delay.toLong())
+                val newTime = it.busStopTimesRecord.departureTime +
+                    (it.realtimeBusStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
                 (newTime >= currentMinute) to it
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
@@ -183,8 +179,8 @@ class HomeViewModel(
         }
     }
 
-    fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
-        busInfo.addSavedStop(busStopInfo)
+    fun addSavedStop(busStopRecord: BusStopRecord) = viewModelScope.launch {
+        busInfo.addSavedStop(busStopRecord)
     }
 
     fun toggleFilterForBusStops(busStopFilterOptions: BusFilterOptions) {
@@ -203,7 +199,7 @@ class PickStopViewModel(
     val savedStops = busInfo.savedStops
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
-    val filteredBusStops: StateFlow<List<BusStopInfo>> = _query
+    val filteredBusStops: StateFlow<List<BusStopRecord>> = _query
         .map { query -> busInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
         .stateIn(
@@ -212,13 +208,13 @@ class PickStopViewModel(
             closestBusStops.value
         )
 
-    fun updateFocusedBusStop(stop: BusStopInfo) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
+    fun updateFocusedBusStop(stop: BusStopRecord) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
     fun onQueryChange(q: String) { _query.value = q }
-    fun addSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
-        busInfo.addSavedStop(busStopInfo)
+    fun addSavedStop(busStopRecord: BusStopRecord) = viewModelScope.launch {
+        busInfo.addSavedStop(busStopRecord)
     }
-    fun removeSavedStop(busStopInfo: BusStopInfo) = viewModelScope.launch {
-        busInfo.removeSavedStop(busStopInfo)
+    fun removeSavedStop(busStopRecord: BusStopRecord) = viewModelScope.launch {
+        busInfo.removeSavedStop(busStopRecord)
     }
 }
 
@@ -236,11 +232,5 @@ class TripsViewModel(
         emit(result)
         Log.d("VM", result.toString())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-}
-
-class SavedStopsViewModel(
-    private val busInfo: BusInfo
-) : ViewModel() {
 
 }

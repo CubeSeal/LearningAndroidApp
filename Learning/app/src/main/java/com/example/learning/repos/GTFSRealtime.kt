@@ -16,7 +16,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 @Immutable
-data class RealtimeBusInfo(
+data class RealtimeBusTripInfo(
     val id: String,
     val tripId: String,
     val updatedAt: LocalDateTime,
@@ -31,9 +31,9 @@ class GtfsRealtimeRepository(
     private val apiKey = BuildConfig.TRANSPORT_NSW_API_KEY
     private val request = Request.Builder().url(gtfsUrl).header("Authorization", value = "apikey $apiKey").build()
 
-    suspend fun getBusData(): List<RealtimeBusInfo> = withContext(Dispatchers.IO) {
+    suspend fun getBusData(): List<RealtimeBusTripInfo> = withContext(Dispatchers.IO) {
         Log.d("GTFS-Realtime", "Starting getBusData." )
-        val closestBuses = mutableListOf<RealtimeBusInfo>()
+        val closestBuses = mutableListOf<RealtimeBusTripInfo>()
 
         val response = httpClient.newCall(request).execute()
         if (!response.isSuccessful) throw IOException("Failed: $response")
@@ -63,10 +63,10 @@ class GtfsRealtimeRepository(
         return@withContext closestBuses
     }
 
-    private fun convertToBusInfo(entity: FeedEntity): RealtimeBusInfo {
+    private fun convertToBusInfo(entity: FeedEntity): RealtimeBusTripInfo {
         val tripUpdate = entity.tripUpdate
 
-        return RealtimeBusInfo(
+        return RealtimeBusTripInfo(
             id = entity.id,
             tripId = tripUpdate.trip.tripId,
             updatedAt = LocalDateTime.ofInstant(

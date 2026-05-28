@@ -2,11 +2,12 @@ package com.example.learning
 
 import android.util.Log
 import androidx.compose.runtime.Immutable
-import com.example.learning.repos.BusStopInfo
+import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
+import com.example.learning.repos.RealtimeBusTripInfo
 import com.example.learning.repos.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,30 +27,49 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
+// Required since the info record isn't at stopTimes level, only at trip level, but has stop level information (and so
+// can't be just broadcast across.
 @Immutable
-data class RealtimeBusStopTimesInfo(
-    val id: String,
+data class RealtimeBusStopTimesRecord(
     val tripId: String,
+    val stopId: String,
     val updatedAt: LocalDateTime,
-    val stopTimeDelay: Pair<String, Int?>,
-    val vehicleLicencePlate: String,
+    val stopTimeDelay: Duration?,
+    val vehicleLicencePlate: String
 )
+
+private fun RealtimeBusTripInfo.toRealtimeBusStopTimesRecord(): List<RealtimeBusStopTimesRecord> {
+    return this.stopTimeDelays.map { stopTimeDelayPair ->
+        RealtimeBusStopTimesRecord(
+            tripId = this.tripId,
+            stopId = stopTimeDelayPair.first,
+            updatedAt = this.updatedAt,
+            stopTimeDelay = stopTimeDelayPair.second?.let { Duration.ofSeconds(it.toLong())},
+            vehicleLicencePlate = this.vehicleLicencePlate
+        )
+    }
+}
 
 sealed interface BusFilterOptions {
     data class RouteShortName(val routeShortName: String): BusFilterOptions
     data class TripHeadsign(val tripHeadsign: String): BusFilterOptions
 }
 
-
 @Immutable
-data class BusStopTimesRecordScheduleAndRealtime(
+data class BusStopTimesRecordWithRealtime(
+    // I think it's okay to have nesting like this if the underlying data structures are still flat.
+    // Just becomes a convenient grouping and constructor thing.
     val busStopTimesRecord: BusStopTimesRecord,
-    val appliedFilters: Set<BusFilterOptions>,
-    val realtimeBusStopTimesInfo: RealtimeBusStopTimesInfo?
+    // Normally I'd make this flat instead of nesting it like this, but making this nullable this is a convenient way
+    // to mark something as not having realtime info.
+    val realtimeBusStopTimesRecord: RealtimeBusStopTimesRecord?,
+    // Set of filters that apply to this busStop
+    val applicableFilters: Set<BusFilterOptions>
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -68,11 +88,11 @@ class BusInfo(
             delay(ChronoUnit.MILLIS.between(now, nextMinute))
         }
     }.stateIn(scope, SharingStarted.Eagerly, LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
-    private val _focusedBusStop = MutableStateFlow<BusStopInfo?>(null)
+    private val _focusedBusStop = MutableStateFlow<BusStopRecord?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
     // Derived state - automatically updates when location or allBusStops change
-    val closestBusStops: StateFlow<List<BusStopInfo>> = locationRepo.currentLocation.map { loc ->
+    val closestBusStops: StateFlow<List<BusStopRecord>> = locationRepo.currentLocation.map { loc ->
         Log.d("BusInfo", "Updating closest info with $loc.")
         loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
     }.stateIn(
@@ -81,31 +101,21 @@ class BusInfo(
         initialValue = emptyList()
     )
 
-    private val realtimeBusStopTimesInfo: StateFlow<List<RealtimeBusStopTimesInfo>> =
+    private val realtimeBusStopTimesRecord: StateFlow<Map<Pair<String, String>, RealtimeBusStopTimesRecord>> =
         locationRepo.currentLocation.map { _ ->
             gtfsRealtimeRepository.getBusData()
-                .flatMap { realtimeBusInfo ->
-                    realtimeBusInfo.stopTimeDelays.map {
-                        RealtimeBusStopTimesInfo(
-                            id = realtimeBusInfo.id,
-                            tripId = realtimeBusInfo.tripId,
-                            updatedAt = realtimeBusInfo.updatedAt,
-                            stopTimeDelay = it,
-                            vehicleLicencePlate = realtimeBusInfo.vehicleLicencePlate
-                        )
-                    }
-                }
-                .sortedBy { it.tripId }
+                .flatMap { it.toRealtimeBusStopTimesRecord() }
+                .associateBy { it.tripId to it.stopId }
         }.stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = emptyList()
+            initialValue = emptyMap()
         )
 
     val associatedTrips = focusedBusStop
         .filterNotNull()
         .mapLatest {
-            val associatedTrips = gtfsStaticRepository.getAssociatedTrips(it)
+            val associatedTrips = gtfsStaticRepository.getStopTimesByStop(it)
             Log.d("BusInfo", "Associated Trips = $associatedTrips")
             associatedTrips
         }.stateIn(
@@ -119,8 +129,8 @@ class BusInfo(
         .mapLatest {
             val filterList = mutableSetOf<BusFilterOptions>()
             it.map { stopTimesRecord ->
-                filterList.add(BusFilterOptions.RouteShortName(stopTimesRecord.routeInfo.routeShortName))
-                filterList.add(BusFilterOptions.TripHeadsign(stopTimesRecord.tripInfo.tripHeadsign))
+                filterList.add(BusFilterOptions.RouteShortName(stopTimesRecord.routeShortName))
+                filterList.add(BusFilterOptions.TripHeadsign(stopTimesRecord.tripHeadsign))
             }
             Log.d("BusInfo", "Filter list = $filterList")
             filterList
@@ -132,60 +142,33 @@ class BusInfo(
 
     val associatedStopTimes = combine(
         associatedTrips.filter { it.isNotEmpty() },
-        realtimeBusStopTimesInfo.filter { it.isNotEmpty() },
+        realtimeBusStopTimesRecord,
         filtersForBusStop.filter { it.isNotEmpty() }
     ) { associatedTrips, realTimeInfo, filters ->
         Log.d("BusInfo", "Got over here.")
         Triple(associatedTrips, realTimeInfo, filters)
     }
         .distinctUntilChanged()
-        .transformLatest { (trips, realtimeBusStopTimesInfo, filters) ->
-            Log.d("BusInfo", "Loading associated stop times.")
-            emit(
-                trips.map {
-                    BusStopTimesRecordScheduleAndRealtime(
-                        it,
-                        appliedFilters = setOf(
-                            //TODO: Guard the sealed interface constructors.
-                            BusFilterOptions.RouteShortName(it.routeInfo.routeShortName),
-                            BusFilterOptions.TripHeadsign(it.tripInfo.tripHeadsign),
-                        ),
-                        realtimeBusStopTimesInfo = null
-                    )
-                }
-            )
-            Log.d("BusInfo", "First emit of records")
-
-            // Then enrich with realtime once we have a location
-            val emitValue = trips.map { record ->
-                val matchingRealTimeRecord = realtimeBusStopTimesInfo.let {
-                    val tripId = record.tripInfo.tripId.toInt()
-
-                    val index = it.binarySearchBy(tripId) { realtimeRecord ->
-                        realtimeRecord.tripId.toInt()
-                    }
-
-                    if (index >= 0) it[index] else null
-                }
-                BusStopTimesRecordScheduleAndRealtime(
-                    busStopTimesRecord = record,
-                    appliedFilters = setOf(
+        .transformLatest { (trips, realtimeBusStopTimesRecords, filters) ->
+             val busStopTimesRecordWithRealtime = trips.map { staticRecord ->
+                BusStopTimesRecordWithRealtime(
+                    busStopTimesRecord = staticRecord,
+                    realtimeBusStopTimesRecord = realtimeBusStopTimesRecords[staticRecord.tripId to staticRecord.stopId],
+                    applicableFilters = setOf(
                         //TODO: Guard the sealed interface constructors.
-                        BusFilterOptions.RouteShortName(record.routeInfo.routeShortName),
-                        BusFilterOptions.TripHeadsign(record.tripInfo.tripHeadsign),
-                    ),
-                    realtimeBusStopTimesInfo = matchingRealTimeRecord
+                        BusFilterOptions.RouteShortName(staticRecord.routeShortName),
+                        BusFilterOptions.TripHeadsign(staticRecord.tripHeadsign),
+                    )
                 )
             }
-            Log.d("BusInfo", "Second emit of records $emitValue")
-            emit(emitValue)
+            emit(busStopTimesRecordWithRealtime)
         }.stateIn(
             scope,
             SharingStarted.Eagerly,
             emptyList()
         )
 
-    val savedStops: StateFlow<List<BusStopInfo>> = settingsRepo.savedStops
+    val savedStops: StateFlow<List<BusStopRecord>> = settingsRepo.savedStops
         .map { ids ->
             ids.mapNotNull { id -> gtfsStaticRepository.getStopByStopId(id) }
         }
@@ -211,11 +194,11 @@ class BusInfo(
     }
 
 
-    suspend fun updateFocusedBusStop(busStopInfo: BusStopInfo) {
-        _focusedBusStop.value = busStopInfo
-        Log.d("BusInfo", "Will save bus stop to ${busStopInfo.stopId}")
-        settingsRepo.setHomeStopId(busStopInfo.stopId)
-        Log.d("BusInfo", "Setting saved bus stop to ${busStopInfo.stopId}")
+    suspend fun updateFocusedBusStop(busStopRecord: BusStopRecord) {
+        _focusedBusStop.value = busStopRecord
+        Log.d("BusInfo", "Will save bus stop to ${busStopRecord.stopId}")
+        settingsRepo.setHomeStopId(busStopRecord.stopId)
+        Log.d("BusInfo", "Setting saved bus stop to ${busStopRecord.stopId}")
     }
 
     suspend fun refresh() {
@@ -226,19 +209,19 @@ class BusInfo(
         locationRepo.requestFreshFix()
     }
 
-    suspend fun searchStops(stopName: String): List<BusStopInfo> {
+    suspend fun searchStops(stopName: String): List<BusStopRecord> {
         return gtfsStaticRepository.getStopsByName(stopName)
     }
 
     suspend fun getByTrip(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
-        return gtfsStaticRepository.getByTrip(tripId, date)
+        return gtfsStaticRepository.getStopTimesByTripId(tripId, date)
     }
 
-    suspend fun addSavedStop(busStopInfo: BusStopInfo) {
-        settingsRepo.addSavedStop(busStopInfo.stopId)
+    suspend fun addSavedStop(busStopRecord: BusStopRecord) {
+        settingsRepo.addSavedStop(busStopRecord.stopId)
     }
 
-    suspend fun removeSavedStop(busStopInfo: BusStopInfo) {
-        settingsRepo.removeSavedStop(busStopInfo.stopId)
+    suspend fun removeSavedStop(busStopRecord: BusStopRecord) {
+        settingsRepo.removeSavedStop(busStopRecord.stopId)
     }
 }

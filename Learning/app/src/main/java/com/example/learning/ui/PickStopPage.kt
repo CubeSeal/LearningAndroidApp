@@ -57,7 +57,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.example.learning.AppViewModelProvider
 import com.example.learning.Home
 import com.example.learning.PickStopViewModel
-import com.example.learning.repos.BusStopInfo
+import com.example.learning.repos.BusStopRecord
 
 enum class SearchTab(val label: String) {
     Search("Search"),
@@ -69,7 +69,7 @@ fun PickStopScreen(
     navController: NavController,
     viewModel: PickStopViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    fun searchCallback(busStop: BusStopInfo) {
+    fun searchCallback(busStop: BusStopRecord) {
         viewModel.updateFocusedBusStop(busStop)
         navController.popBackStack()
     }
@@ -143,11 +143,11 @@ fun PickStopScreen(
 
 @Composable
 fun SearchStopsTabPage(
-    closestStops: List<BusStopInfo>,
+    closestStops: List<BusStopRecord>,
     query: String,
     onQueryChange: (String) -> Unit,
-    filteredStops: List<BusStopInfo>,
-    searchCallback: (BusStopInfo) -> Unit
+    filteredStops: List<BusStopRecord>,
+    searchCallback: (BusStopRecord) -> Unit
 ) {
 
     Box(
@@ -171,8 +171,8 @@ fun SearchStopsTabPage(
 
 @Composable
 fun ClosetStopsList(
-   closestStops: List<BusStopInfo>,
-   searchCallback: (BusStopInfo) -> Unit
+    closestStops: List<BusStopRecord>,
+    searchCallback: (BusStopRecord) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(closestStops) {
@@ -195,9 +195,9 @@ fun ClosetStopsList(
 @Composable
 fun BoxScope.SearchBar(
     query: String,
-    filteredStops: List<BusStopInfo>,
+    filteredStops: List<BusStopRecord>,
     onQueryChange: (String) -> Unit,
-    searchCallback: (BusStopInfo) -> Unit
+    searchCallback: (BusStopRecord) -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -258,9 +258,9 @@ fun BoxScope.SearchBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedStopsTabPage(
-    savedStops: List<BusStopInfo>,
-    onTap: (BusStopInfo) -> Unit,
-    onRemove: (BusStopInfo) -> Unit
+    savedStops: List<BusStopRecord>,
+    onTap: (BusStopRecord) -> Unit,
+    onRemove: (BusStopRecord) -> Unit
 ) {
     if (savedStops.isEmpty()) {
         EmptyState(modifier = Modifier.fillMaxSize() )
@@ -288,9 +288,9 @@ fun SavedStopsTabPage(
 
 @Composable
 private fun SavedStopRow(
-    stop: BusStopInfo,
-    onTap: (BusStopInfo) -> Unit,
-    onRemove: (BusStopInfo) -> Unit
+    stop: BusStopRecord,
+    onTap: (BusStopRecord) -> Unit,
+    onRemove: (BusStopRecord) -> Unit
 ) {
     ListItem(
         modifier = Modifier.clickable(onClick = {onTap(stop)}),

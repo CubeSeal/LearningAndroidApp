@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
 import com.example.learning.db.StopEntity
+import com.example.learning.db.StopTimeWithDetails
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -30,23 +31,19 @@ import java.util.zip.GZIPInputStream
 data class LatLon(val latitude: Double, val longitude: Double)
 
 @Immutable
+// Keep these as flat parsed versions of room data structures.
+// Dealing with joins and filters in the SQL is a lot easier than trying to mangle it with nested structures here.
 data class BusStopTimesRecord(
-    val fakeId: Int, // A fake id not provided
-    val stopTimesInfo: BusStopTimesInfo,
-    val stopInfo: BusStopInfo,
-    val tripInfo: BusTripInfo,
-    val routeInfo: BusRouteInfo,
-)
-
-@Immutable
-data class BusRouteInfo (
+    val tripId: String,
+    // In seconds since beginning of day (for ordering and to handle after 24:00 time).
+    val departureTime: LocalDateTime,
+    val arrivalTime: LocalDateTime,
+    val sequence: Int,
     val routeId: String,
+    val serviceId: String,
+    val tripHeadsign: String,
     val routeShortName: String,
-    val routeLongName: String
-)
-
-@Immutable
-data class BusStopInfo(
+    val routeLongName: String,
     val stopId: String,
     val stopName: String,
     val stopLoc: LatLon,
@@ -54,21 +51,11 @@ data class BusStopInfo(
 )
 
 @Immutable
-data class BusStopTimesInfo(
-    val fakeId: Long, // Unique ID for Lazy columns.
-    val tripId: String,
-    // In seconds since beginning of day (for ordering and to handle after 24:00 time).
-    val departureTime: LocalDateTime,
-    val arrivalTime: LocalDateTime,
-    val sequence: Int,
-)
-
-@Immutable
-data class BusTripInfo(
-    val routeId: String,
-    val serviceId: String,
-    val tripId: String,
-    val tripHeadsign: String
+data class BusStopRecord(
+    val stopId: String,
+    val stopName: String,
+    val stopLoc: LatLon,
+    val wheelchairBoarding: Boolean
 )
 
 fun parseGtfsDateTime(date: LocalDate, time: String): LocalDateTime {
@@ -98,8 +85,8 @@ class GtfsStaticRepository(
             _calendarSequences ?: preloadCalendarDates().also { _calendarSequences = it }
         }
 
-    private inline fun StopEntity.toBusStopInfo(): BusStopInfo {
-        return BusStopInfo(
+    private fun StopEntity.toBusStopInfo(): BusStopRecord {
+        return BusStopRecord(
             this.stopId,
             this.stopName!!,
             LatLon(
@@ -107,6 +94,24 @@ class GtfsStaticRepository(
                 this.stopLon!!
             ),
             this.wheelchairBoarding == 1
+        )
+    }
+
+    private fun StopTimeWithDetails.toBusStopTimesRecord(date: LocalDate): BusStopTimesRecord {
+        return BusStopTimesRecord(
+            tripId = this.tripId,
+            departureTime = parseGtfsDateTime(date, this.departureTime),
+            arrivalTime = parseGtfsDateTime(date, this.arrivalTime),
+            sequence = this.stopSequence,
+            routeId = this.routeId,
+            serviceId = this.serviceId,
+            tripHeadsign = this.tripHeadsign,
+            routeShortName = this.routeShortName,
+            routeLongName = this.routeLongName,
+            stopId = this.stopId,
+            stopName = this.stopName,
+            stopLoc = LatLon(this.stopLat, this.stopLon),
+            wheelchairBoarding = this.wheelchairBoarding == 1
         )
     }
 
@@ -138,81 +143,36 @@ class GtfsStaticRepository(
         }
     }
 
-    suspend fun getAllStops(): List<BusStopInfo> {
+    suspend fun getAllStops(): List<BusStopRecord> {
         return gtfsDao.getAllStops().map { it.toBusStopInfo() }
     }
 
-    suspend fun getStopByStopId(stopId: String): BusStopInfo? {
+    suspend fun getStopByStopId(stopId: String): BusStopRecord? {
         return gtfsDao.getStopByStopId(stopId).map { it.toBusStopInfo() }.firstOrNull()
     }
 
-    suspend fun getStopsByName(stopName: String): List<BusStopInfo> {
+    suspend fun getStopsByName(stopName: String): List<BusStopRecord> {
         return gtfsDao.getStopsByName(stopName).map { it.toBusStopInfo() }
     }
 
-    suspend fun getNClosestStops(location: Location, length: Int): List<BusStopInfo> {
+    suspend fun getNClosestStops(location: Location, length: Int): List<BusStopRecord> {
         return gtfsDao
             .getNearestStops(location.latitude, location.longitude, length)
             .map { it.toBusStopInfo() }
     }
 
-    // This is now lightning fast
-    suspend fun getAssociatedTrips(busStopInfo: BusStopInfo): List<BusStopTimesRecord> {
-        val rows = gtfsDao.getStopTimesWithDetails(busStopInfo.stopId)
-
-        val busStopTimesInfo = rows
+    suspend fun getStopTimesByStop(busStopRecord: BusStopRecord): List<BusStopTimesRecord> {
+        return gtfsDao.getStopTimesWithDetailsByStop(busStopRecord.stopId)
             .flatMap { row ->
-                val tripInfo = BusTripInfo(row.routeId, row.serviceId, row.tripId, row.tripHeadsign)
-                val routeInfo = BusRouteInfo(row.routeId, row.routeShortName, row.routeLongName)
-
                 calendarSequences().getValue(row.serviceId).map { date ->
-                    BusStopTimesRecord(
-                        fakeId = 0,
-                        stopTimesInfo = BusStopTimesInfo(
-                            fakeId = 0L,
-                            tripId = row.tripId,
-                            departureTime = parseGtfsDateTime(date, row.departureTime),
-                            arrivalTime   = parseGtfsDateTime(date, row.arrivalTime),
-                            sequence = row.stopSequence
-                        ),
-                        stopInfo  = busStopInfo,
-                        tripInfo  = tripInfo,
-                        routeInfo = routeInfo,
-                    )
+                    row.toBusStopTimesRecord(date)
                 }
             }
-            .sortedBy { it.stopTimesInfo.arrivalTime }
-            .mapIndexed { i, it -> it.copy(fakeId = i, stopTimesInfo = it.stopTimesInfo.copy(fakeId = i.toLong())) }
-
-        return busStopTimesInfo
+            .sortedBy { it.arrivalTime }
     }
 
-    suspend fun getByTrip(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
-        return gtfsDao.getStopTimesWithDetailsByTrip(tripId)
-            .map { row ->
-                val tripInfo = BusTripInfo(row.routeId, row.serviceId, row.tripId, row.tripHeadsign)
-                val routeInfo = BusRouteInfo(row.routeId, row.routeShortName, row.routeLongName)
-                val stopInfo = BusStopInfo(
-                    row.stopId,
-                    row.stopName,
-                    LatLon(row.stopLat, row.stopLon),
-                    row.wheelchairBoarding == 1
-                )
-
-                BusStopTimesRecord(
-                    fakeId = 0,
-                    stopTimesInfo = BusStopTimesInfo(
-                        fakeId = 0L,
-                        tripId = row.tripId,
-                        departureTime = parseGtfsDateTime(date, row.departureTime),
-                        arrivalTime   = parseGtfsDateTime(date, row.arrivalTime),
-                        sequence = row.stopSequence
-                    ),
-                    stopInfo  = stopInfo,
-                    tripInfo  = tripInfo,
-                    routeInfo = routeInfo,
-                )
-            }
+    suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
+        return gtfsDao.getStopTimesWithDetailsByTrip(tripId).map { it.toBusStopTimesRecord(date) }
     }
 
     /**

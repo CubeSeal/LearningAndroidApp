@@ -309,7 +309,7 @@ interface GtfsDao {
     WHERE st.stop_id = :stopId
 """
     )
-    suspend fun getStopTimesWithDetails(stopId: String): List<StopTimeWithDetails>
+    suspend fun getStopTimesWithDetailsByStop(stopId: String): List<StopTimeWithDetails>
 
     @Query(
         """
