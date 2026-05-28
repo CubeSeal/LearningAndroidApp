@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,19 +20,17 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -47,7 +44,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.LoadingScreen
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
-import kotlinx.coroutines.delay
+import com.example.learning.repos.BusStopTimesRecord
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,9 +54,38 @@ fun TripsScreen(
 ) {
     val stopTimesByTrip by viewModel.busStopTimesRecord.collectAsStateWithLifecycle()
     val stopId = viewModel.stopId
-    val listState = rememberLazyListState()
 
-    LaunchedEffect( stopId, stopTimesByTrip.size) {
+    Column {
+        TopAppBar(
+            title = { },
+            navigationIcon = {
+                IconButton(onClick = { navController.popBackStack() }) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = "Back"
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background
+            )
+        )
+
+        TripsList(
+            stopTimesByTrip = stopTimesByTrip,
+            stopId = stopId
+        )
+    }
+
+}
+
+@Composable
+private fun TripsList(
+    stopTimesByTrip: List<BusStopTimesRecord>,
+    stopId: String
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(stopId, stopTimesByTrip.size) {
         val targetIndex = stopTimesByTrip.indexOfFirst { it.stopInfo.stopId == stopId }
         if (targetIndex >= 0 && stopTimesByTrip.isNotEmpty()) {
             listState.scrollToItem(
@@ -69,83 +95,62 @@ fun TripsScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
-        if (stopTimesByTrip.isEmpty()) {
-            LoadingScreen("Loading trip information...")
-        } else {
-            val first = stopTimesByTrip.first()
-            val routeShortName = first.routeInfo.routeShortName
-            val routeLongName = first.routeInfo.routeLongName
+    if (stopTimesByTrip.isEmpty()) {
+        LoadingScreen("Loading trip information...")
+    } else {
+        val first = stopTimesByTrip.first()
+        val routeShortName = first.routeInfo.routeShortName
+        val routeLongName = first.routeInfo.routeLongName
 
-            LazyColumn(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                state = listState
-            ) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            routeShortName,
-                            style = MaterialTheme.typography.displaySmall,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            routeLongName,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                itemsIndexed(
-                    items = stopTimesByTrip,
-                    key = { _, item -> item.stopTimesInfo.sequence }
-                ) { index, item ->
-                    val isFocused = item.stopInfo.stopId == stopId
-                    val (container, onContainer) = if (isFocused) {
-                        MaterialTheme.colorScheme.secondaryContainer to
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surface to
-                                MaterialTheme.colorScheme.onSurface
-                    }
-
-                    StopRow(
-                        stopName = item.stopInfo.stopName,
-                        departureTime = printTime(item.stopTimesInfo.departureTime),
-                        isFirst = index == 0,
-                        isLast = index == stopTimesByTrip.lastIndex,
-                        isFocused = isFocused,
-                        container = container,
-                        onContainer = onContainer
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            state = listState
+        ) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        routeShortName,
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        routeLongName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
+
+            itemsIndexed(
+                items = stopTimesByTrip,
+                key = { _, item -> item.stopTimesInfo.sequence }
+            ) { index, item ->
+                val isFocused = item.stopInfo.stopId == stopId
+                val (container, onContainer) = if (isFocused) {
+                    MaterialTheme.colorScheme.secondaryContainer to
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface to
+                            MaterialTheme.colorScheme.onSurface
+                }
+
+                StopRow(
+                    stopName = item.stopInfo.stopName,
+                    departureTime = printTime(item.stopTimesInfo.departureTime),
+                    isFirst = index == 0,
+                    isLast = index == stopTimesByTrip.lastIndex,
+                    isFocused = isFocused,
+                    container = container,
+                    onContainer = onContainer
+                )
+            }
         }
+
     }
 }
 
