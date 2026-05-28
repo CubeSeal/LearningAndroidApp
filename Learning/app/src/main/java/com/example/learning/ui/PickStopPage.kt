@@ -30,7 +30,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SearchBar
@@ -53,9 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.example.learning.AppViewModelProvider
-import com.example.learning.Home
+import com.example.learning.BackHeader
 import com.example.learning.PickStopViewModel
 import com.example.learning.repos.BusStopRecord
 
@@ -80,26 +78,11 @@ fun PickStopScreen(
     val filteredStops by viewModel.filteredBusStops.collectAsStateWithLifecycle()
 
     Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+        modifier = Modifier
+            .fillMaxSize().background(MaterialTheme.colorScheme.background)
     )
     {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .heightIn(48.dp)
-        ) {
-            IconButton(
-                onClick = { navController.popBackStack() },
-                modifier = Modifier.align(Alignment.CenterStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onBackground // or onBackground, onPrimary, etc.
-                )
-            }
-        }
+        BackHeader({navController.popBackStack()})
 
         PrimaryTabRow(
             selectedTabIndex = SearchTab.entries.indexOf(selectedTab)
@@ -124,17 +107,7 @@ fun PickStopScreen(
 
             SearchTab.Saved -> SavedStopsTabPage(
                savedStops = savedStops,
-               onTap = { stop ->
-                   viewModel.updateFocusedBusStop(stop)
-                   navController.navigate(Home) {
-                       popUpTo(navController.graph.findStartDestination().id) {
-                           saveState = true
-                       }
-                       launchSingleTop = true
-                       restoreState = true
-                   }
-
-               },
+               onTap = ::searchCallback,
                onRemove = viewModel::removeSavedStop
             )
         }
@@ -174,6 +147,11 @@ fun ClosetStopsList(
     closestStops: List<BusStopRecord>,
     searchCallback: (BusStopRecord) -> Unit
 ) {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.onSurface
+    )
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(closestStops) {
             ListItem(
@@ -188,7 +166,6 @@ fun ClosetStopsList(
             )
         }
     }
-
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -239,16 +216,11 @@ fun BoxScope.SearchBar(
                 ) { busStop ->
                     ListItem(
                         headlineContent = { Text(busStop.stopName) },
-                        supportingContent = null,
-                        leadingContent = null,
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                         modifier = Modifier
                             .clickable {
                                 searchCallback(busStop)
                                 expanded = false
                             }
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
             }

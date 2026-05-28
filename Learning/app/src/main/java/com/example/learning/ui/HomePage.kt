@@ -94,31 +94,16 @@ fun HOMEScreen(
     }
 
     Scaffold(
-        topBar = {
-            // If BypassHeader is simple, you can keep it as-is here.
-            // If you want M3 styling/scroll behavior, use TopAppBar/CenterAlignedTopAppBar.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars) // back in
-                    .height(48.dp)
-                    .padding(horizontal = 16.dp)
-            ) {
-                BypassHeader(isAppReady)
-            }
-        },
         floatingActionButton = {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 focusedBusStop?.let { SaveStop { viewModel.addSavedStop(it) } }
                 EditStop { navController.navigate(PickStop) }
             }
-        },
-        contentWindowInsets = WindowInsets.statusBars, // top only
-    ) { innerPadding ->
+        }
+    ) { _ ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refresh() },
-            modifier = Modifier.padding(innerPadding)
+            onRefresh = { viewModel.refresh() }
         ) {
             MasterLazyColumn(
                 listState,
@@ -186,7 +171,7 @@ fun MasterLazyColumn(
     ) {
         item() {
             HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 96.dp, vertical = 16.dp),
+                modifier = Modifier.padding(horizontal = 96.dp, vertical = 8.dp),
                 thickness = 2.dp,
             )
         }

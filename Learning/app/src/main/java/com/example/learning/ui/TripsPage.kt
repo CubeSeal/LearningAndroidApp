@@ -42,13 +42,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
+import com.example.learning.BackHeader
 import com.example.learning.LoadingScreen
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
 import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.BusStopTimesRecord
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripsScreen(
     navController: NavController,
@@ -58,20 +58,7 @@ fun TripsScreen(
     val stopId = viewModel.stopId
 
     Column {
-        TopAppBar(
-            title = { },
-            navigationIcon = {
-                IconButton(onClick = { navController.popBackStack() }) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.ArrowBack,
-                        contentDescription = "Back"
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background
-            )
-        )
+        BackHeader({navController.popBackStack()})
 
         TripsList(
             stopTimesByTrip = stopTimesByTrip,
