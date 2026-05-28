@@ -2,6 +2,7 @@ package com.example.learning.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.LoadingScreen
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
+import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.BusStopTimesRecord
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,7 +75,11 @@ fun TripsScreen(
 
         TripsList(
             stopTimesByTrip = stopTimesByTrip,
-            stopId = stopId
+            stopId = stopId,
+            onStopClick = {
+                viewModel.updateFocusedBusStopByStopId(it)
+                navController.popBackStack()
+            }
         )
     }
 
@@ -82,7 +88,8 @@ fun TripsScreen(
 @Composable
 private fun TripsList(
     stopTimesByTrip: List<BusStopTimesRecord>,
-    stopId: String
+    stopId: String,
+    onStopClick: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(stopId, stopTimesByTrip.size) {
@@ -140,13 +147,14 @@ private fun TripsList(
                 }
 
                 StopRow(
-                    stopName = item.stopName,
+                    busStopRecord = item,
                     departureTime = printTime(item.departureTime),
                     isFirst = index == 0,
                     isLast = index == stopTimesByTrip.lastIndex,
                     isFocused = isFocused,
                     container = container,
-                    onContainer = onContainer
+                    onContainer = onContainer,
+                    onStopClick = onStopClick
                 )
             }
         }
@@ -156,13 +164,14 @@ private fun TripsList(
 
 @Composable
 private fun StopRow(
-    stopName: String,
+    busStopRecord: BusStopTimesRecord,
     departureTime: String,
     isFirst: Boolean,
     isLast: Boolean,
     isFocused: Boolean,
     container: Color,
     onContainer: Color,
+    onStopClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -170,6 +179,7 @@ private fun StopRow(
             .fillMaxWidth()
             .background(container)
             .height(IntrinsicSize.Min)
+            .clickable { onStopClick(busStopRecord.stopId)}
     ) {
         // Rail spans the full row height including any padding
         Box(
@@ -202,7 +212,7 @@ private fun StopRow(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                stopName,
+                busStopRecord.stopName,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Normal,
                 color = onContainer

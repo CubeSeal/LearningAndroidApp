@@ -201,6 +201,10 @@ class BusInfo(
         Log.d("BusInfo", "Setting saved bus stop to ${busStopRecord.stopId}")
     }
 
+    suspend fun updateFocusedBusStopByStopId(stopId: String) {
+        getStopsByStopID(stopId)?.let { updateFocusedBusStop(it) }
+    }
+
     suspend fun refresh() {
         gtfsStaticRepository.syncGtfsDatabase(
             ghOwner = "CubeSeal",
@@ -212,6 +216,8 @@ class BusInfo(
     suspend fun searchStops(stopName: String): List<BusStopRecord> {
         return gtfsStaticRepository.getStopsByName(stopName)
     }
+
+    val getStopsByStopID = gtfsStaticRepository::getStopByStopId
 
     suspend fun getByTrip(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
         return gtfsStaticRepository.getStopTimesByTripId(tripId, date)

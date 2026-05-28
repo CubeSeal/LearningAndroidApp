@@ -233,4 +233,5 @@ class TripsViewModel(
         Log.d("VM", result.toString())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    fun updateFocusedBusStopByStopId(stopId: String) = viewModelScope.launch { busInfo.updateFocusedBusStopByStopId(stopId) }
 }
