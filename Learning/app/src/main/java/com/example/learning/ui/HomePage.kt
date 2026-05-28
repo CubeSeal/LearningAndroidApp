@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -263,7 +264,9 @@ fun ModeFilterChips(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
+        modifier = modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal= 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         availableBusFilterOptions.forEach { option ->
@@ -276,6 +279,9 @@ fun ModeFilterChips(
                         is BusFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
                     }
                 },
+                colors = FilterChipDefaults.filterChipColors(
+                   selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
 //                leadingIcon = if (mode in selectedModes) {
 //                    {
 //                        Icon(
