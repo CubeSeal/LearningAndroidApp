@@ -7,6 +7,7 @@ import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
 import com.example.learning.db.StopEntity
 import com.example.learning.db.StopTimeWithDetails
+import com.example.learning.db.StopWithGlobbedInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -27,6 +28,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.GZIPInputStream
+import kotlin.collections.first
+import kotlin.collections.map
 
 data class LatLon(val latitude: Double, val longitude: Double)
 
@@ -48,6 +51,13 @@ data class BusStopTimesRecord(
     val stopName: String,
     val stopLoc: LatLon,
     val wheelchairBoarding: Boolean
+)
+
+@Immutable
+data class GlobbedBusStopRecord(
+    val globbedStopId: String,
+    val globbedStopName: String,
+    val busStopRecords: List<BusStopRecord>
 )
 
 @Immutable
@@ -97,6 +107,32 @@ class GtfsStaticRepository(
         )
     }
 
+    private fun List<StopWithGlobbedInfo>.collateToGlobbedBusStopRecord(): List<GlobbedBusStopRecord> {
+        if (this.isEmpty()) return emptyList()
+
+        return this.groupBy { it.globbedStopId }.map {
+            val globbedStopId = it.value.first().globbedStopId
+            val globbedStopName = it.value.first().globbedStopName
+            val mappedBusStopRecords = it.value.map { record ->
+                BusStopRecord(
+                    stopId = record.stopId,
+                    stopName = record.stopName ?: return emptyList(),
+                    stopLoc = LatLon(
+                        latitude = record.stopLat ?: return emptyList(),
+                        longitude = record.stopLon ?: return emptyList()
+                    ),
+                    wheelchairBoarding = record.wheelchairBoarding == 1
+                )
+            }
+
+            return@map GlobbedBusStopRecord(
+                globbedStopId = globbedStopId,
+                globbedStopName = globbedStopName,
+                busStopRecords = mappedBusStopRecords
+            )
+        }
+    }
+
     private fun StopTimeWithDetails.toBusStopTimesRecord(date: LocalDate): BusStopTimesRecord {
         return BusStopTimesRecord(
             tripId = this.tripId,
@@ -143,22 +179,21 @@ class GtfsStaticRepository(
         }
     }
 
-    suspend fun getAllStops(): List<BusStopRecord> {
-        return gtfsDao.getAllStops().map { it.toBusStopInfo() }
+    suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? {
+        return gtfsDao.getStopsWithGlobbedStops(globbedStopId).collateToGlobbedBusStopRecord().firstOrNull()
     }
 
-    suspend fun getStopByStopId(stopId: String): BusStopRecord? {
-        return gtfsDao.getStopByStopId(stopId).map { it.toBusStopInfo() }.firstOrNull()
+    suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord> {
+        return gtfsDao.getStopsByNameWithGlobbedStops(globbedStopName).collateToGlobbedBusStopRecord()
     }
 
-    suspend fun getStopsByName(stopName: String): List<BusStopRecord> {
-        return gtfsDao.getStopsByName(stopName).map { it.toBusStopInfo() }
-    }
-
-    suspend fun getNClosestStops(location: Location, length: Int): List<BusStopRecord> {
+    suspend fun getNClosestStops(location: Location, length: Int): List<GlobbedBusStopRecord> {
+        // TODO: Since there's no globbed level stop lat lon yet the length only works at the non-globbed level. Thus it
+        //  is very likely that queries near a train station will get globbed together and you'll get less than the
+        //  arg length.
         return gtfsDao
-            .getNearestStops(location.latitude, location.longitude, length)
-            .map { it.toBusStopInfo() }
+            .getNearestStopsWithGlobbedStops(location.latitude, location.longitude, length)
+            .collateToGlobbedBusStopRecord()
     }
 
     suspend fun getStopTimesByStop(busStopRecord: BusStopRecord): List<BusStopTimesRecord> {

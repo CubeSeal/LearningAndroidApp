@@ -1,6 +1,6 @@
 package com.example.learning.ui
 
-import android.R.attr.text
+import android.annotation.SuppressLint
 import android.util.Log
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -17,14 +17,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -32,8 +29,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -70,10 +67,8 @@ import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
 import com.example.learning.Trips
 import com.example.learning.printTime
-import com.example.learning.repos.BusStopRecord
+import com.example.learning.repos.GlobbedBusStopRecord
 import java.time.Duration
-import java.util.concurrent.Delayed
-import kotlin.math.round
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,7 +80,6 @@ fun HOMEScreen(
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val availableFiltersForBusStop by viewModel.availableFiltersForBusStop.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
-    val isAppReady by viewModel.isUpToDate.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
@@ -93,6 +87,7 @@ fun HOMEScreen(
         listState.scrollToItem(0)
     }
 
+    @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     Scaffold(
         floatingActionButton = {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -100,7 +95,8 @@ fun HOMEScreen(
                 EditStop { navController.navigate(PickStop) }
             }
         }
-    ) { _ ->
+    )
+    { _ ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refresh() }
@@ -141,7 +137,7 @@ fun EditStop(onClick: () -> Unit) {
 fun MasterLazyColumn(
     listState: LazyListState,
     navController: NavController,
-    focusedBusStop: BusStopRecord?,
+    focusedBusStop: GlobbedBusStopRecord?,
     associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordWithRealtime>>,
     //TODO: Maybe combine these two into a single param. Not that important though.
     availableFiltersForBusStop: Set<BusFilterOptions>,
@@ -228,14 +224,14 @@ fun BypassHeader(isAppReady: Boolean ){
 }
 
 @Composable
-fun StopTitle(closestBusStop: BusStopRecord? ) {
+fun StopTitle(closestBusStop: GlobbedBusStopRecord? ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(96.dp)
     ) {
         Text(
-            text = closestBusStop?.stopName ?: "Loading local stop...",
+            text = closestBusStop?.globbedStopName ?: "Loading local stop...",
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,

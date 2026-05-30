@@ -1,6 +1,7 @@
 package com.example.learning.db
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -140,6 +141,42 @@ data class StopTimeEntity(
     @ColumnInfo(name = "timepoint") val timepoint: Int?,
 )
 
+@Entity(
+    tableName = "globbed_stops",
+    primaryKeys = ["globbed_stop_id", "stop_id"],
+    indices = [Index("stop_id"), Index("globbed_stop_id"), Index("globbed_stop_name")],
+    foreignKeys = [
+        ForeignKey(
+            entity = StopEntity::class,
+            parentColumns = ["stop_id"],
+            childColumns = ["stop_id"]
+        )
+    ],
+)
+data class GlobbedStopEntity(
+    @ColumnInfo(name = "globbed_stop_id") val globbedStopId: String,
+    @ColumnInfo(name = "globbed_stop_name") val globbedStopName: String,
+    @ColumnInfo(name = "stop_id") val stopId: String,
+)
+
+data class StopWithGlobbedInfo(
+    val stopId: String,
+    val stopCode: String?,
+    val stopName: String?,
+    val stopDesc: String?,
+    val stopLat: Double?,
+    val stopLon: Double?,
+    val zoneId: String?,
+    val stopUrl: String?,
+    val locationType: Int?,
+    val parentStation: String?,
+    val stopTimezone: String?,
+    val wheelchairBoarding: Int?,
+    val platformCode: String?,
+    val globbedStopId: String,
+    val globbedStopName: String
+)
+
 data class StopTimeWithDetails(
     val tripId: String,
     val departureTime: String,
@@ -201,16 +238,6 @@ interface GtfsDao {
 """
     )
     suspend fun getNearestStops(userLat: Double, userLon: Double, limit: Int): List<StopEntity>
-
-    @Query(
-        """
-    SELECT *
-    FROM stops
-    WHERE stop_id = :stopId
-    LIMIT 1
-"""
-    )
-    suspend fun getStopByStopId(stopId: String): List<StopEntity>
 
     @Query(
         """
@@ -336,6 +363,92 @@ interface GtfsDao {
 """
     )
     suspend fun getStopTimesWithDetailsByTrip(tripId: String): List<StopTimeWithDetails>
+
+    // ── Globbed Stops ──────────────────────────────────────────────
+
+    @Query(
+        """
+        SELECT
+            A.stop_id AS stopId,
+            A.stop_name AS stopName,
+            A.stop_lat AS stopLat,
+            A.stop_lon AS stopLon,
+            A.wheelchair_boarding AS wheelchairBoarding,
+            COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
+            COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
+        FROM stops A
+        LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
+        WHERE B.globbed_stop_id = :globbedStopId
+       """)
+    suspend fun getStopsWithGlobbedStops(globbedStopId: String): List<StopWithGlobbedInfo>
+
+    @Query(
+        """
+        SELECT
+            A.stop_id AS stopId,
+            A.stop_name AS stopName,
+            A.stop_lat AS stopLat,
+            A.stop_lon AS stopLon,
+            A.wheelchair_boarding AS wheelchairBoarding,
+            COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
+            COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
+        FROM stops A
+        LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
+        WHERE globbed_stop_name LIKE '%' || :query || '%' LIMIT :limit
+        """)
+    suspend fun searchStopsWithGlobbedStops(query: String, limit: Int = 30): List<StopWithGlobbedInfo>
+
+    @Query(
+        """
+            SELECT
+                A.stop_id AS stopId,
+                A.stop_name AS stopName,
+                A.stop_lat AS stopLat,
+                A.stop_lon AS stopLon,
+                A.wheelchair_boarding AS wheelchairBoarding,
+                COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
+                COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
+            FROM stops A
+            LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
+        """)
+    suspend fun getAllStopsWithGlobbedStops(): List<StopWithGlobbedInfo>
+
+    @Query(
+        """
+    SELECT
+        A.stop_id AS stopId,
+        A.stop_name AS stopName,
+        A.stop_lat AS stopLat,
+        A.stop_lon AS stopLon,
+        A.wheelchair_boarding AS wheelchairBoarding,
+        COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
+        COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName,
+        ((stop_lat - :userLat) * (stop_lat - :userLat) + 
+         (stop_lon - :userLon) * (stop_lon - :userLon)) AS distance_sq
+    FROM stops A
+    LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
+    ORDER BY distance_sq ASC
+    LIMIT :limit
+"""
+    )
+    suspend fun getNearestStopsWithGlobbedStops(userLat: Double, userLon: Double, limit: Int): List<StopWithGlobbedInfo>
+
+    @Query(
+        """
+    SELECT
+        A.stop_id AS stopId,
+        A.stop_name AS stopName,
+        A.stop_lat AS stopLat,
+        A.stop_lon AS stopLon,
+        A.wheelchair_boarding AS wheelchairBoarding,
+        COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
+        COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
+    FROM stops A
+    LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
+    WHERE stop_name LIKE '%' || :globbedStopName || '%' COLLATE NOCASE
+    """
+    )
+    suspend fun getStopsByNameWithGlobbedStops(globbedStopName: String): List<StopWithGlobbedInfo>
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -346,9 +459,9 @@ interface GtfsDao {
     entities = [
         AgencyEntity::class, RouteEntity::class, CalendarEntity::class,
         CalendarDateEntity::class, TripEntity::class, StopEntity::class,
-        StopTimeEntity::class,
+        StopTimeEntity::class, GlobbedStopEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 internal abstract class GtfsDatabase : RoomDatabase() {

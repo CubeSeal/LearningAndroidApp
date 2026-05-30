@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.toRoute
 import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.FileRepository
+import com.example.learning.repos.GlobbedBusStopRecord
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
@@ -179,8 +180,8 @@ class HomeViewModel(
         }
     }
 
-    fun addSavedStop(busStopRecord: BusStopRecord) = viewModelScope.launch {
-        busInfo.addSavedStop(busStopRecord)
+    fun addSavedStop(globbedBusStopRecord: GlobbedBusStopRecord) = viewModelScope.launch {
+        busInfo.addSavedStop(globbedBusStopRecord)
     }
 
     fun toggleFilterForBusStops(busStopFilterOptions: BusFilterOptions) {
@@ -199,7 +200,7 @@ class PickStopViewModel(
     val savedStops = busInfo.savedStops
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
-    val filteredBusStops: StateFlow<List<BusStopRecord>> = _query
+    val filteredBusStops: StateFlow<List<GlobbedBusStopRecord>> = _query
         .map { query -> busInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
         .stateIn(
@@ -208,13 +209,10 @@ class PickStopViewModel(
             closestBusStops.value
         )
 
-    fun updateFocusedBusStop(stop: BusStopRecord) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
+    fun updateFocusedBusStop(stop: GlobbedBusStopRecord) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
     fun onQueryChange(q: String) { _query.value = q }
-    fun addSavedStop(busStopRecord: BusStopRecord) = viewModelScope.launch {
-        busInfo.addSavedStop(busStopRecord)
-    }
-    fun removeSavedStop(busStopRecord: BusStopRecord) = viewModelScope.launch {
-        busInfo.removeSavedStop(busStopRecord)
+    fun removeSavedStop(globbedBusStopRecord: GlobbedBusStopRecord) = viewModelScope.launch {
+        busInfo.removeSavedStop(globbedBusStopRecord)
     }
 }
 

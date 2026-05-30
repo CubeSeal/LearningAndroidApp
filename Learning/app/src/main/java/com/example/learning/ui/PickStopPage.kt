@@ -56,19 +56,21 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
 import com.example.learning.PickStopViewModel
 import com.example.learning.repos.BusStopRecord
+import com.example.learning.repos.GlobbedBusStopRecord
 
 enum class SearchTab(val label: String) {
     Search("Search"),
     Saved("Saved")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PickStopScreen(
     navController: NavController,
     viewModel: PickStopViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    fun searchCallback(busStop: BusStopRecord) {
-        viewModel.updateFocusedBusStop(busStop)
+    fun searchCallback(globbedBusStopRecord: GlobbedBusStopRecord) {
+        viewModel.updateFocusedBusStop(globbedBusStopRecord)
         navController.popBackStack()
     }
     val closestStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
@@ -116,11 +118,11 @@ fun PickStopScreen(
 
 @Composable
 fun SearchStopsTabPage(
-    closestStops: List<BusStopRecord>,
+    closestStops: List<GlobbedBusStopRecord>,
     query: String,
     onQueryChange: (String) -> Unit,
-    filteredStops: List<BusStopRecord>,
-    searchCallback: (BusStopRecord) -> Unit
+    filteredStops: List<GlobbedBusStopRecord>,
+    searchCallback: (GlobbedBusStopRecord) -> Unit
 ) {
 
     Box(
@@ -144,8 +146,8 @@ fun SearchStopsTabPage(
 
 @Composable
 fun ClosetStopsList(
-    closestStops: List<BusStopRecord>,
-    searchCallback: (BusStopRecord) -> Unit
+    closestStops: List<GlobbedBusStopRecord>,
+    searchCallback: (GlobbedBusStopRecord) -> Unit
 ) {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -158,7 +160,7 @@ fun ClosetStopsList(
                 modifier = Modifier.clickable { searchCallback(it) },
                 headlineContent = {
                     Text(
-                        it.stopName,
+                        it.globbedStopName,
                         style = MaterialTheme.typography.bodyLarge
                             .copy(fontStyle = FontStyle.Italic)
                     )
@@ -172,9 +174,9 @@ fun ClosetStopsList(
 @Composable
 fun BoxScope.SearchBar(
     query: String,
-    filteredStops: List<BusStopRecord>,
+    filteredStops: List<GlobbedBusStopRecord>,
     onQueryChange: (String) -> Unit,
-    searchCallback: (BusStopRecord) -> Unit
+    searchCallback: (GlobbedBusStopRecord) -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -212,10 +214,10 @@ fun BoxScope.SearchBar(
             LazyColumn {
                 items(
                     items = filteredStops,
-                    key = { it.stopId }
+                    key = { it.globbedStopId }
                 ) { busStop ->
                     ListItem(
-                        headlineContent = { Text(busStop.stopName) },
+                        headlineContent = { Text(busStop.globbedStopName) },
                         modifier = Modifier
                             .clickable {
                                 searchCallback(busStop)
@@ -230,9 +232,9 @@ fun BoxScope.SearchBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedStopsTabPage(
-    savedStops: List<BusStopRecord>,
-    onTap: (BusStopRecord) -> Unit,
-    onRemove: (BusStopRecord) -> Unit
+    savedStops: List<GlobbedBusStopRecord>,
+    onTap: (GlobbedBusStopRecord) -> Unit,
+    onRemove: (GlobbedBusStopRecord) -> Unit
 ) {
     if (savedStops.isEmpty()) {
         EmptyState(modifier = Modifier.fillMaxSize() )
@@ -243,7 +245,7 @@ fun SavedStopsTabPage(
         ) {
             items(
                 items = savedStops,
-                key = { it.stopId }
+                key = { it.globbedStopId }
             ) { stop ->
                 SavedStopRow(
                     stop = stop,
@@ -260,14 +262,14 @@ fun SavedStopsTabPage(
 
 @Composable
 private fun SavedStopRow(
-    stop: BusStopRecord,
-    onTap: (BusStopRecord) -> Unit,
-    onRemove: (BusStopRecord) -> Unit
+    stop: GlobbedBusStopRecord,
+    onTap: (GlobbedBusStopRecord) -> Unit,
+    onRemove: (GlobbedBusStopRecord) -> Unit
 ) {
     ListItem(
         modifier = Modifier.clickable(onClick = {onTap(stop)}),
-        headlineContent = { Text(stop.stopName) },
-        supportingContent = { Text("Stop ${stop.stopId}") },
+        headlineContent = { Text(stop.globbedStopName) },
+        supportingContent = { Text("Stop ${stop.globbedStopId}") },
         leadingContent = {
             Icon(
                 Icons.Default.DirectionsBus,
@@ -279,7 +281,7 @@ private fun SavedStopRow(
             IconButton(onClick = {onRemove(stop)}) {
                 Icon(
                     Icons.Default.Close,
-                    contentDescription = "Remove ${stop.stopName}",
+                    contentDescription = "Remove ${stop.globbedStopName}",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

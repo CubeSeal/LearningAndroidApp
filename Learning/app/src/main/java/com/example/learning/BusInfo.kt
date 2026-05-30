@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.BusStopTimesRecord
+import com.example.learning.repos.GlobbedBusStopRecord
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
 import com.example.learning.repos.LocationRepository
@@ -88,11 +89,11 @@ class BusInfo(
             delay(ChronoUnit.MILLIS.between(now, nextMinute))
         }
     }.stateIn(scope, SharingStarted.Eagerly, LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
-    private val _focusedBusStop = MutableStateFlow<BusStopRecord?>(null)
+    private val _focusedBusStop = MutableStateFlow<GlobbedBusStopRecord?>(null)
     val focusedBusStop = _focusedBusStop.asStateFlow()
 
     // Derived state - automatically updates when location or allBusStops change
-    val closestBusStops: StateFlow<List<BusStopRecord>> = locationRepo.currentLocation.map { loc ->
+    val closestBusStops: StateFlow<List<GlobbedBusStopRecord>> = locationRepo.currentLocation.map { loc ->
         Log.d("BusInfo", "Updating closest info with $loc.")
         loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
     }.stateIn(
@@ -115,7 +116,9 @@ class BusInfo(
     val associatedTrips = focusedBusStop
         .filterNotNull()
         .mapLatest {
-            val associatedTrips = gtfsStaticRepository.getStopTimesByStop(it)
+            val associatedTrips = it.busStopRecords.flatMap { busStopRecord ->
+                gtfsStaticRepository.getStopTimesByStop(busStopRecord)
+            }
             Log.d("BusInfo", "Associated Trips = $associatedTrips")
             associatedTrips
         }.stateIn(
@@ -168,9 +171,9 @@ class BusInfo(
             emptyList()
         )
 
-    val savedStops: StateFlow<List<BusStopRecord>> = settingsRepo.savedStops
+    val savedStops: StateFlow<List<GlobbedBusStopRecord>> = settingsRepo.savedStops
         .map { ids ->
-            ids.mapNotNull { id -> gtfsStaticRepository.getStopByStopId(id) }
+            ids.mapNotNull { id -> gtfsStaticRepository.getGlobbedStopById(id) }
         }
         .stateIn(
             scope = scope,
@@ -181,12 +184,14 @@ class BusInfo(
     init {
         scope.launch {
             Log.d("BusInfo", "Populate stop from settings.")
-            settingsRepo.homeStopId.collect {
-                it?.let { stopId ->
+            settingsRepo.homeStopId.collect { settingsStopId ->
+                settingsStopId?.let { stopId ->
                     Log.d("BusInfo", "Will try to populate stop id = $stopId")
-                    val busStop = gtfsStaticRepository.getStopByStopId(stopId)
-                    Log.d("BusInfo", "Got busStop $busStop.")
-                    _focusedBusStop.update { busStop }
+                    val busStop = gtfsStaticRepository.getGlobbedStopById(stopId)
+                    busStop?.let {
+                        Log.d("BusInfo", "Got busStop $busStop.")
+                        _focusedBusStop.update { it }
+                    }
                 }
             }
             Log.d("BusInfo", "Populated stop from settings.")
@@ -194,15 +199,15 @@ class BusInfo(
     }
 
 
-    suspend fun updateFocusedBusStop(busStopRecord: BusStopRecord) {
-        _focusedBusStop.value = busStopRecord
-        Log.d("BusInfo", "Will save bus stop to ${busStopRecord.stopId}")
-        settingsRepo.setHomeStopId(busStopRecord.stopId)
-        Log.d("BusInfo", "Setting saved bus stop to ${busStopRecord.stopId}")
+    suspend fun updateFocusedBusStop(globbedBusStopRecord: GlobbedBusStopRecord) {
+        _focusedBusStop.value = globbedBusStopRecord
+        Log.d("BusInfo", "Will save bus stop to ${globbedBusStopRecord.globbedStopId}")
+        settingsRepo.setHomeStopId(globbedBusStopRecord.globbedStopId)
+        Log.d("BusInfo", "Setting saved bus stop to ${globbedBusStopRecord.globbedStopId}")
     }
 
     suspend fun updateFocusedBusStopByStopId(stopId: String) {
-        getStopsByStopID(stopId)?.let { updateFocusedBusStop(it) }
+        getGlobbedStopById(stopId)?.let { updateFocusedBusStop(it) }
     }
 
     suspend fun refresh() {
@@ -213,21 +218,21 @@ class BusInfo(
         locationRepo.requestFreshFix()
     }
 
-    suspend fun searchStops(stopName: String): List<BusStopRecord> {
-        return gtfsStaticRepository.getStopsByName(stopName)
+    suspend fun searchStops(globbedStopName: String): List<GlobbedBusStopRecord> {
+        return gtfsStaticRepository.getGlobbedStopsByName(globbedStopName)
     }
 
-    val getStopsByStopID = gtfsStaticRepository::getStopByStopId
+    val getGlobbedStopById = gtfsStaticRepository::getGlobbedStopById
 
     suspend fun getByTrip(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
         return gtfsStaticRepository.getStopTimesByTripId(tripId, date)
     }
 
-    suspend fun addSavedStop(busStopRecord: BusStopRecord) {
-        settingsRepo.addSavedStop(busStopRecord.stopId)
+    suspend fun addSavedStop(globbedBusStopRecord: GlobbedBusStopRecord) {
+        settingsRepo.addSavedStop(globbedBusStopRecord.globbedStopId)
     }
 
-    suspend fun removeSavedStop(busStopRecord: BusStopRecord) {
-        settingsRepo.removeSavedStop(busStopRecord.stopId)
+    suspend fun removeSavedStop(globbedBusStopRecord: GlobbedBusStopRecord) {
+        settingsRepo.removeSavedStop(globbedBusStopRecord.globbedStopId)
     }
 }
