@@ -47,6 +47,8 @@ data class BusStopTimesRecord(
     val tripHeadsign: String,
     val routeShortName: String,
     val routeLongName: String,
+    val globbedStopId: String,
+    val globbedStopName: String,
     val stopId: String,
     val stopName: String,
     val stopLoc: LatLon,
@@ -95,18 +97,6 @@ class GtfsStaticRepository(
             _calendarSequences ?: preloadCalendarDates().also { _calendarSequences = it }
         }
 
-    private fun StopEntity.toBusStopInfo(): BusStopRecord {
-        return BusStopRecord(
-            this.stopId,
-            this.stopName!!,
-            LatLon(
-                this.stopLat!!,
-                this.stopLon!!
-            ),
-            this.wheelchairBoarding == 1
-        )
-    }
-
     private fun List<StopWithGlobbedInfo>.collateToGlobbedBusStopRecord(): List<GlobbedBusStopRecord> {
         if (this.isEmpty()) return emptyList()
 
@@ -144,6 +134,8 @@ class GtfsStaticRepository(
             tripHeadsign = this.tripHeadsign,
             routeShortName = this.routeShortName,
             routeLongName = this.routeLongName,
+            globbedStopId = this.globbedStopId,
+            globbedStopName = this.globbedStopName,
             stopId = this.stopId,
             stopName = this.stopName,
             stopLoc = LatLon(this.stopLat, this.stopLon),
@@ -196,11 +188,12 @@ class GtfsStaticRepository(
             .collateToGlobbedBusStopRecord()
     }
 
-    suspend fun getStopTimesByStop(busStopRecord: BusStopRecord): List<BusStopTimesRecord> {
-        return gtfsDao.getStopTimesWithDetailsByStop(busStopRecord.stopId)
+    suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord> {
+        return globbedBusStopRecord.busStopRecords
+            .flatMap { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) }
             .flatMap { row ->
                 calendarSequences().getValue(row.serviceId).map { date ->
-                    row.toBusStopTimesRecord(date)
+                    row.toBusStopTimesRecord( date)
                 }
             }
             .sortedBy { it.arrivalTime }

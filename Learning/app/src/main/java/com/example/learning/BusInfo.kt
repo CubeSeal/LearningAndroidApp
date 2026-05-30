@@ -2,7 +2,6 @@ package com.example.learning
 
 import android.util.Log
 import androidx.compose.runtime.Immutable
-import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GlobbedBusStopRecord
 import com.example.learning.repos.GtfsRealtimeRepository
@@ -22,6 +21,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.forEach
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -59,6 +59,7 @@ private fun RealtimeBusTripInfo.toRealtimeBusStopTimesRecord(): List<RealtimeBus
 sealed interface BusFilterOptions {
     data class RouteShortName(val routeShortName: String): BusFilterOptions
     data class TripHeadsign(val tripHeadsign: String): BusFilterOptions
+    data class StopStand(val stopStand: String): BusFilterOptions
 }
 
 @Immutable
@@ -116,9 +117,7 @@ class BusInfo(
     val associatedTrips = focusedBusStop
         .filterNotNull()
         .mapLatest {
-            val associatedTrips = it.busStopRecords.flatMap { busStopRecord ->
-                gtfsStaticRepository.getStopTimesByStop(busStopRecord)
-            }
+            val associatedTrips = gtfsStaticRepository.getStopTimesByStop(it)
             Log.d("BusInfo", "Associated Trips = $associatedTrips")
             associatedTrips
         }.stateIn(
@@ -129,11 +128,17 @@ class BusInfo(
 
     val filtersForBusStop = associatedTrips
         .filter { it.isNotEmpty() }
-        .mapLatest {
+        .mapLatest { associatedTrips ->
             val filterList = mutableSetOf<BusFilterOptions>()
-            it.map { stopTimesRecord ->
+            associatedTrips.map { stopTimesRecord ->
                 filterList.add(BusFilterOptions.RouteShortName(stopTimesRecord.routeShortName))
                 filterList.add(BusFilterOptions.TripHeadsign(stopTimesRecord.tripHeadsign))
+                focusedBusStop
+                    .value
+                    ?.busStopRecords
+                    ?.takeIf { it.size > 2}
+                    ?.filter { it.stopId == stopTimesRecord.stopId }
+                    ?.forEach { filterList.add(BusFilterOptions.StopStand(it.stopName)) }
             }
             Log.d("BusInfo", "Filter list = $filterList")
             filterList
@@ -161,6 +166,7 @@ class BusInfo(
                         //TODO: Guard the sealed interface constructors.
                         BusFilterOptions.RouteShortName(staticRecord.routeShortName),
                         BusFilterOptions.TripHeadsign(staticRecord.tripHeadsign),
+                        BusFilterOptions.StopStand(staticRecord.stopName),
                     )
                 )
             }

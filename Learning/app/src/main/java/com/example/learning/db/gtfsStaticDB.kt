@@ -187,6 +187,8 @@ data class StopTimeWithDetails(
     val tripHeadsign: String,
     val routeShortName: String,
     val routeLongName: String,
+    val globbedStopName: String,
+    val globbedStopId: String,
     val stopId: String,
     val stopName: String,
     val stopLat: Double,
@@ -324,6 +326,8 @@ interface GtfsDao {
         t.trip_headsign   AS tripHeadsign,
         r.route_short_name AS routeShortName,
         r.route_long_name  AS routeLongName,
+        COALESCE(g.globbed_stop_id, s.stop_id) as globbedStopId,
+        COALESCE(g.globbed_stop_Name, s.stop_name) as globbedStopName,
         s.stop_id AS stopId,
         s.stop_name AS stopName,
         s.stop_lat AS stopLat,
@@ -333,6 +337,7 @@ interface GtfsDao {
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
     JOIN stops s ON st.stop_id = s.stop_id
+    LEFT JOIN globbed_stops as g ON st.stop_id = g.stop_id
     WHERE st.stop_id = :stopId
 """
     )
@@ -350,6 +355,8 @@ interface GtfsDao {
         t.trip_headsign   AS tripHeadsign,
         r.route_short_name AS routeShortName,
         r.route_long_name  AS routeLongName,
+        COALESCE(g.globbed_stop_id, s.stop_id) as globbedStopId,
+        COALESCE(g.globbed_stop_Name, s.stop_name) as globbedStopName,
         s.stop_id AS stopId,
         s.stop_name AS stopName,
         s.stop_lat AS stopLat,
@@ -359,6 +366,7 @@ interface GtfsDao {
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
     JOIN stops s ON st.stop_id = s.stop_id
+    LEFT JOIN globbed_stops as g ON st.stop_id = g.stop_id
     WHERE st.trip_id = :tripId
 """
     )
@@ -378,7 +386,7 @@ interface GtfsDao {
             COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
         FROM stops A
         LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
-        WHERE B.globbed_stop_id = :globbedStopId
+        WHERE globbedStopId = :globbedStopId
        """)
     suspend fun getStopsWithGlobbedStops(globbedStopId: String): List<StopWithGlobbedInfo>
 
