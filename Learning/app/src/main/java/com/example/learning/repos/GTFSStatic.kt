@@ -1,7 +1,6 @@
 package com.example.learning.repos
 
 import android.content.Context
-import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
@@ -10,6 +9,7 @@ import com.example.learning.db.StopTimeWithDetails
 import com.example.learning.db.StopWithGlobbedInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -81,16 +81,35 @@ fun parseGtfsDateTime(date: LocalDate, time: String): LocalDateTime {
         .plusSeconds(secs.toLong())
 }
 
+/**
+ * Read side of the static GTFS schedule, as consumed by [com.example.learning.BusInfo].
+ * Kept as a plain interface so tests can swap in a state-based fake (see `src/test`).
+ */
+interface StaticGtfsSource {
+    val isUpToDate: StateFlow<Boolean>
+
+    suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord?
+    suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord>
+    suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedBusStopRecord>
+    suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord>
+    suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord>
+    suspend fun syncGtfsDatabase(
+        ghOwner: String,
+        ghRepo: String,
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit = { _, _ -> },
+    )
+}
+
 class GtfsStaticRepository(
     private val context: Context,
     private val fileRepository: FileRepository,
     private val httpClient: OkHttpClient
-) {
+) : StaticGtfsSource {
     private val db get() = GtfsDatabase.getInstance(context)
     private val gtfsDao get() = db.gtfsDao()
     private var _calendarSequences: Map<String, Sequence<LocalDate>>? = null
     private val calMutex = Mutex()
-    val isUpToDate = MutableStateFlow(false)
+    override val isUpToDate = MutableStateFlow(false)
 
     private suspend fun calendarSequences(): Map<String, Sequence<LocalDate>> =
         _calendarSequences ?: calMutex.withLock {
@@ -171,15 +190,15 @@ class GtfsStaticRepository(
         }
     }
 
-    suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? {
+    override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? {
         return gtfsDao.getStopsWithGlobbedStops(globbedStopId).collateToGlobbedBusStopRecord().firstOrNull()
     }
 
-    suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord> {
+    override suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord> {
         return gtfsDao.getStopsByNameWithGlobbedStops(globbedStopName).collateToGlobbedBusStopRecord()
     }
 
-    suspend fun getNClosestStops(location: Location, length: Int): List<GlobbedBusStopRecord> {
+    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedBusStopRecord> {
         // TODO: Since there's no globbed level stop lat lon yet the length only works at the non-globbed level. Thus it
         //  is very likely that queries near a train station will get globbed together and you'll get less than the
         //  arg length.
@@ -188,7 +207,7 @@ class GtfsStaticRepository(
             .collateToGlobbedBusStopRecord()
     }
 
-    suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord> {
+    override suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord> {
         return globbedBusStopRecord.busStopRecords
             .flatMap { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) }
             .flatMap { row ->
@@ -199,7 +218,7 @@ class GtfsStaticRepository(
             .sortedBy { it.arrivalTime }
     }
 
-    suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
+    override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
         return gtfsDao.getStopTimesWithDetailsByTrip(tripId).map { it.toBusStopTimesRecord(date) }
     }
 
@@ -209,10 +228,10 @@ class GtfsStaticRepository(
      * Returns `true` if a new DB was downloaded and applied, `false` if already up to date,
      * and throws on network/IO errors.
      */
-    suspend fun syncGtfsDatabase(
+    override suspend fun syncGtfsDatabase(
         ghOwner: String,
         ghRepo: String,
-        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit = { _, _ -> },
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit,
     ) = withContext(Dispatchers.IO) {
         val tag = "GtfsSync"
         val timestampFile = "timestamp"
