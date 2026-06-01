@@ -35,11 +35,21 @@ enum class LocationMode {
     Off,            // no continuous updates; StateFlow holds last known value
 }
 
+/**
+ * Device location, as consumed by [com.example.learning.BusInfo]. Exposed as the framework-free
+ * domain type [LatLon] (not android.location.Location) so the domain stays unit-testable without
+ * Robolectric. Plain interface so tests can drive a state-based fake (see `src/test`).
+ */
+interface LocationSource {
+    val currentLocation: StateFlow<LatLon?>
+    suspend fun requestFreshFix()
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LocationRepository(
     context: Context,
     private val scope: CoroutineScope,
-) {
+) : LocationSource {
     private val appContext = context.applicationContext
     private val fusedLocationClient =
         LocationServices.getFusedLocationProviderClient(appContext)
@@ -62,8 +72,10 @@ class LocationRepository(
         _mode.value = mode
     }
 
-    private val _currentLocation = MutableStateFlow<Location?>(null)
-    val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
+    private val _currentLocation = MutableStateFlow<LatLon?>(null)
+    override val currentLocation: StateFlow<LatLon?> = _currentLocation.asStateFlow()
+
+    private fun Location.toLatLon() = LatLon(latitude, longitude)
 
     init {
         combine(_hasPermission, _mode, ::Pair)
@@ -75,7 +87,7 @@ class LocationRepository(
                 }
             }
             .onEach { location ->
-                _currentLocation.value = location
+                _currentLocation.value = location.toLatLon()
             }
             .launchIn(scope)
     }
@@ -172,21 +184,19 @@ class LocationRepository(
      * Unlike the old version, this also publishes the result into currentLocation.
      */
     @SuppressLint("MissingPermission")
-    suspend fun requestFreshFix(
-        priority: Int = Priority.PRIORITY_HIGH_ACCURACY,
-    ): Location? {
-        if (!_hasPermission.value) return null
+    override suspend fun requestFreshFix() {
+        if (!_hasPermission.value) return
 
         val cts = CancellationTokenSource()
 
-        return runCatching {
+        runCatching {
             fusedLocationClient
-                .getCurrentLocation(priority, cts.token)
+                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
                 .await()
         }.getOrNull()
             ?.also { freshLocation ->
                 Log.d("Location", "Updating currentLocation from fresh fix.")
-                _currentLocation.value = freshLocation
+                _currentLocation.value = freshLocation.toLatLon()
             }
     }
 }

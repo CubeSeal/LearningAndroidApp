@@ -39,7 +39,7 @@ TFNSW_API_KEY=<key> gradle run    # downloads GTFS, builds gtfs.db.gz locally
 
 ### Dev environment (Nix)
 
-`flake.nix` provides a dev shell with Android Studio, the Android SDK, and `kotlin-language-server`; `.envrc` (`use flake`) loads it via direnv. The SDK path and `TRANSPORT_NSW_API_KEY` live in `Learning/local.properties` (gitignored — never commit it).
+`flake.nix` provides a dev shell with Android Studio, the Android SDK, JDK 17 (sets `JAVA_HOME`, used by the Gradle CLI), and `kotlin-language-server`; `.envrc` (`use flake`) loads it via direnv. The SDK path and `TRANSPORT_NSW_API_KEY` live in `Learning/local.properties` (gitignored — never commit it).
 
 ## Secrets
 

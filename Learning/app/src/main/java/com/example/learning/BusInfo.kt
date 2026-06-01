@@ -4,11 +4,11 @@ import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.repos.BusStopTimesRecord
 import com.example.learning.repos.GlobbedBusStopRecord
-import com.example.learning.repos.GtfsRealtimeRepository
-import com.example.learning.repos.GtfsStaticRepository
-import com.example.learning.repos.LocationRepository
+import com.example.learning.repos.LocationSource
 import com.example.learning.repos.RealtimeBusTripInfo
-import com.example.learning.repos.SettingsRepository
+import com.example.learning.repos.RealtimeGtfsSource
+import com.example.learning.repos.SettingsSource
+import com.example.learning.repos.StaticGtfsSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -76,10 +76,10 @@ data class BusStopTimesRecordWithRealtime(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BusInfo(
-    val gtfsStaticRepository: GtfsStaticRepository,
-    private val gtfsRealtimeRepository: GtfsRealtimeRepository,
-    private val locationRepo: LocationRepository,
-    private val settingsRepo: SettingsRepository,
+    val gtfsStaticRepository: StaticGtfsSource,
+    private val gtfsRealtimeRepository: RealtimeGtfsSource,
+    private val locationRepo: LocationSource,
+    private val settingsRepo: SettingsSource,
     private val scope: CoroutineScope,
 ) {
     val currentMinute: StateFlow<LocalDateTime> = flow {

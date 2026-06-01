@@ -24,14 +24,22 @@ data class RealtimeBusTripInfo(
     val vehicleLicencePlate: String,
 )
 
+/**
+ * Live GTFS-Realtime feed, as consumed by [com.example.learning.BusInfo].
+ * Plain interface so tests can substitute a state-based fake (see `src/test`).
+ */
+interface RealtimeGtfsSource {
+    suspend fun getBusData(): List<RealtimeBusTripInfo>
+}
+
 class GtfsRealtimeRepository(
     private val httpClient: OkHttpClient
-) {
+) : RealtimeGtfsSource {
     private val gtfsUrl = "https://api.transport.nsw.gov.au/v1/gtfs/realtime/buses"
     private val apiKey = BuildConfig.TRANSPORT_NSW_API_KEY
     private val request = Request.Builder().url(gtfsUrl).header("Authorization", value = "apikey $apiKey").build()
 
-    suspend fun getBusData(): List<RealtimeBusTripInfo> = withContext(Dispatchers.IO) {
+    override suspend fun getBusData(): List<RealtimeBusTripInfo> = withContext(Dispatchers.IO) {
         Log.d("GTFS-Realtime", "Starting getBusData." )
         val closestBuses = mutableListOf<RealtimeBusTripInfo>()
 

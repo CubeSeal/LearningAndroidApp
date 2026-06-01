@@ -1,4 +1,6 @@
 AndroidSDK
 .direnv
 
-test/
+# Top-level GTFS sample-data dir only — must stay anchored so it doesn't also
+# swallow app/src/test (the unit-test source set).
+/test/

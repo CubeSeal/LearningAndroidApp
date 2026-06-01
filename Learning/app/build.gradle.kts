@@ -47,6 +47,14 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Stubbed android.* methods (e.g. android.util.Log) return defaults instead of
+            // throwing, so domain code that logs can run as a plain JVM test without Robolectric.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 room {
@@ -89,6 +97,8 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

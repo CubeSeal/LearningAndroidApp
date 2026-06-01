@@ -40,17 +40,22 @@
         };
 
         androidSdk = androidComposition.androidsdk;
+
+        # JDK 17 is AGP 8.10's baseline; used by the Gradle CLI (`./gradlew test`, etc.).
+        jdk = pkgs.jdk17;
       in
       {
         devShells.default = pkgs.mkShell {
           buildInputs = [
             (pkgs.android-studio.withSdk androidSdk)
             androidSdk
+            jdk
             pkgs.kotlin-language-server
           ];
 
           ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
           ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
+          JAVA_HOME = "${jdk.home}";
         };
       }
     );
