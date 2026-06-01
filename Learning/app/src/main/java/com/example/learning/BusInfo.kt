@@ -90,8 +90,19 @@ class BusInfo(
             delay(ChronoUnit.MILLIS.between(now, nextMinute))
         }
     }.stateIn(scope, SharingStarted.Eagerly, LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
-    private val _focusedBusStop = MutableStateFlow<GlobbedBusStopRecord?>(null)
-    val focusedBusStop = _focusedBusStop.asStateFlow()
+
+    val focusedBusStop = settingsRepo
+        .homeStopId
+        .filterNotNull()
+        .transformLatest {
+            val value = gtfsStaticRepository.getGlobbedStopById(it)
+            Log.d("BusInfo", "Settings focused bus stop to $value")
+            emit(value)
+        }.stateIn(
+            scope = scope,
+            started = SharingStarted.Eagerly,
+            initialValue = null
+        )
 
     // Derived state - automatically updates when location or allBusStops change
     val closestBusStops: StateFlow<List<GlobbedBusStopRecord>> = locationRepo.currentLocation.map { loc ->
@@ -187,29 +198,9 @@ class BusInfo(
             initialValue = emptyList()
         )
 
-    init {
-        scope.launch {
-            Log.d("BusInfo", "Populate stop from settings.")
-            settingsRepo.homeStopId.collect { settingsStopId ->
-                settingsStopId?.let { stopId ->
-                    Log.d("BusInfo", "Will try to populate stop id = $stopId")
-                    val busStop = gtfsStaticRepository.getGlobbedStopById(stopId)
-                    busStop?.let {
-                        Log.d("BusInfo", "Got busStop $busStop.")
-                        _focusedBusStop.update { it }
-                    }
-                }
-            }
-            Log.d("BusInfo", "Populated stop from settings.")
-        }
-    }
-
-
     suspend fun updateFocusedBusStop(globbedBusStopRecord: GlobbedBusStopRecord) {
-        _focusedBusStop.value = globbedBusStopRecord
-        Log.d("BusInfo", "Will save bus stop to ${globbedBusStopRecord.globbedStopId}")
         settingsRepo.setHomeStopId(globbedBusStopRecord.globbedStopId)
-        Log.d("BusInfo", "Setting saved bus stop to ${globbedBusStopRecord.globbedStopId}")
+        Log.d("BusInfo", "Setting home bus stop to ${globbedBusStopRecord.globbedStopId}")
     }
 
     suspend fun updateFocusedBusStopByStopId(stopId: String) {
