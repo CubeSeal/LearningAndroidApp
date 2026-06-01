@@ -72,6 +72,27 @@ Type-safe Compose Navigation with `@Serializable` route classes defined at the t
 
 `GtfsStaticRepository.syncGtfsDatabase` checks the latest GitHub Release of `CubeSeal/LearningAndroidApp`, compares `published_at` against a saved timestamp file, downloads the `.db.gz` asset, decompresses, verifies the SHA-256 embedded in the release notes, then calls `GtfsDatabase.replaceWith`. The release is produced daily by `.github/workflows/build-gtfs-db.yml` running the converter.
 
+## Testing
+
+JVM unit tests run through Gradle inside the Nix dev shell (which provides JDK 17 + `JAVA_HOME`). There is **no** `nix flake check` / hermetic build — Android + Gradle need network for dependency resolution, which the nix sandbox forbids, so tests are run via the dev shell by design.
+
+```bash
+cd Learning
+./gradlew testDebugUnitTest                                         # fast inner loop
+./gradlew test                                                      # debug + release variants
+./gradlew testDebugUnitTest --tests "com.example.learning.BusInfoTest"
+```
+
+The codebase follows **red-green-refactor** with **state-based fakes**, asserting behaviour through public APIs (never call-count/interaction assertions):
+
+- The four repositories implement plain `interface` seams — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource` — each colocated in its `repos/*.kt` file. `BusInfo` depends on these interfaces, not the concrete classes. Use plain interfaces for DI seams; reserve `sealed` for closed variant hierarchies (e.g. `BusFilterOptions`). A `sealed interface` can't be implemented from the `src/test` compilation, so it would block fakes.
+- The domain is framework-free: the location seam exposes the domain `LatLon`, not `android.location.Location`, so `BusInfo` tests are plain JVM tests (no Robolectric).
+- Hand-written state-based fakes live in `app/src/test/java/com/example/learning/repos/` (`Fake*Source`), backed by `MutableStateFlow`/in-memory maps and seeded per test.
+- Test libs: JUnit4 + `kotlinx-coroutines-test` (`runTest`, `backgroundScope`) + Turbine (`flow.test { awaitItem() }`).
+- `testOptions.unitTests.isReturnDefaultValues = true` (`app/build.gradle.kts`) makes stubbed `android.*` calls (e.g. `Log`) return defaults instead of throwing in JVM tests.
+- Copy from the worked examples: `ParseGtfsDateTimeTest` (pure function) and `BusInfoTest` (fakes + Turbine).
+- `.gitignore` ignores `/test/` (anchored) — the top-level GTFS sample-data dir only; an unanchored `test/` would also swallow `app/src/test`.
+
 ## Conventions
 
 - Domain/record data classes consumed by Compose are annotated `@Immutable`. Keep them flat — joins and filtering are done in SQL (see DAO) rather than by nesting/mutating object graphs in Kotlin.
