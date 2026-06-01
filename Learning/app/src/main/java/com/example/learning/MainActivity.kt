@@ -176,7 +176,13 @@ fun HomeNavHost(
 //        popEnterTransition = { fadeIn(tween(blinkDuration)) },
 //        popExitTransition = { fadeOut(tween(blinkDuration)) }
     ) {
-        composable<Home> { HOMEScreen(navController) }
+        composable<Home>(
+            // Match the Trips/PickStop slide-in duration so Home's fade-out ends exactly when the
+            // incoming screen finishes sliding. Without this, Home inherits the NavHost-default
+            // fadeOut(700ms), which lingers ~400ms after the 300ms slide has already settled.
+            exitTransition = { fadeOut(tween(slideDuration)) },
+            popEnterTransition = { fadeIn(tween(slideDuration)) },
+        ) { HOMEScreen(navController) }
 
         composable<Trips>(
             enterTransition = {
