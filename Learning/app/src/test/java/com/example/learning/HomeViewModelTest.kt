@@ -13,6 +13,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDateTime
@@ -169,6 +170,85 @@ class HomeViewModelTest {
 
             vm.toggleFilterForBusStops(BusFilterOptions.RouteShortName("370"))
             assertEquals(listOf("t370", "t412"), awaitItem().tripIds())   // cleared → both again
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    // Twelve distinct routes (one shared headsign) yields >10 BusFilterOptions, so the Home row's
+    // base cap and the FilterPage overflow path both come into play.
+    private fun manyRouteTrips() = (0..11).map {
+        stopTime(tripId = "t$it", routeShortName = "R%02d".format(it), departure = now.plusMinutes(it.toLong() + 1))
+    }
+
+    @Test
+    fun `home row caps at ten filters and flags that more exist`() = runTest {
+        val vm = homeViewModel(trips = manyRouteTrips())
+
+        vm.rowFilters.test {
+            var rows = awaitItem()
+            while (rows.size < 10) rows = awaitItem()
+            assertEquals(10, rows.size)                        // capped to the base 10
+            assertTrue(vm.availableFiltersForBusStop.value.size > 10)
+            assertEquals(true, vm.hasMoreFilters.value)        // chevron should show
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `applying an out-of-row filter pins it into the row and selects it`() = runTest {
+        val vm = homeViewModel(trips = manyRouteTrips())
+
+        vm.rowFilters.test {
+            var rows = awaitItem()
+            while (rows.size < 10) rows = awaitItem()
+            val extra = vm.availableFiltersForBusStop.value.first { it !in rows.toSet() }
+
+            vm.applyFilters(setOf(extra))
+
+            while (extra !in rows) rows = awaitItem()
+            assertTrue(extra in rows)                                  // pinned into the row
+            assertEquals(setOf(extra), vm.selectedFiltersForBusStop.value)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `a pinned filter stays in the row after being toggled off`() = runTest {
+        val vm = homeViewModel(trips = manyRouteTrips())
+
+        vm.rowFilters.test {
+            var rows = awaitItem()
+            while (rows.size < 10) rows = awaitItem()
+            val extra = vm.availableFiltersForBusStop.value.first { it !in rows.toSet() }
+
+            vm.applyFilters(setOf(extra))
+            while (extra !in rows) rows = awaitItem()
+
+            vm.toggleFilterForBusStops(extra)                         // toggle it off
+            assertTrue(extra !in vm.selectedFiltersForBusStop.value)  // no longer selected
+            assertTrue(extra in vm.rowFilters.value)                  // but stays in the row (accumulates)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `refresh resets the row to the base ten and clears the selection`() = runTest {
+        val vm = homeViewModel(trips = manyRouteTrips())
+
+        vm.rowFilters.test {
+            var rows = awaitItem()
+            while (rows.size < 10) rows = awaitItem()
+            val extra = vm.availableFiltersForBusStop.value.first { it !in rows.toSet() }
+
+            vm.applyFilters(setOf(extra))
+            while (extra !in rows) rows = awaitItem()
+
+            vm.refresh()
+
+            while (extra in rows) rows = awaitItem()
+            assertEquals(10, rows.size)                                       // back to the base 10
+            assertTrue(extra !in rows)
+            assertEquals(emptySet<BusFilterOptions>(), vm.selectedFiltersForBusStop.value)
             cancelAndIgnoreRemainingEvents()
         }
     }

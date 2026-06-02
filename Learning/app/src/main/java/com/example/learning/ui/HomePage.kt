@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -38,6 +39,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +64,7 @@ import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BusFilterOptions
 import com.example.learning.BusStopTimesRecordWithRealtime
+import com.example.learning.Filter
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
@@ -78,8 +81,9 @@ fun HOMEScreen(
 ) {
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
-    val availableFiltersForBusStop by viewModel.availableFiltersForBusStop.collectAsStateWithLifecycle()
+    val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
+    val hasMoreFilters by viewModel.hasMoreFilters.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
@@ -106,9 +110,11 @@ fun HOMEScreen(
                 navController,
                 focusedBusStop,
                 associatedBusStopTimes,
-                availableFiltersForBusStop,
+                rowFilters,
                 selectedFiltersForBusStop,
-                {viewModel.toggleFilterForBusStops(it) }
+                hasMoreFilters,
+                { viewModel.toggleFilterForBusStops(it) },
+                { navController.navigate(Filter) },
             )
         }
     }
@@ -139,10 +145,11 @@ fun MasterLazyColumn(
     navController: NavController,
     focusedBusStop: GlobbedBusStopRecord?,
     associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordWithRealtime>>,
-    //TODO: Maybe combine these two into a single param. Not that important though.
-    availableFiltersForBusStop: Set<BusFilterOptions>,
+    rowFilters: List<BusFilterOptions>,
     selectedFiltersForBusStop: Set<BusFilterOptions>,
+    hasMoreFilters: Boolean,
     onToggleMode: (BusFilterOptions) -> Unit,
+    onOpenFilters: () -> Unit,
 ) {
     val headerAlpha by remember {
         derivedStateOf {
@@ -187,9 +194,11 @@ fun MasterLazyColumn(
         } else {
             item() {
                 ModeFilterChips(
-                    availableFiltersForBusStop,
+                    rowFilters,
                     selectedFiltersForBusStop,
-                    onToggleMode
+                    hasMoreFilters,
+                    onToggleMode,
+                    onOpenFilters,
                 )
             }
 
@@ -243,18 +252,23 @@ fun StopTitle(closestBusStop: GlobbedBusStopRecord? ) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModeFilterChips(
-    availableBusFilterOptions: Set<BusFilterOptions>,
+    rowFilters: List<BusFilterOptions>,
     selectedBusFilterOptions: Set<BusFilterOptions>,
+    showMore: Boolean,
     onToggleMode: (BusFilterOptions) -> Unit,
+    onOpenFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // A compact, horizontally-scrollable row of the base filter slice. When more filters exist than
+    // fit the cap, a trailing chevron opens the full FilterPage rather than expanding in place.
     Row(
         modifier = modifier
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal= 16.dp),
+            .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        availableBusFilterOptions.forEach { option ->
+        rowFilters.forEach { option ->
             FilterChip(
                 selected = option in selectedBusFilterOptions,
                 onClick = { onToggleMode(option) },
@@ -268,18 +282,15 @@ fun ModeFilterChips(
                 colors = FilterChipDefaults.filterChipColors(
                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
                 )
-//                leadingIcon = if (mode in selectedModes) {
-//                    {
-//                        Icon(
-//                            imageVector = Icons.Default.Done,
-//                            contentDescription = null,
-//                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-//                        )
-//                    }
-//                } else {
-//                    null
-//                },
             )
+        }
+        if (showMore) {
+            IconButton(onClick = onOpenFilters) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "More filters",
+                )
+            }
         }
     }
 }

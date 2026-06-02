@@ -53,6 +53,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.learning.ui.FilterScreen
 import com.example.learning.ui.HOMEScreen
 import com.example.learning.ui.PickStopScreen
 import com.example.learning.ui.TripsScreen
@@ -74,6 +75,9 @@ data class Trips(val tripId: String, val stopId: String, val date: String)
 
 @Serializable
 data object PickStop
+
+@Serializable
+data object Filter
 
 fun NavController.resetTo(route: Any) {
     navigate(route) {
@@ -228,6 +232,23 @@ fun HomeNavHost(
             }
         ) {
             PickStopScreen(navController)
+        }
+
+        composable<Filter>(
+            enterTransition = {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Start,
+                    tween(slideDuration)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.End,
+                    tween(slideDuration)
+                )
+            }
+        ) {
+            FilterScreen(navController)
         }
     }
 
