@@ -126,6 +126,19 @@ class HomeViewModel(
     private val _selectedFiltersForBusStop = MutableStateFlow(setOf<BusFilterOptions>())
     val selectedFiltersForBusStop = _selectedFiltersForBusStop.asStateFlow()
 
+    // The Home row shows a base slice of the available filters, plus any "pinned" extras promoted
+    // from the FilterPage so they remain visible (and quickly re-toggleable) even after deselection.
+    // A refresh clears the pins, resetting the row to the base slice.
+    private val _pinnedFilters = MutableStateFlow(setOf<BusFilterOptions>())
+    val rowFilters: StateFlow<List<BusFilterOptions>> =
+        combine(availableFiltersForBusStop, _pinnedFilters) { available, pinned ->
+            (available.take(ROW_FILTER_CAP) + pinned.filter { it in available }).distinct()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val hasMoreFilters: StateFlow<Boolean> = availableFiltersForBusStop
+        .map { it.size > ROW_FILTER_CAP }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val associatedStopTimes = combine(
         busInfo.associatedStopTimes,
         busInfo.currentMinute,
@@ -173,6 +186,9 @@ class HomeViewModel(
 
     fun refresh() = viewModelScope.launch {
         _isRefreshing.update { true }
+        // Fresh data → reset the filter row to its base slice with nothing selected.
+        _pinnedFilters.value = emptySet()
+        _selectedFiltersForBusStop.value = emptySet()
         try {
             busInfo.refresh()
         } finally {
@@ -190,6 +206,16 @@ class HomeViewModel(
         } else {
             _selectedFiltersForBusStop.update { it + busStopFilterOptions}
         }
+    }
+
+    // Commit the FilterPage's staged selection, pinning the chosen filters so they show in the Home row.
+    fun applyFilters(selected: Set<BusFilterOptions>) {
+        _selectedFiltersForBusStop.value = selected
+        _pinnedFilters.update { it + selected }
+    }
+
+    companion object {
+        const val ROW_FILTER_CAP = 10
     }
 }
 
