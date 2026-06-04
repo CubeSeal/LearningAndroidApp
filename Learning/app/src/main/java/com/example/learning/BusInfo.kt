@@ -9,6 +9,8 @@ import com.example.learning.repos.RealtimeBusTripInfo
 import com.example.learning.repos.RealtimeGtfsSource
 import com.example.learning.repos.SettingsSource
 import com.example.learning.repos.StaticGtfsSource
+import com.example.learning.repos.TransitMode
+import com.example.learning.repos.transitModeOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -56,13 +58,18 @@ private fun RealtimeBusTripInfo.toRealtimeBusStopTimesRecord(): List<RealtimeBus
     }
 }
 
+// TODO: "Bus"-prefixed names are no longer representative now that trains share this filter set —
+//  rename BusFilterOptions (and the wider Bus* domain) to a mode-neutral name in a later commit.
 sealed interface BusFilterOptions {
     data class RouteShortName(val routeShortName: String): BusFilterOptions
     data class TripHeadsign(val tripHeadsign: String): BusFilterOptions
     data class StopStand(val stopStand: String): BusFilterOptions
+    data class TransportMode(val mode: TransitMode): BusFilterOptions
 }
 
 @Immutable
+// TODO: the "Bus"-prefixed name is no longer representative now that trains share this type — rename
+//  the Bus* domain to mode-neutral names (e.g. DepartureRecordWithRealtime) in a later commit.
 data class BusStopTimesRecordWithRealtime(
     // I think it's okay to have nesting like this if the underlying data structures are still flat.
     // Just becomes a convenient grouping and constructor thing.
@@ -75,6 +82,8 @@ data class BusStopTimesRecordWithRealtime(
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
+// TODO: "BusInfo" (and the wider Bus* domain) is no longer representative now that the schedule DB
+//  merges trains too — rename to a mode-neutral name (e.g. TransitInfo) in a dedicated later commit.
 class BusInfo(
     val gtfsStaticRepository: StaticGtfsSource,
     private val gtfsRealtimeRepository: RealtimeGtfsSource,
@@ -144,6 +153,7 @@ class BusInfo(
             associatedTrips.map { stopTimesRecord ->
                 filterList.add(BusFilterOptions.RouteShortName(stopTimesRecord.routeShortName))
                 filterList.add(BusFilterOptions.TripHeadsign(stopTimesRecord.tripHeadsign))
+                filterList.add(BusFilterOptions.TransportMode(transitModeOf(stopTimesRecord.routeType)))
                 focusedBusStop
                     .value
                     ?.busStopRecords
@@ -178,6 +188,7 @@ class BusInfo(
                         BusFilterOptions.RouteShortName(staticRecord.routeShortName),
                         BusFilterOptions.TripHeadsign(staticRecord.tripHeadsign),
                         BusFilterOptions.StopStand(staticRecord.stopName),
+                        BusFilterOptions.TransportMode(transitModeOf(staticRecord.routeType)),
                     )
                 )
             }

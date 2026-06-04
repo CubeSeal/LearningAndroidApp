@@ -82,6 +82,8 @@ fun FilterScreenContent(
     onApply: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val modes = available.filterIsInstance<BusFilterOptions.TransportMode>()
+        .sortedWith(byLabel { it.mode.label })
     val routes = available.filterIsInstance<BusFilterOptions.RouteShortName>()
         .sortedWith(byLabel { it.routeShortName })
     val destinations = available.filterIsInstance<BusFilterOptions.TripHeadsign>()
@@ -102,6 +104,8 @@ fun FilterScreenContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
+            // Mode (Bus/Train) is the broadest cut, so it leads the section list.
+            FilterGroup("Modes", modes, staged, onToggleStaged)
             FilterGroup("Routes", routes, staged, onToggleStaged)
             FilterGroup("Destinations", destinations, staged, onToggleStaged)
             FilterGroup("Stands", stands, staged, onToggleStaged)
@@ -173,6 +177,7 @@ private fun FilterGroup(
                         is BusFilterOptions.RouteShortName -> Text(option.routeShortName)
                         is BusFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
                         is BusFilterOptions.StopStand -> Text(option.stopStand)
+                        is BusFilterOptions.TransportMode -> Text(option.mode.label)
                     }
                 },
                 colors = FilterChipDefaults.filterChipColors(

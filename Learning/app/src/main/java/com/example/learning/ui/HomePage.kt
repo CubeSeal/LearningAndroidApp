@@ -277,6 +277,7 @@ fun ModeFilterChips(
                         is BusFilterOptions.RouteShortName -> Text(option.routeShortName)
                         is BusFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
                         is BusFilterOptions.StopStand -> Text(option.stopStand)
+                        is BusFilterOptions.TransportMode -> Text(option.mode.label)
                     }
                 },
                 colors = FilterChipDefaults.filterChipColors(

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.learning.BusFilterOptions
+import com.example.learning.repos.TransitMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -120,6 +121,21 @@ class FilterScreenContentTest {
         composeRule.onNodeWithText("Routes").performClick()   // expand to render the chips
 
         assertEquals(listOf("9", "370", "412", "L90"), renderedChipLabels())
+    }
+
+    @Test
+    fun `the Modes section renders a chip per transport mode`() {
+        setContent(
+            available = setOf(
+                BusFilterOptions.TransportMode(TransitMode.BUS),
+                BusFilterOptions.TransportMode(TransitMode.TRAIN),
+            )
+        )
+
+        composeRule.onNodeWithText("Modes").assertIsDisplayed()
+        composeRule.onNodeWithText("Modes").performClick()   // expand to render the chips
+        composeRule.onNodeWithText("Bus").assertIsDisplayed()
+        composeRule.onNodeWithText("Train").assertIsDisplayed()
     }
 
     @Test
