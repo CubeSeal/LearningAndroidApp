@@ -9,6 +9,7 @@ import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.GlobbedBusStopRecord
 import com.example.learning.repos.LatLon
 import com.example.learning.repos.RealtimeBusTripInfo
+import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -44,6 +45,7 @@ class HomeViewModelTest {
         routeShortName: String = "370",
         tripHeadsign: String = "City",
         stopId: String = "s1",
+        routeType: Int = 3,   // GTFS 3 = bus, the default mode for these fixtures
     ) = BusStopTimesRecord(
         tripId = tripId,
         departureTime = departure,
@@ -54,6 +56,7 @@ class HomeViewModelTest {
         tripHeadsign = tripHeadsign,
         routeShortName = routeShortName,
         routeLongName = "$routeShortName Long",
+        routeType = routeType,
         globbedStopId = "stopA",
         globbedStopName = "Stop A",
         stopId = stopId,
@@ -170,6 +173,26 @@ class HomeViewModelTest {
 
             vm.toggleFilterForBusStops(BusFilterOptions.RouteShortName("370"))
             assertEquals(listOf("t370", "t412"), awaitItem().tripIds())   // cleared → both again
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `selecting a mode filter narrows departures to that mode`() = runTest {
+        val vm = homeViewModel(
+            trips = listOf(
+                stopTime(tripId = "bus", routeShortName = "370", routeType = 3, departure = now.plusMinutes(5)),
+                stopTime(tripId = "train", routeShortName = "T1", routeType = 2, departure = now.plusMinutes(8)),
+            )
+        )
+
+        vm.associatedStopTimes.test {
+            var items = awaitItem()
+            while (items.isEmpty()) items = awaitItem()
+            assertEquals(listOf("bus", "train"), items.tripIds())   // no filter → both modes
+
+            vm.toggleFilterForBusStops(BusFilterOptions.TransportMode(TransitMode.TRAIN))
+            assertEquals(listOf("train"), awaitItem().tripIds())    // narrowed to the train service
             cancelAndIgnoreRemainingEvents()
         }
     }

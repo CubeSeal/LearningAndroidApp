@@ -27,34 +27,49 @@ import java.util.zip.ZipInputStream
 //   5. (CI only) Creates a GitHub Release via `gh` CLI
 // ═════════════════════════════════════════════════════════════════════
 
+/**
+ * One TfNSW GTFS feed (transport mode). [idPrefix] namespaces this feed's GTFS ids when several feeds
+ * are merged into one DB — GTFS ids are only unique *within* a feed, so without a prefix a train
+ * `service_id` could collide with (and `INSERT OR REPLACE` overwrite) a bus one. Buses stay unprefixed
+ * (empty) so existing saved-stop ids and the bus realtime join keep matching.
+ */
+private data class Feed(val name: String, val scheduleUrl: String, val idPrefix: String)
+
 fun main() {
     val apiKey = System.getenv("TFNSW_API_KEY")
         ?: error("Set TFNSW_API_KEY env var (get one from opendata.transport.nsw.gov.au)")
 
     val workDir = File("build/gtfs-work").apply { mkdirs() }
-    val gtfsDir = File(workDir, "gtfs").apply { mkdirs() }
     val dbFile = File(workDir, "gtfs.db")
     val gzFile = File(workDir, "gtfs.db.gz")
 
-    // ── 1. Download ──────────────────────────────────────────────────
-    println("⬇ Downloading GTFS bundle from TfNSW...")
-    val zipFile = File(workDir, "gtfs.zip")
-    downloadFile(
-        url = "https://api.transport.nsw.gov.au/v1/gtfs/schedule/buses",
-        dest = zipFile,
-        headers = mapOf("Authorization" to "apikey $apiKey"),
+    val feeds = listOf(
+        Feed("buses", "https://api.transport.nsw.gov.au/v1/gtfs/schedule/buses", idPrefix = ""),
+        Feed("sydneytrains", "https://api.transport.nsw.gov.au/v1/gtfs/schedule/sydneytrains", idPrefix = "T:"),
     )
-    println("  Downloaded ${zipFile.length() / 1_048_576}MB")
 
-    // ── 2. Extract ───────────────────────────────────────────────────
-    println("📦 Extracting...")
-    extractZip(zipFile, gtfsDir)
-    println("  Files: ${gtfsDir.listFiles()?.map { it.name }}")
+    // ── 1+2. Download & extract each feed into its own dir ───────────
+    val extracted = feeds.map { feed ->
+        println("⬇ Downloading ${feed.name} GTFS bundle from TfNSW...")
+        val zipFile = File(workDir, "${feed.name}.zip")
+        downloadFile(
+            url = feed.scheduleUrl,
+            dest = zipFile,
+            headers = mapOf("Authorization" to "apikey $apiKey"),
+        )
+        println("  Downloaded ${zipFile.length() / 1_048_576}MB")
 
-    // ── 3. Build SQLite ──────────────────────────────────────────────
+        println("📦 Extracting ${feed.name}...")
+        val feedDir = File(workDir, feed.name).apply { mkdirs() }
+        extractZip(zipFile, feedDir)
+        println("  Files: ${feedDir.listFiles()?.map { it.name }}")
+        feedDir to feed.idPrefix
+    }
+
+    // ── 3. Build merged SQLite ───────────────────────────────────────
     println("🗄  Building SQLite database...")
     if (dbFile.exists()) dbFile.delete()
-    buildDatabase(gtfsDir, dbFile)
+    buildDatabase(extracted, dbFile)
 
     // ── 4. Compress ──────────────────────────────────────────────────
     println("🗜  Compressing...")
@@ -158,49 +173,83 @@ private fun runCommand(vararg args: String, allowFailure: Boolean = false) {
 // SQLite database builder
 // ═════════════════════════════════════════════════════════════════════
 
-private fun buildDatabase(gtfsDir: File, dbFile: File) {
-    DriverManager.getConnection("jdbc:sqlite:${dbFile.absolutePath}").use { conn ->
-        // In buildDatabase(), change the opening to:
-        conn.pragma("journal_mode = OFF")
-        conn.pragma("synchronous = OFF")
-        conn.pragma("cache_size = -64000")
-        conn.pragma("page_size = 4096")
-        conn.autoCommit = false
+/**
+ * Source of parsed GTFS rows for one feed, keyed by table file name (e.g. "stops.txt"). This is the
+ * input IO boundary: [FileGtfsRowSource] reads the extracted CSV files in production, while tests plug
+ * in an in-memory fake so the whole build runs in memory with no filesystem (see `src/test`).
+ */
+internal interface GtfsRowSource {
+    /** Calls [action] for every row of [tableFile] as a column→value map; no-op if the table is absent. */
+    fun forEachRow(tableFile: String, action: (Map<String, String>) -> Unit)
+}
 
-        createTables(conn)
-        conn.commit()
-
-        val tables = listOf(
-            GtfsTable("agency", "agency.txt", ::agencyBinder, 6),
-            GtfsTable("calendar", "calendar.txt", ::calendarBinder, 10),
-            GtfsTable("calendar_dates", "calendar_dates.txt", ::calendarDatesBinder, 3),
-            GtfsTable("routes", "routes.txt", ::routesBinder, 9),
-            GtfsTable("stops", "stops.txt", ::stopsBinder, 13),
-            GtfsTable("trips", "trips.txt", ::tripsBinder, 9),
-            GtfsTable("stop_times", "stop_times.txt", ::stopTimesBinder, 10),
-        )
-
-        for (table in tables) {
-            val file = File(gtfsDir, table.fileName)
-            if (!file.exists()) {
-                println("  ⏭  ${table.fileName} not found, skipping")
-                continue
-            }
-            loadTable(conn, table, file)
+/** Reads a feed's rows from its extracted CSV files on disk. */
+internal class FileGtfsRowSource(private val gtfsDir: File) : GtfsRowSource {
+    override fun forEachRow(tableFile: String, action: (Map<String, String>) -> Unit) {
+        val file = File(gtfsDir, tableFile)
+        if (!file.exists()) {
+            println("  ⏭  $tableFile not found, skipping")
+            return
         }
+        csvReader { charset = "UTF-8" }.open(file) {
+            val header = readNext()?.map { it.trimStart(Char(0xFEFF)).trim() } ?: return@open
+            readAllAsSequence().forEach { row -> action(header.zip(row).toMap()) }
+        }
+    }
+}
 
-        println("  Creating globbed stops...")
-        createGlobbedStops(conn)
-        conn.commit()
+/**
+ * Populate [conn] from [feeds] (each a row source + its id prefix): create the schema, load every
+ * table from every feed (prefixing ids), then glob and index. This is the hermetic build seam — the
+ * behaviour tests drive it against an in-memory `:memory:` connection they query directly; production
+ * wraps it in [buildDatabase] with a file-backed connection.
+ */
+internal fun buildDatabaseInto(conn: Connection, feeds: List<Pair<GtfsRowSource, String>>) {
+    conn.pragma("journal_mode = OFF")
+    conn.pragma("synchronous = OFF")
+    conn.pragma("cache_size = -64000")
+    conn.pragma("page_size = 4096")
+    conn.autoCommit = false
 
-        println("  Creating indices...")
-        createIndices(conn)
-        conn.commit()
+    createTables(conn)
+    conn.commit()
+
+    val tables = listOf(
+        GtfsTable("agency", "agency.txt", ::agencyBinder, 6),
+        GtfsTable("calendar", "calendar.txt", ::calendarBinder, 10),
+        GtfsTable("calendar_dates", "calendar_dates.txt", ::calendarDatesBinder, 3),
+        GtfsTable("routes", "routes.txt", ::routesBinder, 9),
+        GtfsTable("stops", "stops.txt", ::stopsBinder, 13),
+        GtfsTable("trips", "trips.txt", ::tripsBinder, 9),
+        GtfsTable("stop_times", "stop_times.txt", ::stopTimesBinder, 10),
+    )
+
+    for ((source, idPrefix) in feeds) {
+        println("  Loading feed (id prefix '${idPrefix.ifEmpty { "<none>" }}')...")
+        for (table in tables) loadTable(conn, table, source, idPrefix)
+    }
+
+    // Globbing runs once over the merged stops. Its `'% Station'` filter only catches stops whose
+    // pre-comma name ends in "Station" — always true for train platforms, rare for buses — so a
+    // bus stop and a train platform sharing a "<X> Station" name glob together into one logical
+    // stop, which is the desired multimodal "what leaves from <X>" view.
+    println("  Creating globbed stops...")
+    createGlobbedStops(conn)
+    conn.commit()
+
+    println("  Creating indices...")
+    createIndices(conn)
+    conn.commit()
+}
+
+/** Production entry: build the merged DB into [dbFile], reading each feed dir's extracted CSVs. */
+private fun buildDatabase(feeds: List<Pair<File, String>>, dbFile: File) {
+    DriverManager.getConnection("jdbc:sqlite:${dbFile.absolutePath}").use { conn ->
+        buildDatabaseInto(conn, feeds.map { (gtfsDir, idPrefix) -> FileGtfsRowSource(gtfsDir) to idPrefix })
 
         conn.autoCommit = true
         conn.pragma("journal_mode = WAL")
         conn.pragma("wal_checkpoint(TRUNCATE)")
-
         println("  DB: ${dbFile.length() / 1_048_576}MB")
     }
 }
@@ -334,33 +383,47 @@ private data class GtfsTable(
     val columnCount: Int,
 )
 
-private fun loadTable(conn: Connection, table: GtfsTable, file: File) {
+/**
+ * The id columns per table whose values get the feed [idPrefix] prepended, so a merged feed's ids
+ * stay disjoint from every other feed's. Every foreign key is listed alongside its primary key so the
+ * prefixing is internally consistent and all joins still resolve (e.g. `trips.route_id` \u2194 `routes.route_id`).
+ */
+private val ID_COLUMNS: Map<String, Set<String>> = mapOf(
+    "agency" to setOf("agency_id"),
+    "routes" to setOf("route_id", "agency_id"),
+    "calendar" to setOf("service_id"),
+    "calendar_dates" to setOf("service_id"),
+    "trips" to setOf("trip_id", "route_id", "service_id"),
+    "stops" to setOf("stop_id", "parent_station"),
+    "stop_times" to setOf("trip_id", "stop_id"),
+)
+
+private fun loadTable(conn: Connection, table: GtfsTable, source: GtfsRowSource, idPrefix: String) {
     val placeholders = (1..table.columnCount).joinToString(",") { "?" }
     val sql = "INSERT OR REPLACE INTO ${table.tableName} VALUES ($placeholders)"
-    val reader = csvReader { charset = "UTF-8" }
     var count = 0L
+    val idCols = ID_COLUMNS[table.tableName].orEmpty()
 
     conn.prepareStatement(sql).use { stmt ->
-        reader.open(file) {
-            val header = readNext()?.map { it.trimStart('\uFEFF').trim() } ?: return@open
-            readAllAsSequence().forEach { row ->
-                val r = header.zip(row).toMap()
-                try {
-                    stmt.clearParameters()
-                    table.binder(stmt, r)
-                    stmt.addBatch()
-                    count++
-                    if (count % 10_000 == 0L) {
-                        stmt.executeBatch()
-                        conn.commit()
-                    }
-                } catch (e: Exception) {
-                    System.err.println("  ⚠ ${table.fileName} row $count: ${e.message}")
+        source.forEachRow(table.fileName) { raw ->
+            // Prefix this feed's id columns (skip blanks, e.g. an empty parent_station).
+            val r = if (idPrefix.isEmpty() || idCols.isEmpty()) raw
+                else raw.mapValues { (k, v) -> if (k in idCols && v.isNotBlank()) "$idPrefix$v" else v }
+            try {
+                stmt.clearParameters()
+                table.binder(stmt, r)
+                stmt.addBatch()
+                count++
+                if (count % 10_000 == 0L) {
+                    stmt.executeBatch()
+                    conn.commit()
                 }
+            } catch (e: Exception) {
+                System.err.println("  ⚠ ${table.fileName} row $count: ${e.message}")
             }
-            stmt.executeBatch()
-            conn.commit()
         }
+        stmt.executeBatch()
+        conn.commit()
     }
     println("  ${table.fileName}: $count rows")
 }

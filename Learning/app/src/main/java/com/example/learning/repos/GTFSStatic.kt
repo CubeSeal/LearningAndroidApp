@@ -36,6 +36,8 @@ data class LatLon(val latitude: Double, val longitude: Double)
 @Immutable
 // Keep these as flat parsed versions of room data structures.
 // Dealing with joins and filters in the SQL is a lot easier than trying to mangle it with nested structures here.
+// TODO: the "Bus" prefix is no longer representative now that trains share this type (see routeType) —
+//  rename the Bus* domain to mode-neutral names (e.g. DepartureRecord) in a later commit.
 data class BusStopTimesRecord(
     val tripId: String,
     // In seconds since beginning of day (for ordering and to handle after 24:00 time).
@@ -47,6 +49,9 @@ data class BusStopTimesRecord(
     val tripHeadsign: String,
     val routeShortName: String,
     val routeLongName: String,
+    // GTFS route_type (2 = rail, 3 = bus, plus TfNSW extended ranges). Carries the mode so the
+    // app can distinguish trains from buses now that the schedule DB merges both feeds.
+    val routeType: Int,
     val globbedStopId: String,
     val globbedStopName: String,
     val stopId: String,
@@ -54,6 +59,27 @@ data class BusStopTimesRecord(
     val stopLoc: LatLon,
     val wheelchairBoarding: Boolean
 )
+
+/**
+ * The transport mode a departure belongs to, derived from GTFS `route_type`. The schedule DB merges
+ * the TfNSW bus and train feeds, so this is how the app tells trains and buses apart.
+ */
+enum class TransitMode(val label: String) {
+    BUS("Bus"),
+    TRAIN("Train"),
+    OTHER("Other"),
+}
+
+/**
+ * Maps a GTFS `route_type` to a [TransitMode]. Handles both the standard values (2 = rail, 3 = bus)
+ * and TfNSW's extended ranges (4xx = rail, 7xx = bus); anything else (tram/light rail, ferry, …) is
+ * [TransitMode.OTHER] until those modes are modelled.
+ */
+fun transitModeOf(routeType: Int): TransitMode = when (routeType) {
+    2, in 400..499 -> TransitMode.TRAIN
+    3, in 700..799 -> TransitMode.BUS
+    else -> TransitMode.OTHER
+}
 
 @Immutable
 data class GlobbedBusStopRecord(
@@ -153,6 +179,7 @@ class GtfsStaticRepository(
             tripHeadsign = this.tripHeadsign,
             routeShortName = this.routeShortName,
             routeLongName = this.routeLongName,
+            routeType = this.routeType,
             globbedStopId = this.globbedStopId,
             globbedStopName = this.globbedStopName,
             stopId = this.stopId,

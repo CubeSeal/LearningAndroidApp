@@ -15,10 +15,12 @@ import com.example.learning.repos.RealtimeBusTripInfo
 import com.example.learning.repos.RealtimeGtfsSource
 import com.example.learning.repos.SettingsSource
 import com.example.learning.repos.StaticGtfsSource
+import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 import java.time.LocalDateTime
@@ -59,6 +61,7 @@ class BusInfoTest {
         departure: LocalDateTime = baseTime,
         sequence: Int = 1,
         globbedStopId: String = "globbed1",
+        routeType: Int = 3,   // GTFS 3 = bus, the default mode for these fixtures
     ) = BusStopTimesRecord(
         tripId = tripId,
         departureTime = departure,
@@ -69,6 +72,7 @@ class BusInfoTest {
         tripHeadsign = tripHeadsign,
         routeShortName = routeShortName,
         routeLongName = "$routeShortName Long",
+        routeType = routeType,
         globbedStopId = globbedStopId,
         globbedStopName = "Globbed Stop",
         stopId = stopId,
@@ -265,9 +269,37 @@ class BusInfoTest {
                     BusFilterOptions.TripHeadsign("City"),
                     BusFilterOptions.RouteShortName("412"),
                     BusFilterOptions.TripHeadsign("Uni"),
+                    BusFilterOptions.TransportMode(TransitMode.BUS),   // both services are buses
                 ),
                 awaitItem(),
             )
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `filtersForBusStop emits a TransportMode option per distinct route type`() = runTest {
+        // Trains and buses now share the merged schedule DB; a stop served by both should offer a
+        // mode chip for each so the user can narrow to just trains or just buses.
+        val trips = listOf(
+            stopTime(tripId = "bus1", routeShortName = "370", routeType = 3),
+            stopTime(tripId = "train1", routeShortName = "T1", routeType = 2),
+        )
+        val settings = FakeSettingsSource(homeStopId = null)
+        val busInfo = busInfo(
+            static = FakeStaticGtfsSource(
+                stopsById = mapOf("central_station" to central),
+                stopTimesByStop = mapOf("central_station" to trips),
+            ),
+            settings = settings,
+        )
+
+        busInfo.filtersForBusStop.test {
+            assertEquals(emptySet<BusFilterOptions>(), awaitItem())
+            settings.setHomeStopId("central_station")
+            val filters = awaitItem()
+            assertTrue(BusFilterOptions.TransportMode(TransitMode.BUS) in filters)
+            assertTrue(BusFilterOptions.TransportMode(TransitMode.TRAIN) in filters)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -295,7 +327,11 @@ class BusInfoTest {
             assertEquals(emptySet<BusFilterOptions>(), awaitItem())
             settings.setHomeStopId("twoplat")
             assertEquals(
-                setOf(BusFilterOptions.RouteShortName("370"), BusFilterOptions.TripHeadsign("City")),
+                setOf(
+                    BusFilterOptions.RouteShortName("370"),
+                    BusFilterOptions.TripHeadsign("City"),
+                    BusFilterOptions.TransportMode(TransitMode.BUS),
+                ),
                 awaitItem(),
             )
             cancelAndIgnoreRemainingEvents()
@@ -331,6 +367,7 @@ class BusInfoTest {
                     BusFilterOptions.RouteShortName("370"),
                     BusFilterOptions.TripHeadsign("City"),
                     BusFilterOptions.StopStand("Stand 1"),
+                    BusFilterOptions.TransportMode(TransitMode.BUS),
                 ),
                 awaitItem(),
             )
@@ -418,6 +455,40 @@ class BusInfoTest {
             val s2 = departures.single { it.busStopTimesRecord.stopId == "s2" }
             assertEquals(Duration.ofSeconds(120), s1.realtimeBusStopTimesRecord?.stopTimeDelay)
             assertEquals(null, s2.realtimeBusStopTimesRecord)   // same trip, no live data → stays null
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `a train realtime delay joins onto the prefixed train departure`() = runTest {
+        // The merged static DB prefixes train ids with "T:", and the realtime layer prefixes the train
+        // feed the same way, so the (tripId, stopId) join lines up across modes.
+        val busInfo = busInfo(
+            static = FakeStaticGtfsSource(
+                stopsById = mapOf("central_station" to central),
+                stopTimesByStop = mapOf(
+                    "central_station" to listOf(
+                        stopTime(tripId = "T:t1", stopId = "T:s1", routeType = 2),
+                    )
+                ),
+            ),
+            realtime = FakeRealtimeSource(
+                busData = listOf(
+                    RealtimeBusTripInfo(
+                        id = "e1",
+                        tripId = "T:t1",
+                        updatedAt = baseTime,
+                        stopTimeDelays = listOf("T:s1" to 180),
+                        vehicleLicencePlate = "",   // trains have no plate
+                    )
+                )
+            ),
+            settings = FakeSettingsSource(homeStopId = "central_station"),
+        )
+
+        busInfo.associatedStopTimes.test {
+            val departure = awaitDepartures().single()
+            assertEquals(Duration.ofSeconds(180), departure.realtimeBusStopTimesRecord?.stopTimeDelay)
             cancelAndIgnoreRemainingEvents()
         }
     }

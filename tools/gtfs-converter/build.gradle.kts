@@ -10,10 +10,18 @@ repositories {
 dependencies {
     implementation("org.xerial:sqlite-jdbc:3.47.1.0")
     implementation("com.github.doyaaaaaken:kotlin-csv-jvm:1.10.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 application {
     mainClass.set("com.example.gtfsconverter.MainKt")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging { events("passed", "skipped", "failed") }
 }
 
 // Fat jar for easy CI execution

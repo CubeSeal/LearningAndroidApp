@@ -83,7 +83,9 @@ cd Learning
 ./gradlew testDebugUnitTest --tests "com.example.learning.BusInfoTest"
 ```
 
-The codebase follows **red-green-refactor** with **state-based fakes**, asserting behaviour through public APIs (never call-count/interaction assertions):
+The **red-green-refactor** regime below applies to the **app** (`Learning/`). The converter (`tools/gtfs-converter/`) has its **own hermetic tests** for the build pipeline: the input IO boundary is the `GtfsRowSource` interface (`FileGtfsRowSource` reads CSVs in production; `InMemoryGtfsRowSource` is the test fake), and `buildDatabaseInto(conn, feeds)` builds into an in-memory `jdbc:sqlite::memory:` connection the test queries directly — so the merge/prefix/glob behaviour is asserted state-based with no files. Run them with `Learning/gradlew -p tools/gtfs-converter test` (the converter has no wrapper of its own; borrow the app's). What stays **outside** tests is `main()`'s IO glue — the network download and the `gh`-shelling release — verified manually by running it (`TFNSW_API_KEY=<key> gradle run`) and inspecting the output DB.
+
+The app follows **red-green-refactor** with **state-based fakes**, asserting behaviour through public APIs (never call-count/interaction assertions):
 
 - The four repositories implement plain `interface` seams — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource` — each colocated in its `repos/*.kt` file. `BusInfo` depends on these interfaces, not the concrete classes. Use plain interfaces for DI seams; reserve `sealed` for closed variant hierarchies (e.g. `BusFilterOptions`). A `sealed interface` can't be implemented from the `src/test` compilation, so it would block fakes.
 - The domain is framework-free: the location seam exposes the domain `LatLon`, not `android.location.Location`, so `BusInfo` tests are plain JVM tests (no Robolectric).
