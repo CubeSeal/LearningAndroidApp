@@ -16,8 +16,11 @@ import androidx.navigation.toRoute
 import com.example.learning.repos.BusStopRecord
 import com.example.learning.repos.FileRepository
 import com.example.learning.repos.GlobbedBusStopRecord
+import com.example.learning.db.GtfsDatabase
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
+import com.example.learning.repos.GtfsValidation
+import com.example.learning.repos.validateGtfsDb
 import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +50,7 @@ class ApplicationRepos(private val applicationContext: Context) {
     val settingsRepo = SettingsRepository(applicationContext)
     val httpClient = OkHttpClient()
     val loaded = MutableStateFlow(false)
+    val loadError = MutableStateFlow<String?>(null)
 
     lateinit var gtfsStaticRepository: GtfsStaticRepository
         private set
@@ -73,10 +77,17 @@ class ApplicationRepos(private val applicationContext: Context) {
                 httpClient
             )
 
+            val validation = validateGtfsDb(GtfsDatabase.getInstance(applicationContext))
+            if (validation is GtfsValidation.Invalid) {
+                Log.e("INIT", "DB validation failed: ${validation.reason}")
+                loadError.update { validation.reason }
+                return@withContext
+            }
+
             Log.d("INIT", "Finished loading.")
         }
 
-        loaded.update { true }
+        if (loadError.value == null) loaded.update { true }
     }
 }
 

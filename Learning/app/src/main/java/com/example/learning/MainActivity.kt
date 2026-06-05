@@ -127,6 +127,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TfNSWTheme {
+                val loadError by app.repos.loadError.collectAsStateWithLifecycle()
+                if (loadError != null) {
+                    LoadingScreen("Transit data unavailable.\n\nThe schedule database could not be loaded. Please reinstall the app or wait for an automatic data update.\n\nDetail: $loadError")
+                    return@TfNSWTheme
+                }
+
                 val loaded by app.repos.loaded.collectAsStateWithLifecycle()
                 if (!loaded) {
                     LoadingScreen("Loading...")
