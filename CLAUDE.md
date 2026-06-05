@@ -85,14 +85,27 @@ cd Learning
 
 The **red-green-refactor** regime below applies to the **app** (`Learning/`). The converter (`tools/gtfs-converter/`) has its **own hermetic tests** for the build pipeline: the input IO boundary is the `GtfsRowSource` interface (`FileGtfsRowSource` reads CSVs in production; `InMemoryGtfsRowSource` is the test fake), and `buildDatabaseInto(conn, feeds)` builds into an in-memory `jdbc:sqlite::memory:` connection the test queries directly — so the merge/prefix/glob behaviour is asserted state-based with no files. Run them with `Learning/gradlew -p tools/gtfs-converter test` (the converter has no wrapper of its own; borrow the app's). What stays **outside** tests is `main()`'s IO glue — the network download and the `gh`-shelling release — verified manually by running it (`TFNSW_API_KEY=<key> gradle run`) and inspecting the output DB.
 
-The app follows **red-green-refactor** with **state-based fakes**, asserting behaviour through public APIs (never call-count/interaction assertions):
+### Test boundary rule
+
+**The app's consumer is the user, so its public API is the rendered screen.** Behaviour is asserted through Compose semantics (`onNodeWithText`, `onNodeWithContentDescription`) on real composables — this locks in what users see and survives restyling. `BusInfo` and ViewModels are implementation details; their user-visible behaviour is asserted through the Home screen (Robolectric vertical slice), not directly. Two exceptions to the rule:
+
+1. **Canonical pure/library functions** (`parseGtfsDateTime`, `transitModeOf`, etc.) are tested at their own API — they have callers like a library does.
+2. **`GtfsValidationTest`** (`validateGtfsDb`) tests the startup validation boundary at its own API, because `MainActivity` branches on `Ok`/`Invalid` — it *is* a consumer boundary.
+
+**Data correctness lives in the converter, not the app.** The converter guarantees:
+- `globbed_stops` is populated via `parent_station`-based grouping (for trains) + name-parse fallback (for buses).
+- `service_dates` is materialised — one row per (service_id, date) the service runs, pre-expanded from `calendar`+`calendar_dates` over a bounded window. The app reads this table directly; no runtime date-expansion logic in the app.
+
+**Startup validation gates entry.** `validateGtfsDb` runs at startup in `initAll()` and checks schema + key invariants (tables non-empty, `service_dates` present). On failure, `loadError` is set and `MainActivity` shows an error screen and halts — the app never enters Home with an untrusted DB.
+
+The app follows **red-green-refactor** with **state-based fakes**:
 
 - The four repositories implement plain `interface` seams — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource` — each colocated in its `repos/*.kt` file. `BusInfo` depends on these interfaces, not the concrete classes. Use plain interfaces for DI seams; reserve `sealed` for closed variant hierarchies (e.g. `BusFilterOptions`). A `sealed interface` can't be implemented from the `src/test` compilation, so it would block fakes.
-- The domain is framework-free: the location seam exposes the domain `LatLon`, not `android.location.Location`, so `BusInfo` tests are plain JVM tests (no Robolectric).
+- The domain is framework-free: the location seam exposes the domain `LatLon`, not `android.location.Location`, so domain-level tests are plain JVM tests (no Robolectric).
 - Hand-written state-based fakes live in `app/src/test/java/com/example/learning/repos/` (`Fake*Source`), backed by `MutableStateFlow`/in-memory maps and seeded per test.
 - Test libs: JUnit4 + `kotlinx-coroutines-test` (`runTest`, `backgroundScope`) + Turbine (`flow.test { awaitItem() }`).
 - `testOptions.unitTests.isReturnDefaultValues = true` (`app/build.gradle.kts`) makes stubbed `android.*` calls (e.g. `Log`) return defaults instead of throwing in JVM tests.
-- Copy from the worked examples: `ParseGtfsDateTimeTest` (pure function) and `BusInfoTest` (fakes + Turbine).
+- Copy from the worked examples: `ParseGtfsDateTimeTest` (pure function), `FilterScreenContentTest` (Compose screen via Robolectric), `GtfsValidationTest` (boundary check).
 - `.gitignore` ignores `/test/` (anchored) — the top-level GTFS sample-data dir only; an unanchored `test/` would also swallow `app/src/test`.
 
 ## Conventions

@@ -7,6 +7,9 @@ import java.net.URI
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
 
@@ -204,7 +207,11 @@ internal class FileGtfsRowSource(private val gtfsDir: File) : GtfsRowSource {
  * behaviour tests drive it against an in-memory `:memory:` connection they query directly; production
  * wraps it in [buildDatabase] with a file-backed connection.
  */
-internal fun buildDatabaseInto(conn: Connection, feeds: List<Pair<GtfsRowSource, String>>) {
+internal fun buildDatabaseInto(
+    conn: Connection,
+    feeds: List<Pair<GtfsRowSource, String>>,
+    horizon: LocalDate = LocalDate.now(),
+) {
     conn.pragma("journal_mode = OFF")
     conn.pragma("synchronous = OFF")
     conn.pragma("cache_size = -64000")
@@ -235,6 +242,10 @@ internal fun buildDatabaseInto(conn: Connection, feeds: List<Pair<GtfsRowSource,
     // stop, which is the desired multimodal "what leaves from <X>" view.
     println("  Creating globbed stops...")
     createGlobbedStops(conn)
+    conn.commit()
+
+    println("  Materialising service dates...")
+    createServiceDates(conn, horizon)
     conn.commit()
 
     println("  Creating indices...")
@@ -358,6 +369,13 @@ private fun createTables(conn: Connection) {
             stop_id TEXT NOT NULL,
             PRIMARY KEY (globbed_stop_id, stop_id),
             FOREIGN KEY (stop_id) REFERENCES stops(stop_id)
+        )
+    """)
+    conn.exec("""
+        CREATE TABLE IF NOT EXISTS service_dates (
+            service_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            PRIMARY KEY (service_id, date)
         )
     """)
 }
@@ -529,31 +547,172 @@ private fun PreparedStatement.setNullableDouble(i: Int, v: Double?) {
 private fun createGlobbedStops(conn: Connection) {
     conn.exec("DELETE FROM globbed_stops")
 
+    // Two strategies, unioned and deduped:
+    //
+    // 1. parent_station-based (trains): a stop with a non-blank parent_station globs under that
+    //    parent's normalised name; the parent itself (location_type=1) also globs under its own name.
+    //    This correctly groups "Wynyard Station" + "Wynyard Station, Platform 3" etc. without
+    //    relying on name parsing.
+    //
+    // 2. Name-parse fallback (buses): stops whose pre-comma name ends in "Station" but have no
+    //    parent_station (most bus stops). Retained so bus interchanges keep working.
+    //
+    // INSERT OR REPLACE deduplicates on the composite PK (globbed_stop_id, stop_id).
     conn.exec("""
         INSERT OR REPLACE INTO globbed_stops (
             globbed_stop_id,
             globbed_stop_name,
             stop_id
         )
-        WITH parsed AS (
+        -- Strategy 1a: child stops with a parent_station reference
+        SELECT
+            replace(lower(p.stop_name), ' ', '_') AS globbed_stop_id,
+            p.stop_name AS globbed_stop_name,
+            s.stop_id
+        FROM stops s
+        JOIN stops p ON p.stop_id = s.parent_station
+        WHERE s.parent_station IS NOT NULL AND s.parent_station != ''
+
+        UNION
+
+        -- Strategy 1b: parent station stops themselves (location_type=1)
+        SELECT
+            replace(lower(stop_name), ' ', '_') AS globbed_stop_id,
+            stop_name AS globbed_stop_name,
+            stop_id
+        FROM stops
+        WHERE location_type = 1 AND stop_name IS NOT NULL
+
+        UNION
+
+        -- Strategy 2: name-parse fallback for stops with no parent_station
+        SELECT
+            replace(lower(station_name), ' ', '_') AS globbed_stop_id,
+            station_name AS globbed_stop_name,
+            stop_id
+        FROM (
             SELECT
                 stop_id,
                 trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) AS station_name
             FROM stops
             WHERE stop_name IS NOT NULL
               AND instr(stop_name, ',') > 0
-        ),
-        stations AS (
-            SELECT
-                stop_id,
-                station_name
-            FROM parsed
-            WHERE station_name LIKE '% Station'
+              AND (parent_station IS NULL OR parent_station = '')
         )
-        SELECT
-            replace(lower(station_name), ' ', '_') AS globbed_stop_id,
-            station_name AS globbed_stop_name,
-            stop_id
-        FROM stations
+        WHERE station_name LIKE '% Station'
     """)
+}
+
+/**
+ * Materialises a `service_dates` table: one row per (service_id, date) the service runs.
+ *
+ * Expands `calendar` weekly patterns over a bounded window ([horizon] −1 day … +28 days), then
+ * applies `calendar_dates` exceptions (type 1 = ADD, type 2 = REMOVE). Services that exist only
+ * in `calendar_dates` (no `calendar` row) are handled: their ADDED dates are emitted directly.
+ * This makes every service_id in `stop_times` resolvable without runtime date arithmetic in the
+ * app, eliminating the Wynyard crash cause.
+ */
+private fun createServiceDates(conn: Connection, horizon: LocalDate) {
+    conn.exec("DELETE FROM service_dates")
+
+    val fmt = DateTimeFormatter.ofPattern("yyyyMMdd")
+    val windowStart = horizon.minusDays(1)
+    val windowEnd = horizon.plusDays(28)
+
+    data class CalRow(
+        val serviceId: String,
+        val mon: Int, val tue: Int, val wed: Int, val thu: Int,
+        val fri: Int, val sat: Int, val sun: Int,
+        val startDate: LocalDate, val endDate: LocalDate,
+    )
+
+    // Load calendar and calendar_dates into memory (small sets).
+    val calendars = mutableListOf<CalRow>()
+    conn.createStatement().use { st ->
+        st.executeQuery("SELECT * FROM calendar").use { rs ->
+            while (rs.next()) {
+                calendars.add(CalRow(
+                    serviceId = rs.getString("service_id"),
+                    mon = rs.getInt("monday"), tue = rs.getInt("tuesday"),
+                    wed = rs.getInt("wednesday"), thu = rs.getInt("thursday"),
+                    fri = rs.getInt("friday"), sat = rs.getInt("saturday"),
+                    sun = rs.getInt("sunday"),
+                    startDate = LocalDate.parse(rs.getString("start_date"), fmt),
+                    endDate = LocalDate.parse(rs.getString("end_date"), fmt),
+                ))
+            }
+        }
+    }
+
+    // exceptions: serviceId → Map<date, exceptionType>
+    val exceptions = mutableMapOf<String, MutableMap<LocalDate, Int>>()
+    conn.createStatement().use { st ->
+        st.executeQuery("SELECT service_id, date, exception_type FROM calendar_dates").use { rs ->
+            while (rs.next()) {
+                val sid = rs.getString("service_id")
+                val date = LocalDate.parse(rs.getString("date"), fmt)
+                val type = rs.getInt("exception_type")
+                exceptions.getOrPut(sid) { mutableMapOf() }[date] = type
+            }
+        }
+    }
+
+    val stmt = conn.prepareStatement("INSERT OR IGNORE INTO service_dates(service_id, date) VALUES (?,?)")
+    conn.autoCommit = false
+
+    // Expand calendar-based services.
+    for (cal in calendars) {
+        val exMap = exceptions[cal.serviceId] ?: emptyMap()
+        var date = maxOf(cal.startDate, windowStart)
+        val end = minOf(cal.endDate, windowEnd)
+        while (!date.isAfter(end)) {
+            val runs = when (date.dayOfWeek) {
+                DayOfWeek.MONDAY -> cal.mon == 1
+                DayOfWeek.TUESDAY -> cal.tue == 1
+                DayOfWeek.WEDNESDAY -> cal.wed == 1
+                DayOfWeek.THURSDAY -> cal.thu == 1
+                DayOfWeek.FRIDAY -> cal.fri == 1
+                DayOfWeek.SATURDAY -> cal.sat == 1
+                DayOfWeek.SUNDAY -> cal.sun == 1
+            }
+            val exception = exMap[date]
+            val include = when (exception) {
+                1 -> true   // ADDED
+                2 -> false  // REMOVED
+                else -> runs
+            }
+            if (include) {
+                stmt.setString(1, cal.serviceId)
+                stmt.setString(2, date.format(fmt))
+                stmt.addBatch()
+            }
+            date = date.plusDays(1)
+        }
+        // Also emit any ADDED exceptions outside the calendar date range or window.
+        for ((exDate, exType) in exMap) {
+            if (exType == 1 && (exDate.isBefore(cal.startDate) || exDate.isAfter(cal.endDate))) {
+                if (!exDate.isBefore(windowStart) && !exDate.isAfter(windowEnd)) {
+                    stmt.setString(1, cal.serviceId)
+                    stmt.setString(2, exDate.format(fmt))
+                    stmt.addBatch()
+                }
+            }
+        }
+    }
+
+    // Emit calendar_dates-only services (no calendar row).
+    val calendarServiceIds = calendars.map { it.serviceId }.toSet()
+    for ((serviceId, exMap) in exceptions) {
+        if (serviceId in calendarServiceIds) continue
+        for ((exDate, exType) in exMap) {
+            if (exType == 1 && !exDate.isBefore(windowStart) && !exDate.isAfter(windowEnd)) {
+                stmt.setString(1, serviceId)
+                stmt.setString(2, exDate.format(fmt))
+                stmt.addBatch()
+            }
+        }
+    }
+
+    stmt.executeBatch()
+    stmt.close()
 }

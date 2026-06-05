@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.SkipQueryVerification
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -157,6 +158,11 @@ data class GlobbedStopEntity(
     @ColumnInfo(name = "globbed_stop_id") val globbedStopId: String,
     @ColumnInfo(name = "globbed_stop_name") val globbedStopName: String,
     @ColumnInfo(name = "stop_id") val stopId: String,
+)
+
+data class ServiceDateRow(
+    @ColumnInfo(name = "service_id") val serviceId: String,
+    @ColumnInfo(name = "date") val date: String,
 )
 
 data class StopWithGlobbedInfo(
@@ -305,6 +311,10 @@ interface GtfsDao {
 
     @Query("SELECT * FROM calendar_dates WHERE service_id = :serviceId")
     suspend fun getCalendarDates(serviceId: String): List<CalendarDateEntity>
+
+    @SkipQueryVerification
+    @Query("SELECT service_id, date FROM service_dates")
+    suspend fun getAllServiceDates(): List<ServiceDateRow>
 
     // ── Metadata ───────────────────────────────────────────
 

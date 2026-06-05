@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.ResultSet
+import java.time.LocalDate
 
 /**
  * Behaviour of the converter's merge pipeline, [buildDatabaseInto].
@@ -55,6 +56,102 @@ class BuildDatabaseTest {
         }
     }
 
+    // ── service_dates tests ───────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `it expands a weekly calendar into service_dates within the horizon`() {
+        // Mon–Fri service running 2026-06-01 to 2026-06-07. Within a ±28d horizon anchored at
+        // 2026-06-05, the weekdays Mon 01, Tue 02, Wed 03, Thu 04, Fri 05 should all appear.
+        val feed = InMemoryGtfsRowSource(mapOf(
+            "agency.txt" to emptyList(), "routes.txt" to emptyList(), "trips.txt" to emptyList(),
+            "stops.txt" to emptyList(), "stop_times.txt" to emptyList(),
+            "calendar.txt" to listOf(mapOf(
+                "service_id" to "WD",
+                "monday" to "1", "tuesday" to "1", "wednesday" to "1", "thursday" to "1",
+                "friday" to "1", "saturday" to "0", "sunday" to "0",
+                "start_date" to "20260601", "end_date" to "20260607",
+            )),
+            "calendar_dates.txt" to emptyList(),
+        ))
+
+        withMergedDb(feed to "", horizon = LocalDate.of(2026, 5, 28)) { db ->
+            val dates = db.query("SELECT date FROM service_dates WHERE service_id = 'WD' ORDER BY date") {
+                it.getString("date")
+            }
+            assertEquals(listOf("20260601", "20260602", "20260603", "20260604", "20260605"), dates)
+        }
+    }
+
+    @Test
+    fun `a REMOVED exception drops a date from the calendar expansion`() {
+        val feed = InMemoryGtfsRowSource(mapOf(
+            "agency.txt" to emptyList(), "routes.txt" to emptyList(), "trips.txt" to emptyList(),
+            "stops.txt" to emptyList(), "stop_times.txt" to emptyList(),
+            "calendar.txt" to listOf(mapOf(
+                "service_id" to "WD",
+                "monday" to "1", "tuesday" to "1", "wednesday" to "1", "thursday" to "1",
+                "friday" to "1", "saturday" to "0", "sunday" to "0",
+                "start_date" to "20260601", "end_date" to "20260607",
+            )),
+            "calendar_dates.txt" to listOf(mapOf(
+                "service_id" to "WD", "date" to "20260603", "exception_type" to "2",  // REMOVED
+            )),
+        ))
+
+        withMergedDb(feed to "", horizon = LocalDate.of(2026, 5, 28)) { db ->
+            val dates = db.query("SELECT date FROM service_dates WHERE service_id = 'WD' ORDER BY date") {
+                it.getString("date")
+            }
+            assertEquals(listOf("20260601", "20260602", "20260604", "20260605"), dates)
+        }
+    }
+
+    @Test
+    fun `an ADDED exception adds a date outside the normal calendar pattern`() {
+        val feed = InMemoryGtfsRowSource(mapOf(
+            "agency.txt" to emptyList(), "routes.txt" to emptyList(), "trips.txt" to emptyList(),
+            "stops.txt" to emptyList(), "stop_times.txt" to emptyList(),
+            "calendar.txt" to listOf(mapOf(
+                "service_id" to "WD",
+                "monday" to "1", "tuesday" to "1", "wednesday" to "1", "thursday" to "1",
+                "friday" to "1", "saturday" to "0", "sunday" to "0",
+                "start_date" to "20260601", "end_date" to "20260607",
+            )),
+            "calendar_dates.txt" to listOf(mapOf(
+                "service_id" to "WD", "date" to "20260607", "exception_type" to "1",  // ADDED (Sunday)
+            )),
+        ))
+
+        withMergedDb(feed to "", horizon = LocalDate.of(2026, 5, 28)) { db ->
+            val dates = db.query("SELECT date FROM service_dates WHERE service_id = 'WD' ORDER BY date") {
+                it.getString("date")
+            }
+            assertEquals(listOf("20260601", "20260602", "20260603", "20260604", "20260605", "20260607"), dates)
+        }
+    }
+
+    @Test
+    fun `a calendar_dates-only service (no calendar row) yields its added dates`() {
+        // Train services sometimes have no calendar row at all, only calendar_dates exceptions.
+        // This is the root cause of the Wynyard crash — the producer must handle it.
+        val feed = InMemoryGtfsRowSource(mapOf(
+            "agency.txt" to emptyList(), "routes.txt" to emptyList(), "trips.txt" to emptyList(),
+            "stops.txt" to emptyList(), "stop_times.txt" to emptyList(),
+            "calendar.txt" to emptyList(),
+            "calendar_dates.txt" to listOf(
+                mapOf("service_id" to "SPECIAL", "date" to "20260605", "exception_type" to "1"),
+                mapOf("service_id" to "SPECIAL", "date" to "20260606", "exception_type" to "1"),
+            ),
+        ))
+
+        withMergedDb(feed to "", horizon = LocalDate.of(2026, 5, 28)) { db ->
+            val dates = db.query("SELECT date FROM service_dates WHERE service_id = 'SPECIAL' ORDER BY date") {
+                it.getString("date")
+            }
+            assertEquals(listOf("20260605", "20260606"), dates)
+        }
+    }
+
     @Test
     fun `it globs platform stops that share a station name, across the prefix`() {
         val train = gtfsFeed(
@@ -75,6 +172,53 @@ class BuildDatabaseTest {
                 setOf("central_station" to "T:CEN1", "central_station" to "T:CEN2"),
                 globbed.toSet(),
             )
+        }
+    }
+
+    @Test
+    fun `it globs platform stops under their parent station via parent_station`() {
+        // Seed a parent station (location_type=1) + two platform children with parent_station set.
+        // The existing name-parse path would miss these because platform names don't end in "Station".
+        // The parent_station path should fold all three (parent + children) under one globbed id,
+        // deduped, using the parent's name.
+        val feed = gtfsFeedWithParents(
+            parent = Triple("PAR", "Wynyard Station", 1),
+            children = listOf(
+                "PLT1" to "Wynyard Station, Platform 3",
+                "PLT2" to "Wynyard Station, Platform 4",
+            ),
+        )
+
+        withMergedDb(feed to "T:") { db ->
+            val globbed = db.query("SELECT globbed_stop_id, stop_id FROM globbed_stops ORDER BY stop_id") {
+                it.getString("globbed_stop_id") to it.getString("stop_id")
+            }
+            // All three stops (parent + both platforms) glob under one id, no duplicates.
+            assertEquals(
+                setOf(
+                    "wynyard_station" to "T:PAR",
+                    "wynyard_station" to "T:PLT1",
+                    "wynyard_station" to "T:PLT2",
+                ),
+                globbed.toSet(),
+            )
+        }
+    }
+
+    @Test
+    fun `name-parse globbing still works for bus stops without parent_station`() {
+        // Regression guard: the existing name-parse path must keep working after the parent_station
+        // extension is added.
+        val feed = gtfsFeed(
+            stops = listOf(
+                "B1" to "Central Station, Bay 1",
+                "B2" to "Central Station, Bay 2",
+            ),
+        )
+
+        withMergedDb(feed to "") { db ->
+            val ids = db.query("SELECT DISTINCT globbed_stop_id FROM globbed_stops") { it.getString(1) }
+            assertEquals(listOf("central_station"), ids)
         }
     }
 
@@ -105,10 +249,11 @@ class BuildDatabaseTest {
      */
     private fun withMergedDb(
         vararg feeds: Pair<GtfsRowSource, String>,
+        horizon: LocalDate = LocalDate.now(),
         assertions: (Connection) -> Unit,
     ) {
         DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
-            buildDatabaseInto(conn, feeds.toList())
+            buildDatabaseInto(conn, feeds.toList(), horizon)
             assertions(conn)
         }
     }
@@ -168,7 +313,8 @@ class BuildDatabaseTest {
                 ),
             ),
             "stops.txt" to stops.map { (id, name) ->
-                mapOf("stop_id" to id, "stop_name" to name, "stop_lat" to "-33.8", "stop_lon" to "151.2")
+                mapOf("stop_id" to id, "stop_name" to name, "stop_lat" to "-33.8", "stop_lon" to "151.2",
+                      "location_type" to "", "parent_station" to "")
             },
             "stop_times.txt" to stops.mapIndexed { i, (id, _) ->
                 val seq = i + 1
@@ -177,6 +323,66 @@ class BuildDatabaseTest {
                     "departure_time" to "08:0$seq:00", "stop_id" to id, "stop_sequence" to "$seq",
                 )
             },
+            "calendar_dates.txt" to emptyList(),
         ),
     )
+
+    /**
+     * A feed where [parent] is a parent station (location_type=1) and [children] are platform stops
+     * referencing it via parent_station. Used to test parent_station-based globbing.
+     * [parent] is a Triple(stopId, stopName, locationType).
+     */
+    private fun gtfsFeedWithParents(
+        parent: Triple<String, String, Int>,
+        children: List<Pair<String, String>>,
+        routeId: String = "R1",
+        serviceId: String = "S1",
+        tripId: String = "t1",
+    ): GtfsRowSource {
+        val (parentId, parentName, parentLocType) = parent
+        val allStops = buildList {
+            add(mapOf(
+                "stop_id" to parentId, "stop_name" to parentName,
+                "stop_lat" to "-33.8", "stop_lon" to "151.2",
+                "location_type" to parentLocType.toString(), "parent_station" to "",
+            ))
+            children.forEach { (id, name) ->
+                add(mapOf(
+                    "stop_id" to id, "stop_name" to name,
+                    "stop_lat" to "-33.8", "stop_lon" to "151.2",
+                    "location_type" to "0", "parent_station" to parentId,
+                ))
+            }
+        }
+        val stopIds = children.map { it.first }
+        return InMemoryGtfsRowSource(mapOf(
+            "agency.txt" to listOf(mapOf(
+                "agency_id" to "A1", "agency_name" to "Test Agency",
+                "agency_url" to "http://example.test", "agency_timezone" to "Australia/Sydney",
+            )),
+            "routes.txt" to listOf(mapOf(
+                "route_id" to routeId, "agency_id" to "A1",
+                "route_short_name" to "T1", "route_long_name" to "T1 Long", "route_type" to "2",
+            )),
+            "calendar.txt" to listOf(mapOf(
+                "service_id" to serviceId,
+                "monday" to "1", "tuesday" to "1", "wednesday" to "1", "thursday" to "1",
+                "friday" to "1", "saturday" to "1", "sunday" to "1",
+                "start_date" to "20260101", "end_date" to "20261231",
+            )),
+            "trips.txt" to listOf(mapOf(
+                "trip_id" to tripId, "route_id" to routeId,
+                "service_id" to serviceId, "trip_headsign" to "City",
+            )),
+            "stops.txt" to allStops,
+            "stop_times.txt" to stopIds.mapIndexed { i, id ->
+                val seq = i + 1
+                mapOf(
+                    "trip_id" to tripId, "arrival_time" to "08:0$seq:00",
+                    "departure_time" to "08:0$seq:00", "stop_id" to id, "stop_sequence" to "$seq",
+                )
+            },
+            "calendar_dates.txt" to emptyList(),
+        ))
+    }
 }

@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
-import com.example.learning.db.StopEntity
+import com.example.learning.db.ServiceDateRow
 import com.example.learning.db.StopTimeWithDetails
 import com.example.learning.db.StopWithGlobbedInfo
 import kotlinx.coroutines.Dispatchers
@@ -22,11 +22,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.zip.GZIPInputStream
 import kotlin.collections.first
 import kotlin.collections.map
@@ -105,6 +103,39 @@ fun parseGtfsDateTime(date: LocalDate, time: String): LocalDateTime {
         .plusHours(hours.toLong())
         .plusMinutes(mins.toLong())
         .plusSeconds(secs.toLong())
+}
+
+sealed class GtfsValidation {
+    object Ok : GtfsValidation()
+    data class Invalid(val reason: String) : GtfsValidation()
+}
+
+/**
+ * Validates the opened [GtfsDatabase] against the schema and key data invariants before the app
+ * starts serving departures. Returns [GtfsValidation.Ok] if the DB is trustworthy, or
+ * [GtfsValidation.Invalid] with a human-readable reason otherwise.
+ *
+ * Called once at startup in [ApplicationRepos.initAll]; on [GtfsValidation.Invalid] the app shows
+ * an error screen and halts rather than crashing mid-use.
+ */
+internal fun validateGtfsDb(db: GtfsDatabase): GtfsValidation {
+    val sqLite = db.openHelper.readableDatabase
+    // Check that service_dates exists (produced by the converter; its absence means an old or
+    // corrupt DB was loaded).
+    val tableExists = sqLite.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='service_dates'"
+    ).use { it.count > 0 }
+    if (!tableExists) return GtfsValidation.Invalid("service_dates table missing — DB is from an old converter build")
+
+    // Key data invariants: core tables must be non-empty.
+    for (table in listOf("stops", "routes", "stop_times", "service_dates", "globbed_stops")) {
+        val count = sqLite.query("SELECT COUNT(*) FROM $table").use { c ->
+            c.moveToFirst(); c.getInt(0)
+        }
+        if (count == 0) return GtfsValidation.Invalid("$table is empty — DB may be corrupt or incomplete")
+    }
+
+    return GtfsValidation.Ok
 }
 
 /**
@@ -190,31 +221,11 @@ class GtfsStaticRepository(
     }
 
     private suspend fun preloadCalendarDates(): Map<String, Sequence<LocalDate>> {
-        return gtfsDao.getAllCalendar().associate { calendarEntity ->
-            val startDate = LocalDate.parse(calendarEntity.startDate,DateTimeFormatter.ofPattern("yyyyMMdd"))
-            val endDate = LocalDate.parse(calendarEntity.endDate,DateTimeFormatter.ofPattern("yyyyMMdd"))
-            val values = generateSequence(startDate) {
-                it.plusDays(1)
-            }.takeWhile {
-                !it.isAfter(endDate) &&
-                        !it.isAfter(LocalDate.now().plusWeeks(2))
-            }.filter { date ->
-                when (date.dayOfWeek) {
-                    DayOfWeek.MONDAY -> calendarEntity.monday == 1
-                    DayOfWeek.TUESDAY -> calendarEntity.tuesday == 1
-                    DayOfWeek.WEDNESDAY -> calendarEntity.wednesday == 1
-                    DayOfWeek.THURSDAY -> calendarEntity.thursday == 1
-                    DayOfWeek.FRIDAY -> calendarEntity.friday == 1
-                    DayOfWeek.SATURDAY -> calendarEntity.saturday == 1
-                    DayOfWeek.SUNDAY -> calendarEntity.sunday == 1
-                }
-            }
-            calendarEntity.serviceId to values
-        }.also {
-            it.forEach { (id, sequence) ->
-                Log.d("GTFS", "Preloaded calendar details: $id, ${sequence.joinToString()}")
-            }
-        }
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")
+        val today = LocalDate.now()
+        return gtfsDao.getAllServiceDates()
+            .groupBy({ it.serviceId }, { LocalDate.parse(it.date, fmt) })
+            .mapValues { (_, dates) -> dates.filter { !it.isBefore(today) }.asSequence() }
     }
 
     override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? {
