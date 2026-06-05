@@ -29,6 +29,10 @@ import java.util.zip.GZIPInputStream
 import kotlin.collections.first
 import kotlin.collections.map
 
+/** GitHub repo the prebuilt GTFS DB releases are published to (see [GtfsStaticRepository.syncGtfsDatabase]). */
+const val GTFS_GH_OWNER = "CubeSeal"
+const val GTFS_GH_REPO = "LearningAndroidApp"
+
 data class LatLon(val latitude: Double, val longitude: Double)
 
 @Immutable
@@ -139,6 +143,24 @@ internal fun validateGtfsDb(db: GtfsDatabase): GtfsValidation {
 }
 
 /**
+ * Provisions and validates the static GTFS DB at startup. If [validate] already reports
+ * [GtfsValidation.Ok] the DB is trusted as-is; otherwise [sync] is run to download the latest
+ * release and the DB is re-validated. Returns the final [GtfsValidation] — [GtfsValidation.Ok] to
+ * enter the app, or [GtfsValidation.Invalid] to halt to the error screen.
+ *
+ * This exists because the DB is never bundled: it only arrives via a sync. Validating before that
+ * first sync would deadlock the cold-start bootstrap (an empty DB can never become valid).
+ */
+internal suspend fun bootstrapGtfs(
+    validate: () -> GtfsValidation,
+    sync: suspend () -> Unit,
+): GtfsValidation {
+    if (validate() is GtfsValidation.Ok) return GtfsValidation.Ok
+    runCatching { sync() }  // an offline/IO failure folds into the re-validate below, not a crash
+    return validate()
+}
+
+/**
  * Read side of the static GTFS schedule, as consumed by [com.example.learning.BusInfo].
  * Kept as a plain interface so tests can swap in a state-based fake (see `src/test`).
  */
@@ -153,6 +175,7 @@ interface StaticGtfsSource {
     suspend fun syncGtfsDatabase(
         ghOwner: String,
         ghRepo: String,
+        force: Boolean = false,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit = { _, _ -> },
     )
 }
@@ -269,6 +292,7 @@ class GtfsStaticRepository(
     override suspend fun syncGtfsDatabase(
         ghOwner: String,
         ghRepo: String,
+        force: Boolean,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit,
     ) = withContext(Dispatchers.IO) {
         val tag = "GtfsSync"
@@ -298,7 +322,7 @@ class GtfsStaticRepository(
                 ?.let { Instant.parse(it) }
                 ?: error("Release missing published_at")
 
-            if (localTimestamp != null && localTimestamp >= publishedAt) {
+            if (!force && localTimestamp != null && localTimestamp >= publishedAt) {
                 Log.d(tag, "Up to date ($localTimestamp >= $publishedAt)")
 
                 isUpToDate.update { true }

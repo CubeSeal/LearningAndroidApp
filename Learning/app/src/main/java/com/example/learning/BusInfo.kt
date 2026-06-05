@@ -3,6 +3,8 @@ package com.example.learning
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.repos.BusStopTimesRecord
+import com.example.learning.repos.GTFS_GH_OWNER
+import com.example.learning.repos.GTFS_GH_REPO
 import com.example.learning.repos.GlobbedBusStopRecord
 import com.example.learning.repos.LocationSource
 import com.example.learning.repos.RealtimeBusTripInfo
@@ -220,8 +222,8 @@ class BusInfo(
 
     suspend fun refresh() {
         gtfsStaticRepository.syncGtfsDatabase(
-            ghOwner = "CubeSeal",
-            ghRepo = "LearningAndroidApp"
+            ghOwner = GTFS_GH_OWNER,
+            ghRepo = GTFS_GH_REPO
         )
         locationRepo.requestFreshFix()
     }

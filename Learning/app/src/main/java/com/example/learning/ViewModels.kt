@@ -19,7 +19,10 @@ import com.example.learning.repos.GlobbedBusStopRecord
 import com.example.learning.db.GtfsDatabase
 import com.example.learning.repos.GtfsRealtimeRepository
 import com.example.learning.repos.GtfsStaticRepository
+import com.example.learning.repos.GTFS_GH_OWNER
+import com.example.learning.repos.GTFS_GH_REPO
 import com.example.learning.repos.GtfsValidation
+import com.example.learning.repos.bootstrapGtfs
 import com.example.learning.repos.validateGtfsDb
 import com.example.learning.repos.LocationRepository
 import com.example.learning.repos.SettingsRepository
@@ -77,10 +80,23 @@ class ApplicationRepos(private val applicationContext: Context) {
                 httpClient
             )
 
-            val validation = validateGtfsDb(GtfsDatabase.getInstance(applicationContext))
-            if (validation is GtfsValidation.Invalid) {
-                Log.e("INIT", "DB validation failed: ${validation.reason}")
-                loadError.update { validation.reason }
+            // Provision then validate: the DB is never bundled, so on a missing/invalid DB we
+            // force-download the latest release before validating. Validating first would deadlock
+            // the cold-start bootstrap (an empty DB can never become valid without a sync).
+            val ctx = applicationContext
+            val outcome = bootstrapGtfs(
+                validate = { validateGtfsDb(GtfsDatabase.getInstance(ctx)) },
+                sync = {
+                    gtfsStaticRepository.syncGtfsDatabase(
+                        ghOwner = GTFS_GH_OWNER,
+                        ghRepo = GTFS_GH_REPO,
+                        force = true,
+                    )
+                },
+            )
+            if (outcome is GtfsValidation.Invalid) {
+                Log.e("INIT", "DB bootstrap failed: ${outcome.reason}")
+                loadError.update { outcome.reason }
                 return@withContext
             }
 

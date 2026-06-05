@@ -34,6 +34,7 @@ class FakeStaticGtfsSource(
     override suspend fun syncGtfsDatabase(
         ghOwner: String,
         ghRepo: String,
+        force: Boolean,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit,
     ) {
         isUpToDate.value = true

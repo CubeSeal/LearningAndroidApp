@@ -96,7 +96,7 @@ The **red-green-refactor** regime below applies to the **app** (`Learning/`). Th
 - `globbed_stops` is populated via `parent_station`-based grouping (for trains) + name-parse fallback (for buses).
 - `service_dates` is materialised — one row per (service_id, date) the service runs, pre-expanded from `calendar`+`calendar_dates` over a bounded window. The app reads this table directly; no runtime date-expansion logic in the app.
 
-**Startup validation gates entry.** `validateGtfsDb` runs at startup in `initAll()` and checks schema + key invariants (tables non-empty, `service_dates` present). On failure, `loadError` is set and `MainActivity` shows an error screen and halts — the app never enters Home with an untrusted DB.
+**Startup provisions then validates.** The DB is never bundled — it only arrives via `syncGtfsDatabase` (downloads the latest GitHub release). So `initAll()` runs `bootstrapGtfs(validate, sync)`: if `validateGtfsDb` (schema + key invariants — tables non-empty, `service_dates` present) is already `Ok` the DB is trusted as-is; otherwise it force-downloads the latest release and re-validates. Only if it is *still* `Invalid` after that sync does it set `loadError`, so `MainActivity` shows an error screen and halts. Validation must not precede first-run provisioning: doing so deadlocks the cold-start bootstrap (an empty DB can never become valid without a sync). The provision/validate decision lives in the pure `bootstrapGtfs` seam (tested in `BootstrapGtfsTest`); the network sync it drives is the manually-verified IO glue.
 
 The app follows **red-green-refactor** with **state-based fakes**:
 
