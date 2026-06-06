@@ -238,12 +238,9 @@ interface GtfsDao {
 
     @Query(
         """
-    SELECT *, 
-        ((stop_lat - :userLat) * (stop_lat - :userLat) + 
-         (stop_lon - :userLon) * (stop_lon - :userLon)) AS distance_sq
+    SELECT *
     FROM stops
-    ORDER BY distance_sq ASC
-    LIMIT :limit
+    ORDER BY ((stop_lat - :userLat) * (stop_lat - :userLat) + (stop_lon - :userLon) * (stop_lon - :userLon)) ASC LIMIT :limit
 """
     )
     suspend fun getNearestStops(userLat: Double, userLon: Double, limit: Int): List<StopEntity>
@@ -311,10 +308,6 @@ interface GtfsDao {
 
     @Query("SELECT * FROM calendar_dates WHERE service_id = :serviceId")
     suspend fun getCalendarDates(serviceId: String): List<CalendarDateEntity>
-
-    @SkipQueryVerification
-    @Query("SELECT service_id, date FROM service_dates")
-    suspend fun getAllServiceDates(): List<ServiceDateRow>
 
     // ── Metadata ───────────────────────────────────────────
 
@@ -390,11 +383,19 @@ interface GtfsDao {
     @Query(
         """
         SELECT
-            A.stop_id AS stopId,
-            A.stop_name AS stopName,
-            A.stop_lat AS stopLat,
-            A.stop_lon AS stopLon,
-            A.wheelchair_boarding AS wheelchairBoarding,
+            A.stop_id as stopId,
+            A.stop_code as stopCode,
+            A.stop_name as stopName,
+            A.stop_desc as stopDesc,
+            A.stop_lat as stopLat,
+            A.stop_lon as stopLon,
+            A.zone_id as zoneId,
+            A.stop_url as stopUrl,
+            A.location_type as locationType,
+            A.parent_station as parentStation,
+            A.stop_timezone as stopTimezone,
+            A.wheelchair_boarding as wheelchairBoarding,
+            A.platform_code as platformCode,
             COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
             COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
         FROM stops A
@@ -406,11 +407,19 @@ interface GtfsDao {
     @Query(
         """
         SELECT
-            A.stop_id AS stopId,
-            A.stop_name AS stopName,
-            A.stop_lat AS stopLat,
-            A.stop_lon AS stopLon,
-            A.wheelchair_boarding AS wheelchairBoarding,
+            A.stop_id as stopId,
+            A.stop_code as stopCode,
+            A.stop_name as stopName,
+            A.stop_desc as stopDesc,
+            A.stop_lat as stopLat,
+            A.stop_lon as stopLon,
+            A.zone_id as zoneId,
+            A.stop_url as stopUrl,
+            A.location_type as locationType,
+            A.parent_station as parentStation,
+            A.stop_timezone as stopTimezone,
+            A.wheelchair_boarding as wheelchairBoarding,
+            A.platform_code as platformCode,
             COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
             COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
         FROM stops A
@@ -422,13 +431,21 @@ interface GtfsDao {
     @Query(
         """
             SELECT
-                A.stop_id AS stopId,
-                A.stop_name AS stopName,
-                A.stop_lat AS stopLat,
-                A.stop_lon AS stopLon,
-                A.wheelchair_boarding AS wheelchairBoarding,
-                COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
-                COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
+            A.stop_id as stopId,
+            A.stop_code as stopCode,
+            A.stop_name as stopName,
+            A.stop_desc as stopDesc,
+            A.stop_lat as stopLat,
+            A.stop_lon as stopLon,
+            A.zone_id as zoneId,
+            A.stop_url as stopUrl,
+            A.location_type as locationType,
+            A.parent_station as parentStation,
+            A.stop_timezone as stopTimezone,
+            A.wheelchair_boarding as wheelchairBoarding,
+            A.platform_code as platformCode,
+            COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
+            COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
             FROM stops A
             LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
         """)
@@ -437,18 +454,24 @@ interface GtfsDao {
     @Query(
         """
     SELECT
-        A.stop_id AS stopId,
-        A.stop_name AS stopName,
-        A.stop_lat AS stopLat,
-        A.stop_lon AS stopLon,
-        A.wheelchair_boarding AS wheelchairBoarding,
+        A.stop_id as stopId,
+        A.stop_code as stopCode,
+        A.stop_name as stopName,
+        A.stop_desc as stopDesc,
+        A.stop_lat as stopLat,
+        A.stop_lon as stopLon,
+        A.zone_id as zoneId,
+        A.stop_url as stopUrl,
+        A.location_type as locationType,
+        A.parent_station as parentStation,
+        A.stop_timezone as stopTimezone,
+        A.wheelchair_boarding as wheelchairBoarding,
+        A.platform_code as platformCode,
         COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
-        COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName,
-        ((stop_lat - :userLat) * (stop_lat - :userLat) + 
-         (stop_lon - :userLon) * (stop_lon - :userLon)) AS distance_sq
+        COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
     FROM stops A
     LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
-    ORDER BY distance_sq ASC
+    ORDER BY ((stop_lat - :userLat) * (stop_lat - :userLat) + (stop_lon - :userLon) * (stop_lon - :userLon)) ASC
     LIMIT :limit
 """
     )
@@ -457,11 +480,19 @@ interface GtfsDao {
     @Query(
         """
     SELECT
-        A.stop_id AS stopId,
-        A.stop_name AS stopName,
-        A.stop_lat AS stopLat,
-        A.stop_lon AS stopLon,
-        A.wheelchair_boarding AS wheelchairBoarding,
+        A.stop_id as stopId,
+        A.stop_code as stopCode,
+        A.stop_name as stopName,
+        A.stop_desc as stopDesc,
+        A.stop_lat as stopLat,
+        A.stop_lon as stopLon,
+        A.zone_id as zoneId,
+        A.stop_url as stopUrl,
+        A.location_type as locationType,
+        A.parent_station as parentStation,
+        A.stop_timezone as stopTimezone,
+        A.wheelchair_boarding as wheelchairBoarding,
+        A.platform_code as platformCode,
         COALESCE(B.globbed_stop_id, A.stop_id) as globbedStopId,
         COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
     FROM stops A
@@ -507,7 +538,7 @@ internal abstract class GtfsDatabase : RoomDatabase() {
             } else {
                 Room.databaseBuilder(context, GtfsDatabase::class.java, DB_NAME)
             }
-            return builder.fallbackToDestructiveMigration().build()
+            return builder.fallbackToDestructiveMigration(false).build()
         }
 
         /** Close current instance and swap in a new DB file. */

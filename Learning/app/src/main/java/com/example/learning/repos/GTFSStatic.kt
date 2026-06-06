@@ -22,9 +22,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.zip.GZIPInputStream
 import kotlin.collections.first
 import kotlin.collections.map
@@ -244,11 +246,31 @@ class GtfsStaticRepository(
     }
 
     private suspend fun preloadCalendarDates(): Map<String, Sequence<LocalDate>> {
-        val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")
-        val today = LocalDate.now()
-        return gtfsDao.getAllServiceDates()
-            .groupBy({ it.serviceId }, { LocalDate.parse(it.date, fmt) })
-            .mapValues { (_, dates) -> dates.filter { !it.isBefore(today) }.asSequence() }
+        return gtfsDao.getAllCalendar().associate { calendarEntity ->
+            val startDate = LocalDate.parse(calendarEntity.startDate, DateTimeFormatter.ofPattern("yyyyMMdd"))
+            val endDate = LocalDate.parse(calendarEntity.endDate,DateTimeFormatter.ofPattern("yyyyMMdd"))
+            val values = generateSequence(startDate) {
+                it.plusDays(1)
+            }.takeWhile {
+                !it.isAfter(endDate) &&
+                        !it.isAfter(LocalDate.now().plusWeeks(2))
+            }.filter { date ->
+                when (date.dayOfWeek) {
+                    DayOfWeek.MONDAY -> calendarEntity.monday == 1
+                    DayOfWeek.TUESDAY -> calendarEntity.tuesday == 1
+                    DayOfWeek.WEDNESDAY -> calendarEntity.wednesday == 1
+                    DayOfWeek.THURSDAY -> calendarEntity.thursday == 1
+                    DayOfWeek.FRIDAY -> calendarEntity.friday == 1
+                    DayOfWeek.SATURDAY -> calendarEntity.saturday == 1
+                    DayOfWeek.SUNDAY -> calendarEntity.sunday == 1
+                }
+            }
+            calendarEntity.serviceId to values
+        }.also {
+            it.forEach { (id, sequence) ->
+                Log.d("GTFS", "Preloaded calendar details: $id, ${sequence.joinToString()}")
+            }
+        }
     }
 
     override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? {
