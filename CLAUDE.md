@@ -80,14 +80,22 @@ JVM unit tests run through Gradle inside the Nix dev shell (which provides JDK 1
 cd Learning
 ./gradlew testDebugUnitTest                                         # fast inner loop
 ./gradlew test                                                      # debug + release variants
-./gradlew testDebugUnitTest --tests "com.example.learning.BusInfoTest"
+./gradlew testDebugUnitTest --tests "com.example.learning.HomeVerticalSliceTest"
 ```
 
 The **red-green-refactor** regime below applies to the **app** (`Learning/`). The converter (`tools/gtfs-converter/`) has its **own hermetic tests** for the build pipeline: the input IO boundary is the `GtfsRowSource` interface (`FileGtfsRowSource` reads CSVs in production; `InMemoryGtfsRowSource` is the test fake), and `buildDatabaseInto(conn, feeds)` builds into an in-memory `jdbc:sqlite::memory:` connection the test queries directly — so the merge/prefix/glob behaviour is asserted state-based with no files. Run them with `Learning/gradlew -p tools/gtfs-converter test` (the converter has no wrapper of its own; borrow the app's). What stays **outside** tests is `main()`'s IO glue — the network download and the `gh`-shelling release — verified manually by running it (`TFNSW_API_KEY=<key> gradle run`) and inspecting the output DB.
 
 ### Test boundary rule
 
-**The app's consumer is the user, so its public API is the rendered screen.** Behaviour is asserted through Compose semantics (`onNodeWithText`, `onNodeWithContentDescription`) on real composables — this locks in what users see and survives restyling. `BusInfo` and ViewModels are implementation details; their user-visible behaviour is asserted through the Home screen (Robolectric vertical slice), not directly. Two exceptions to the rule:
+**The app's consumer is the user, so its public API is the rendered screen — and the test drives the *whole assembled app*, never a piece of it.** The canonical (and effectively only) app test is a **Robolectric vertical slice**: launch the real `MainActivity` (`ActivityScenario.launch(MainActivity::class.java)` with `createEmptyComposeRule()`), let the real `HomeNavHost` → screens → `ViewModel`s → `BusInfo` domain run, assert through Compose semantics (`onNodeWithText`, `onNodeWithContentDescription`), and **click through navigation** with `performClick()` to reach other pages. **The only doubles are the four repo data-source seams** — everything above them (ViewModels, `BusInfo`, navigation, composables) is the real production code under test. This locks in what users actually see and survives restyling.
+
+> **Do NOT** (these are the exact anti-patterns this regime replaced, and they must not come back):
+> - render a **leaf composable** (e.g. `FilterScreenContent`, `ModeFilterChips`) with hand-fed `mutableStateOf` and stub lambdas — that asserts a fragment, not the app;
+> - poke `BusInfo`/`ViewModel` `StateFlow`s **directly** with Turbine in a plain JVM test — that locks in implementation detail and bypasses the screen.
+>
+> If you reach for either, stop: the behaviour belongs in the vertical slice, expressed as something the user can see or tap.
+
+Two exceptions to the rendered-screen boundary:
 
 1. **Canonical pure/library functions** (`parseGtfsDateTime`, `transitModeOf`, etc.) are tested at their own API — they have callers like a library does.
 2. **`GtfsValidationTest`** (`validateGtfsDb`) tests the startup validation boundary at its own API, because `MainActivity` branches on `Ok`/`Invalid` — it *is* a consumer boundary.
@@ -98,14 +106,38 @@ The **red-green-refactor** regime below applies to the **app** (`Learning/`). Th
 
 **Startup provisions then validates.** The DB is never bundled — it only arrives via `syncGtfsDatabase` (downloads the latest GitHub release). So `initAll()` runs `bootstrapGtfs(validate, sync)`: if `validateGtfsDb` (schema + key invariants — tables non-empty, `service_dates` present) is already `Ok` the DB is trusted as-is; otherwise it force-downloads the latest release and re-validates. Only if it is *still* `Invalid` after that sync does it set `loadError`, so `MainActivity` shows an error screen and halts. Validation must not precede first-run provisioning: doing so deadlocks the cold-start bootstrap (an empty DB can never become valid without a sync). The provision/validate decision lives in the pure `bootstrapGtfs` seam (tested in `BootstrapGtfsTest`); the network sync it drives is the manually-verified IO glue.
 
+### How the vertical slice is wired
+
+The slice swaps the *DI container* at the `Application` level; nothing below changes. The seam is the `AppContainer` interface (`Application.kt`), which exposes the four repo seams + `busInfo` + `loaded`/`loadError` + `initAll()`. It has **two production implementations**:
+
+- `ApplicationRepos` — the real wiring (real `LocationRepository`, `OkHttpClient`, `GtfsStaticRepository`, `bootstrapGtfs`).
+- `FakeAppContainer` — wires `BusInfo` over the `Fake*Source` doubles, starts `loaded = true` / `loadError = null`, and stubs `initAll()` to a no-op so the nav host renders immediately without any network/DB.
+
+The container is selected by **subclassing the Application**, because `MainActivity` and `AppViewModelProvider` cast `application as LearningApplication` — so the test app **must be a subclass**, not a sibling, or that cast throws `ClassCastException`:
+
+```kotlin
+open class LearningApplication : Application() {            // open, so it can be subclassed
+    lateinit var repos: AppContainer
+    override fun onCreate() { super.onCreate(); repos = createContainer() }
+    protected open fun createContainer(): AppContainer = ApplicationRepos(this)
+}
+class TestingApplication : LearningApplication() {         // subclass → cast still succeeds
+    override fun createContainer(): AppContainer = FakeAppContainer()
+}
+```
+
+The test picks the fake wiring with `@Config(application = TestingApplication::class, sdk = [34], qualifiers = "w400dp-h800dp")` + `@RunWith(RobolectricTestRunner::class)`. Override `createContainer()` (not `onCreate`) so `super.onCreate()` still runs framework init.
+
+**Consequence — fakes live in `src/main`, not `src/test`.** Because `FakeAppContainer` is production code that assembles the doubles, the `Fake*Source` classes are colocated with their real counterparts in `repos/*.kt` (e.g. `FakeStaticGtfsSource` in `GTFSStatic.kt`). Tradeoff: they ship in the release APK. Acceptable for now; `src/debug` is the escape hatch if that ever matters.
+
 The app follows **red-green-refactor** with **state-based fakes**:
 
-- The four repositories implement plain `interface` seams — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource` — each colocated in its `repos/*.kt` file. `BusInfo` depends on these interfaces, not the concrete classes. Use plain interfaces for DI seams; reserve `sealed` for closed variant hierarchies (e.g. `BusFilterOptions`). A `sealed interface` can't be implemented from the `src/test` compilation, so it would block fakes.
-- The domain is framework-free: the location seam exposes the domain `LatLon`, not `android.location.Location`, so domain-level tests are plain JVM tests (no Robolectric).
-- Hand-written state-based fakes live in `app/src/test/java/com/example/learning/repos/` (`Fake*Source`), backed by `MutableStateFlow`/in-memory maps and seeded per test.
-- Test libs: JUnit4 + `kotlinx-coroutines-test` (`runTest`, `backgroundScope`) + Turbine (`flow.test { awaitItem() }`).
+- The four repositories implement plain `interface` seams — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource` — each colocated in its `repos/*.kt` file alongside both the real class and its `Fake*Source`. `BusInfo` depends on these interfaces, not the concrete classes. Use plain interfaces for DI seams; reserve `sealed` for closed variant hierarchies (e.g. `BusFilterOptions`) — a `sealed interface` can't be implemented from a subclass/other module, so it would block fakes.
+- The domain is framework-free: the location seam exposes the domain `LatLon`, not `android.location.Location`.
+- `Fake*Source` are hand-written and state-based, backed by `MutableStateFlow`/in-memory maps, seeded via constructor args. Seed the slice by constructing `FakeAppContainer` with pre-loaded fakes.
+- Test libs: JUnit4 + Robolectric + Compose UI test (`createEmptyComposeRule`, `ActivityScenario`). `kotlinx-coroutines-test` + Turbine remain available **only** for the two exception cases below, never for re-introducing direct flow tests of the app.
 - `testOptions.unitTests.isReturnDefaultValues = true` (`app/build.gradle.kts`) makes stubbed `android.*` calls (e.g. `Log`) return defaults instead of throwing in JVM tests.
-- Copy from the worked examples: `ParseGtfsDateTimeTest` (pure function), `FilterScreenContentTest` (Compose screen via Robolectric), `GtfsValidationTest` (boundary check).
+- Canonical example to copy: `HomeVerticalSliceTest` (`HomePageTest.kt`) for the slice; pure-function/boundary tests (exceptions 1–2 above) at their own API.
 - `.gitignore` ignores `/test/` (anchored) — the top-level GTFS sample-data dir only; an unanchored `test/` would also swallow `app/src/test`.
 
 ## Conventions

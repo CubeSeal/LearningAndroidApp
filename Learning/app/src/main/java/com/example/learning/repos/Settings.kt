@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -55,5 +56,28 @@ class SettingsRepository(private val context: Context) : SettingsSource {
         context.settingsDataStore.edit { prefs ->
             prefs[Keys.SAVED_STOPS] = (prefs[Keys.SAVED_STOPS] ?: emptySet()) - stopId
         }
+    }
+}
+
+class FakeSettingsSource(
+    homeStopId: String? = null,
+    savedStops: Set<String> = emptySet(),
+) : SettingsSource {
+    private val _homeStopId = MutableStateFlow(homeStopId)
+    override val homeStopId: Flow<String?> = _homeStopId
+
+    private val _savedStops = MutableStateFlow(savedStops)
+    override val savedStops: Flow<Set<String>> = _savedStops
+
+    override suspend fun setHomeStopId(stopId: String) {
+        _homeStopId.value = stopId
+    }
+
+    override suspend fun addSavedStop(stopId: String) {
+        _savedStops.value += stopId
+    }
+
+    override suspend fun removeSavedStop(stopId: String) {
+        _savedStops.value -= stopId
     }
 }

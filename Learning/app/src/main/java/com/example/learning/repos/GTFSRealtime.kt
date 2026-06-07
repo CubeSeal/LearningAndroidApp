@@ -127,3 +127,9 @@ class GtfsRealtimeRepository(
         )
     }
 }
+
+class FakeRealtimeSource(
+    private val busData: List<RealtimeBusTripInfo> = emptyList(),
+) : RealtimeGtfsSource {
+    override suspend fun getBusData(): List<RealtimeBusTripInfo> = busData
+}

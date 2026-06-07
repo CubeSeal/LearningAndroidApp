@@ -1,10 +1,6 @@
 package com.example.learning
 
-import android.Manifest
-import android.app.Application
-import android.content.Context
 import android.util.Log
-import androidx.annotation.RequiresPermission
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -13,22 +9,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.toRoute
-import com.example.learning.repos.BusStopRecord
-import com.example.learning.repos.FileRepository
 import com.example.learning.repos.GlobbedBusStopRecord
-import com.example.learning.db.GtfsDatabase
-import com.example.learning.repos.GtfsRealtimeRepository
-import com.example.learning.repos.GtfsStaticRepository
-import com.example.learning.repos.GTFS_GH_OWNER
-import com.example.learning.repos.GTFS_GH_REPO
-import com.example.learning.repos.GtfsValidation
-import com.example.learning.repos.bootstrapGtfs
-import com.example.learning.repos.validateGtfsDb
-import com.example.learning.repos.LocationRepository
-import com.example.learning.repos.SettingsRepository
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,86 +23,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import java.time.Duration
 import java.time.LocalDate
-
-class ApplicationRepos(private val applicationContext: Context) {
-    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val locationRepo = LocationRepository(applicationContext, applicationScope)
-    val fileRepository = FileRepository(applicationContext, "busStops")
-    val settingsRepo = SettingsRepository(applicationContext)
-    val httpClient = OkHttpClient()
-    val loaded = MutableStateFlow(false)
-    val loadError = MutableStateFlow<String?>(null)
-
-    lateinit var gtfsStaticRepository: GtfsStaticRepository
-        private set
-
-    val gtfsRealtimeRepository = GtfsRealtimeRepository(httpClient = httpClient)
-    val busInfo by lazy {
-        BusInfo(
-            gtfsStaticRepository = gtfsStaticRepository,
-            gtfsRealtimeRepository = gtfsRealtimeRepository,
-            locationRepo = locationRepo,
-            settingsRepo = settingsRepo,
-            scope = applicationScope
-        )
-    }
-    suspend fun initAll() {
-        withContext(Dispatchers.Default) {
-            Log.d("INIT", "Start loading...")
-
-            locationRepo.onPermissionGranted()
-
-            gtfsStaticRepository = GtfsStaticRepository(
-                applicationContext,
-                fileRepository,
-                httpClient
-            )
-
-            // Provision then validate: the DB is never bundled, so on a missing/invalid DB we
-            // force-download the latest release before validating. Validating first would deadlock
-            // the cold-start bootstrap (an empty DB can never become valid without a sync).
-            val ctx = applicationContext
-            val outcome = bootstrapGtfs(
-                validate = { validateGtfsDb(GtfsDatabase.getInstance(ctx)) },
-                sync = {
-                    gtfsStaticRepository.syncGtfsDatabase(
-                        ghOwner = GTFS_GH_OWNER,
-                        ghRepo = GTFS_GH_REPO,
-                        force = true,
-                    )
-                },
-            )
-            if (outcome is GtfsValidation.Invalid) {
-                Log.e("INIT", "DB bootstrap failed: ${outcome.reason}")
-                loadError.update { outcome.reason }
-                return@withContext
-            }
-
-            Log.d("INIT", "Finished loading.")
-        }
-
-        if (loadError.value == null) loaded.update { true }
-    }
-}
-
-class LearningApplication : Application() {
-    // This holds the data layer
-    lateinit var repos: ApplicationRepos
-
-    // This is effectively "applicationScope"
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
-    override fun onCreate() {
-        super.onCreate()
-        // Initialize it once when the app starts
-        repos = ApplicationRepos(this)
-    }
-}
 
 object AppViewModelProvider {
     val Factory = viewModelFactory {

@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -42,38 +43,34 @@ enum class LocationMode {
  */
 interface LocationSource {
     val currentLocation: StateFlow<LatLon?>
+    val mode: StateFlow<LocationMode>
+    val hasPermission: StateFlow<Boolean>
+    fun setMode(mode: LocationMode): Unit
+    fun onPermissionGranted(): Unit
+    fun onPermissionRevoked(): Unit
     suspend fun requestFreshFix()
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LocationRepository(
     context: Context,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
 ) : LocationSource {
     private val appContext = context.applicationContext
-    private val fusedLocationClient =
-        LocationServices.getFusedLocationProviderClient(appContext)
-
+    private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(appContext)
+    private val _currentLocation = MutableStateFlow<LatLon?>(null)
     private val _hasPermission = MutableStateFlow(false)
-    val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
-
-    fun onPermissionGranted() {
-        _hasPermission.value = true
-    }
-
-    fun onPermissionRevoked() {
-        _hasPermission.value = false
-    }
-
     private val _mode = MutableStateFlow(LocationMode.Off)
-    val mode: StateFlow<LocationMode> = _mode.asStateFlow()
 
-    fun setMode(mode: LocationMode) {
+    override val mode: StateFlow<LocationMode> = _mode.asStateFlow()
+    override val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
+    override val currentLocation: StateFlow<LatLon?> = _currentLocation.asStateFlow()
+    override fun onPermissionGranted() { _hasPermission.value = true }
+    override fun onPermissionRevoked() { _hasPermission.value = false }
+
+    override fun setMode(mode: LocationMode) {
         _mode.value = mode
     }
-
-    private val _currentLocation = MutableStateFlow<LatLon?>(null)
-    override val currentLocation: StateFlow<LatLon?> = _currentLocation.asStateFlow()
 
     private fun Location.toLatLon() = LatLon(latitude, longitude)
 
@@ -199,4 +196,23 @@ class LocationRepository(
                 _currentLocation.value = freshLocation.toLatLon()
             }
     }
+}
+
+class FakeLocationSource(
+    location: LatLon? = LatLon(-33.8688, 151.2093),
+) : LocationSource {
+    private val _currentLocation = MutableStateFlow(location)
+    private val _mode = MutableStateFlow(LocationMode.Off)
+    private val _hasPermission = MutableStateFlow(false)
+
+    fun changeLocation(latLon: LatLon) = _currentLocation.update { latLon }
+
+    override val currentLocation = _currentLocation.asStateFlow()
+    override val mode = _mode.asStateFlow()
+    override val hasPermission = _hasPermission.asStateFlow()
+
+    override fun setMode(mode: LocationMode) { _mode.value = mode }
+    override fun onPermissionGranted() { _hasPermission.value = true }
+    override fun onPermissionRevoked() = Unit
+    override suspend fun requestFreshFix(): Unit = Unit
 }
