@@ -17,27 +17,29 @@ import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(application = TestingApplication::class, sdk = [34], qualifiers = "w400dp-h800dp")
+@Config(sdk = [34], qualifiers = "w400dp-h800dp")
 class HomePageTest {
     @get:Rule
     val composeRule = createEmptyComposeRule()
 
-    @Before
-    fun setUp() {
+    private fun launchWith(container: AppContainer) {
+        (ApplicationProvider.getApplicationContext() as LearningApplication).repos = container
         ActivityScenario.launch(MainActivity::class.java)
     }
 
     @Test
-    fun simpleTest() {       // pure assertions
+    fun simpleTest() {
+        launchWith(container = FakeAppContainer())
         assert(true)
     }
 
 
-//    @Test
-//    fun `the closest stop's departures render`() {       // pure assertions
-//        composeRule.onNodeWithText("370").assertIsDisplayed()
-//    }
-//
+    @Test
+    fun showLoadingIfNotLoaded() {
+        launchWith(container = FakeAppContainer(loadBehaviour = LoadState.NeverLoad))
+        composeRule.onNodeWithText("Loading...").assertIsDisplayed()
+    }
+
 //    @Test
 //    fun `tapping search opens the stop picker`() {
 //        composeRule.onNodeWithContentDescription("Edit Stop.").performClick()

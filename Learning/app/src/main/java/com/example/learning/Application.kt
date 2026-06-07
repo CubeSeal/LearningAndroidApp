@@ -1,7 +1,6 @@
 package com.example.learning
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -106,29 +105,37 @@ class ApplicationRepos(private val applicationContext: Context) : AppContainer {
     }
 }
 
-class FakeAppContainer() : AppContainer {
+enum class LoadState {
+    StartLoaded,
+    DelayedLoad,
+    NeverLoad
+}
+
+class FakeAppContainer(
+    override val gtfsStaticRepository: StaticGtfsSource = FakeStaticGtfsSource(),
+    override val locationRepo: LocationSource = FakeLocationSource(),
+    override val gtfsRealtimeRepository: RealtimeGtfsSource = FakeRealtimeSource(),
+    override val settingsRepo: SettingsSource = FakeSettingsSource(),
+    override val fileRepository: FileSource = FakeFileRepository(emptyMap(), "fileDirectory"),
+    val loadBehaviour: LoadState = LoadState.StartLoaded
+) : AppContainer {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    override val locationRepo = FakeLocationSource()
-    override val fileRepository = FakeFileRepository(files = emptyMap(), directoryString = "fileDirectory")
-    override val settingsRepo = FakeSettingsSource()
-    override val gtfsRealtimeRepository = FakeRealtimeSource()
-    override val gtfsStaticRepository = FakeStaticGtfsSource()
-
-    override val loaded = MutableStateFlow(false)
+    override val loaded = MutableStateFlow(loadBehaviour == LoadState.StartLoaded)
     override val loadError = MutableStateFlow<String?>(null)
-
     override val busInfo by lazy {
         BusInfo(
-            gtfsStaticRepository = gtfsStaticRepository,
-            gtfsRealtimeRepository = gtfsRealtimeRepository,
-            locationRepo = locationRepo,
-            settingsRepo = settingsRepo,
-            scope = applicationScope
+            gtfsStaticRepository,
+            gtfsRealtimeRepository,
+            locationRepo,
+            settingsRepo,
+            applicationScope
         )
     }
 
-    override suspend fun initAll() { Unit }
+    override suspend fun initAll() {
+        if (loadError.value == null && loadBehaviour != LoadState.NeverLoad) loaded.update { true }
+    }
 }
 
 open class LearningApplication : Application() {
@@ -140,14 +147,5 @@ open class LearningApplication : Application() {
         super.onCreate()
         // Initialise the App repos with the production instance.
         repos = ApplicationRepos(this)
-    }
-}
-
-class TestingApplication : LearningApplication() {
-    @SuppressLint("MissingSuperCall")
-    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
-    override fun onCreate() {
-        // Initialise the App repos with the test instance.
-        repos = FakeAppContainer()
     }
 }
