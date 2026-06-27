@@ -37,7 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
-import com.example.learning.BusFilterOptions
+import com.example.learning.TransitFilterOptions
 import com.example.learning.Home
 import com.example.learning.HomeViewModel
 
@@ -76,19 +76,19 @@ fun FilterScreen(navController: NavController) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FilterScreenContent(
-    available: Set<BusFilterOptions>,
-    staged: Set<BusFilterOptions>,
-    onToggleStaged: (BusFilterOptions) -> Unit,
+    available: Set<TransitFilterOptions>,
+    staged: Set<TransitFilterOptions>,
+    onToggleStaged: (TransitFilterOptions) -> Unit,
     onApply: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val modes = available.filterIsInstance<BusFilterOptions.TransportMode>()
+    val modes = available.filterIsInstance<TransitFilterOptions.TransportMode>()
         .sortedWith(byLabel { it.mode.label })
-    val routes = available.filterIsInstance<BusFilterOptions.RouteShortName>()
+    val routes = available.filterIsInstance<TransitFilterOptions.RouteShortName>()
         .sortedWith(byLabel { it.routeShortName })
-    val destinations = available.filterIsInstance<BusFilterOptions.TripHeadsign>()
+    val destinations = available.filterIsInstance<TransitFilterOptions.TripHeadsign>()
         .sortedWith(byLabel { it.tripHeadsign })
-    val stands = available.filterIsInstance<BusFilterOptions.StopStand>()
+    val stands = available.filterIsInstance<TransitFilterOptions.StopStand>()
         .sortedWith(byLabel { it.stopStand })
 
     Column(
@@ -131,9 +131,9 @@ private fun <T> byLabel(label: (T) -> String): Comparator<T> =
 @Composable
 private fun FilterGroup(
     title: String,
-    options: List<BusFilterOptions>,
-    staged: Set<BusFilterOptions>,
-    onToggleStaged: (BusFilterOptions) -> Unit,
+    options: List<TransitFilterOptions>,
+    staged: Set<TransitFilterOptions>,
+    onToggleStaged: (TransitFilterOptions) -> Unit,
 ) {
     if (options.isEmpty()) return
 
@@ -174,10 +174,10 @@ private fun FilterGroup(
                 onClick = { onToggleStaged(option) },
                 label = {
                     when (option) {
-                        is BusFilterOptions.RouteShortName -> Text(option.routeShortName)
-                        is BusFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
-                        is BusFilterOptions.StopStand -> Text(option.stopStand)
-                        is BusFilterOptions.TransportMode -> Text(option.mode.label)
+                        is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
+                        is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
+                        is TransitFilterOptions.StopStand -> Text(option.stopStand)
+                        is TransitFilterOptions.TransportMode -> Text(option.mode.label)
                     }
                 },
                 colors = FilterChipDefaults.filterChipColors(

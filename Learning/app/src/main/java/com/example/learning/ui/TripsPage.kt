@@ -46,15 +46,15 @@ import com.example.learning.BackHeader
 import com.example.learning.LoadingScreen
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
-import com.example.learning.repos.BusStopRecord
-import com.example.learning.repos.BusStopTimesRecord
+import com.example.learning.repos.StopRecord
+import com.example.learning.repos.StopTimesRecord
 
 @Composable
 fun TripsScreen(
     navController: NavController,
     viewModel: TripsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    val stopTimesByTrip by viewModel.busStopTimesRecord.collectAsStateWithLifecycle()
+    val stopTimesByTrip by viewModel.stopTimesRecord.collectAsStateWithLifecycle()
     val stopId = viewModel.stopId
 
     Column {
@@ -74,7 +74,7 @@ fun TripsScreen(
 
 @Composable
 private fun TripsList(
-    stopTimesByTrip: List<BusStopTimesRecord>,
+    stopTimesByTrip: List<StopTimesRecord>,
     stopId: String,
     onStopClick: (String) -> Unit
 ) {
@@ -151,7 +151,7 @@ private fun TripsList(
 
 @Composable
 private fun StopRow(
-    busStopRecord: BusStopTimesRecord,
+    busStopRecord: StopTimesRecord,
     departureTime: String,
     isFirst: Boolean,
     isLast: Boolean,

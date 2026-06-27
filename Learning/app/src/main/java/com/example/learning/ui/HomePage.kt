@@ -62,15 +62,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
-import com.example.learning.BusFilterOptions
-import com.example.learning.BusStopTimesRecordWithRealtime
+import com.example.learning.TransitFilterOptions
+import com.example.learning.StopTimesRecordWithRealtime
 import com.example.learning.Filter
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
 import com.example.learning.Trips
 import com.example.learning.printTime
-import com.example.learning.repos.GlobbedBusStopRecord
+import com.example.learning.repos.GlobbedStopRecord
 import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,12 +143,12 @@ fun EditStop(onClick: () -> Unit) {
 fun MasterLazyColumn(
     listState: LazyListState,
     navController: NavController,
-    focusedBusStop: GlobbedBusStopRecord?,
-    associatedBusStopTimes: List<Pair<Boolean, BusStopTimesRecordWithRealtime>>,
-    rowFilters: List<BusFilterOptions>,
-    selectedFiltersForBusStop: Set<BusFilterOptions>,
+    focusedBusStop: GlobbedStopRecord?,
+    associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
+    rowFilters: List<TransitFilterOptions>,
+    selectedFiltersForBusStop: Set<TransitFilterOptions>,
     hasMoreFilters: Boolean,
-    onToggleMode: (BusFilterOptions) -> Unit,
+    onToggleMode: (TransitFilterOptions) -> Unit,
     onOpenFilters: () -> Unit,
 ) {
     val headerAlpha by remember {
@@ -204,7 +204,7 @@ fun MasterLazyColumn(
 
             items(
                 items = associatedBusStopTimes,
-                key = { item -> item.second.busStopTimesRecord.let { Triple(it.stopId,it.tripId, it.departureTime) } }
+                key = { item -> item.second.stopTimesRecord.let { Triple(it.stopId,it.tripId, it.departureTime) } }
             ) { item ->
                 BusCard(navController, item)
             }
@@ -233,7 +233,7 @@ fun BypassHeader(isAppReady: Boolean ){
 }
 
 @Composable
-fun StopTitle(closestBusStop: GlobbedBusStopRecord? ) {
+fun StopTitle(closestBusStop: GlobbedStopRecord? ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -252,10 +252,10 @@ fun StopTitle(closestBusStop: GlobbedBusStopRecord? ) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModeFilterChips(
-    rowFilters: List<BusFilterOptions>,
-    selectedBusFilterOptions: Set<BusFilterOptions>,
+    rowFilters: List<TransitFilterOptions>,
+    selectedTransitFilterOptions: Set<TransitFilterOptions>,
     showMore: Boolean,
-    onToggleMode: (BusFilterOptions) -> Unit,
+    onToggleMode: (TransitFilterOptions) -> Unit,
     onOpenFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -270,14 +270,14 @@ fun ModeFilterChips(
     ) {
         rowFilters.forEach { option ->
             FilterChip(
-                selected = option in selectedBusFilterOptions,
+                selected = option in selectedTransitFilterOptions,
                 onClick = { onToggleMode(option) },
                 label = {
                     when (option) {
-                        is BusFilterOptions.RouteShortName -> Text(option.routeShortName)
-                        is BusFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
-                        is BusFilterOptions.StopStand -> Text(option.stopStand)
-                        is BusFilterOptions.TransportMode -> Text(option.mode.label)
+                        is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
+                        is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
+                        is TransitFilterOptions.StopStand -> Text(option.stopStand)
+                        is TransitFilterOptions.TransportMode -> Text(option.mode.label)
                     }
                 },
                 colors = FilterChipDefaults.filterChipColors(
@@ -299,10 +299,10 @@ fun ModeFilterChips(
 @Composable
 fun LazyItemScope.BusCard(
     navController: NavController,
-    item: Pair<Boolean, BusStopTimesRecordWithRealtime>
+    item: Pair<Boolean, StopTimesRecordWithRealtime>
 ) {
     val (isFirst, record) = item
-    val realtime = record.realtimeBusStopTimesRecord
+    val realtime = record.realtimeStopTimesRecord
     val delay = realtime?.stopTimeDelay
     // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
     // Only make the choice to treat it as zero when re-calculating departureTimes.
@@ -315,7 +315,7 @@ fun LazyItemScope.BusCard(
             else -> "Early by ${-it} minutes"
         }
     } ?: "–"
-    val departureTime = item.second.busStopTimesRecord.departureTime + (delay ?: Duration.ZERO)
+    val departureTime = item.second.stopTimesRecord.departureTime + (delay ?: Duration.ZERO)
 
     val (dynamicContainer, onDynamicContainer) = when {
         isFirst && realtime != null ->
@@ -344,9 +344,9 @@ fun LazyItemScope.BusCard(
             modifier = Modifier.clickable {
                 navController.navigate(
                     Trips(
-                        item.second.busStopTimesRecord.tripId,
-                        item.second.busStopTimesRecord.stopId,
-                        item.second.busStopTimesRecord.departureTime.toLocalDate().toString(),
+                        item.second.stopTimesRecord.tripId,
+                        item.second.stopTimesRecord.stopId,
+                        item.second.stopTimesRecord.departureTime.toLocalDate().toString(),
                     )
                 )
             },
@@ -358,11 +358,11 @@ fun LazyItemScope.BusCard(
                 overlineColor = onDynamicContainer
             ),
             overlineContent = {
-                Text(record.busStopTimesRecord.tripHeadsign)
+                Text(record.stopTimesRecord.tripHeadsign)
             },
             headlineContent = {
                 Text(
-                    record.busStopTimesRecord.routeShortName,
+                    record.stopTimesRecord.routeShortName,
                     style = MaterialTheme.typography.bodyLarge
                         .copy(fontStyle = FontStyle.Italic)
                 )

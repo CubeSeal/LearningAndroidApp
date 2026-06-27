@@ -11,8 +11,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -22,7 +20,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -40,9 +37,7 @@ data class LatLon(val latitude: Double, val longitude: Double)
 @Immutable
 // Keep these as flat parsed versions of room data structures.
 // Dealing with joins and filters in the SQL is a lot easier than trying to mangle it with nested structures here.
-// TODO: the "Bus" prefix is no longer representative now that trains share this type (see routeType) —
-//  rename the Bus* domain to mode-neutral names (e.g. DepartureRecord) in a later commit.
-data class BusStopTimesRecord(
+data class StopTimesRecord(
     val tripId: String,
     // In seconds since beginning of day (for ordering and to handle after 24:00 time).
     val departureTime: LocalDateTime,
@@ -86,14 +81,14 @@ fun transitModeOf(routeType: Int): TransitMode = when (routeType) {
 }
 
 @Immutable
-data class GlobbedBusStopRecord(
+data class GlobbedStopRecord(
     val globbedStopId: String,
     val globbedStopName: String,
-    val busStopRecords: List<BusStopRecord>
+    val stopRecords: List<StopRecord>
 )
 
 @Immutable
-data class BusStopRecord(
+data class StopRecord(
     val stopId: String,
     val stopName: String,
     val stopLoc: LatLon,
@@ -169,11 +164,11 @@ internal suspend fun bootstrapGtfs(
 interface StaticGtfsSource {
     val isUpToDate: StateFlow<Boolean>
 
-    suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord?
-    suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord>
-    suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedBusStopRecord>
-    suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord>
-    suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord>
+    suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord?
+    suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedStopRecord>
+    suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedStopRecord>
+    suspend fun getStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<StopTimesRecord>
+    suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord>
     suspend fun syncGtfsDatabase(
         ghOwner: String,
         ghRepo: String,
@@ -189,23 +184,25 @@ class GtfsStaticRepository(
 ) : StaticGtfsSource {
     private val db get() = GtfsDatabase.getInstance(context)
     private val gtfsDao get() = db.gtfsDao()
-    private var _calendarSequences: Map<String, Sequence<LocalDate>>? = null
-    private val calMutex = Mutex()
+    private var _serviceDates: Map<String, List<LocalDate>>? = null
     override val isUpToDate = MutableStateFlow(false)
 
-    private suspend fun calendarSequences(): Map<String, Sequence<LocalDate>> =
-        _calendarSequences ?: calMutex.withLock {
-            _calendarSequences ?: preloadCalendarDates().also { _calendarSequences = it }
+    private suspend fun serviceDates(): Map<String, List<LocalDate>> =
+        _serviceDates ?: run {
+            val fmt = DateTimeFormatter.ofPattern("yyyyMMdd")
+            gtfsDao.getAllServiceDates()
+                .groupBy({ it.serviceId }, { LocalDate.parse(it.date, fmt) })
+                .also { _serviceDates = it }
         }
 
-    private fun List<StopWithGlobbedInfo>.collateToGlobbedBusStopRecord(): List<GlobbedBusStopRecord> {
+    private fun List<StopWithGlobbedInfo>.collateToGlobbedStopRecord(): List<GlobbedStopRecord> {
         if (this.isEmpty()) return emptyList()
 
         return this.groupBy { it.globbedStopId }.map {
             val globbedStopId = it.value.first().globbedStopId
             val globbedStopName = it.value.first().globbedStopName
-            val mappedBusStopRecords = it.value.map { record ->
-                BusStopRecord(
+            val mappedStopRecords = it.value.map { record ->
+                StopRecord(
                     stopId = record.stopId,
                     stopName = record.stopName ?: return emptyList(),
                     stopLoc = LatLon(
@@ -216,16 +213,16 @@ class GtfsStaticRepository(
                 )
             }
 
-            return@map GlobbedBusStopRecord(
+            return@map GlobbedStopRecord(
                 globbedStopId = globbedStopId,
                 globbedStopName = globbedStopName,
-                busStopRecords = mappedBusStopRecords
+                stopRecords = mappedStopRecords
             )
         }
     }
 
-    private fun StopTimeWithDetails.toBusStopTimesRecord(date: LocalDate): BusStopTimesRecord {
-        return BusStopTimesRecord(
+    private fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
+        return StopTimesRecord(
             tripId = this.tripId,
             departureTime = parseGtfsDateTime(date, this.departureTime),
             arrivalTime = parseGtfsDateTime(date, this.arrivalTime),
@@ -245,64 +242,37 @@ class GtfsStaticRepository(
         )
     }
 
-    private suspend fun preloadCalendarDates(): Map<String, Sequence<LocalDate>> {
-        return gtfsDao.getAllCalendar().associate { calendarEntity ->
-            val startDate = LocalDate.parse(calendarEntity.startDate, DateTimeFormatter.ofPattern("yyyyMMdd"))
-            val endDate = LocalDate.parse(calendarEntity.endDate,DateTimeFormatter.ofPattern("yyyyMMdd"))
-            val values = generateSequence(startDate) {
-                it.plusDays(1)
-            }.takeWhile {
-                !it.isAfter(endDate) &&
-                        !it.isAfter(LocalDate.now().plusWeeks(2))
-            }.filter { date ->
-                when (date.dayOfWeek) {
-                    DayOfWeek.MONDAY -> calendarEntity.monday == 1
-                    DayOfWeek.TUESDAY -> calendarEntity.tuesday == 1
-                    DayOfWeek.WEDNESDAY -> calendarEntity.wednesday == 1
-                    DayOfWeek.THURSDAY -> calendarEntity.thursday == 1
-                    DayOfWeek.FRIDAY -> calendarEntity.friday == 1
-                    DayOfWeek.SATURDAY -> calendarEntity.saturday == 1
-                    DayOfWeek.SUNDAY -> calendarEntity.sunday == 1
-                }
-            }
-            calendarEntity.serviceId to values
-        }.also {
-            it.forEach { (id, sequence) ->
-                Log.d("GTFS", "Preloaded calendar details: $id, ${sequence.joinToString()}")
-            }
-        }
+    override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord? {
+        return gtfsDao.getStopsWithGlobbedStops(globbedStopId).collateToGlobbedStopRecord().firstOrNull()
     }
 
-    override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? {
-        return gtfsDao.getStopsWithGlobbedStops(globbedStopId).collateToGlobbedBusStopRecord().firstOrNull()
+    override suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedStopRecord> {
+        return gtfsDao.getStopsByNameWithGlobbedStops(globbedStopName).collateToGlobbedStopRecord()
     }
 
-    override suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord> {
-        return gtfsDao.getStopsByNameWithGlobbedStops(globbedStopName).collateToGlobbedBusStopRecord()
-    }
-
-    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedBusStopRecord> {
+    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedStopRecord> {
         // TODO: Since there's no globbed level stop lat lon yet the length only works at the non-globbed level. Thus it
         //  is very likely that queries near a train station will get globbed together and you'll get less than the
         //  arg length.
         return gtfsDao
             .getNearestStopsWithGlobbedStops(location.latitude, location.longitude, length)
-            .collateToGlobbedBusStopRecord()
+            .collateToGlobbedStopRecord()
     }
 
-    override suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord> {
-        return globbedBusStopRecord.busStopRecords
+    override suspend fun getStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<StopTimesRecord> {
+        val dates = serviceDates()
+        return globbedStopRecord.stopRecords
             .flatMap { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) }
             .flatMap { row ->
-                calendarSequences().getValue(row.serviceId).map { date ->
-                    row.toBusStopTimesRecord( date)
+                dates[row.serviceId].orEmpty().map { date ->
+                    row.toStopTimesRecord(date)
                 }
             }
             .sortedBy { it.arrivalTime }
     }
 
-    override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord> {
-        return gtfsDao.getStopTimesWithDetailsByTrip(tripId).map { it.toBusStopTimesRecord(date) }
+    override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord> {
+        return gtfsDao.getStopTimesWithDetailsByTrip(tripId).map { it.toStopTimesRecord(date) }
     }
 
     /**
@@ -420,8 +390,7 @@ class GtfsStaticRepository(
             GtfsDatabase.replaceWith(context, dbFile)
             fileRepository.deleteFile(tempDbName)
 
-            // Invalidate calendar cache for getAssociatedTrips
-            calMutex.withLock { _calendarSequences = null }
+            _serviceDates = null
 
             // ── Write timestamp only after everything succeeded ──────
             fileRepository.writeFile(timestampFile, remoteTimestamp.toString())
@@ -437,27 +406,27 @@ class GtfsStaticRepository(
 }
 
 class FakeStaticGtfsSource(
-    private val stopsById: Map<String, GlobbedBusStopRecord> = emptyMap(),
-    private val stopsByName: Map<String, List<GlobbedBusStopRecord>> = emptyMap(),
-    private val closest: List<GlobbedBusStopRecord> = emptyList(),
-    private val stopTimesByStop: Map<String, List<BusStopTimesRecord>> = emptyMap(),
-    private val stopTimesByTrip: Map<String, List<BusStopTimesRecord>> = emptyMap(),
+    private val stopsById: Map<String, GlobbedStopRecord> = emptyMap(),
+    private val stopsByName: Map<String, List<GlobbedStopRecord>> = emptyMap(),
+    private val closest: List<GlobbedStopRecord> = emptyList(),
+    private val stopTimesByStop: Map<String, List<StopTimesRecord>> = emptyMap(),
+    private val stopTimesByTrip: Map<String, List<StopTimesRecord>> = emptyMap(),
 ) : StaticGtfsSource {
     override val isUpToDate = MutableStateFlow(false)
 
-    override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedBusStopRecord? =
+    override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord? =
         stopsById[globbedStopId]
 
-    override suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedBusStopRecord> =
+    override suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedStopRecord> =
         stopsByName[globbedStopName] ?: emptyList()
 
-    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedBusStopRecord> =
+    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedStopRecord> =
         closest.take(length)
 
-    override suspend fun getStopTimesByStop(globbedBusStopRecord: GlobbedBusStopRecord): List<BusStopTimesRecord> =
-        stopTimesByStop[globbedBusStopRecord.globbedStopId] ?: emptyList()
+    override suspend fun getStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<StopTimesRecord> =
+        stopTimesByStop[globbedStopRecord.globbedStopId] ?: emptyList()
 
-    override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<BusStopTimesRecord> =
+    override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord> =
         stopTimesByTrip[tripId] ?: emptyList()
 
     override suspend fun syncGtfsDatabase(

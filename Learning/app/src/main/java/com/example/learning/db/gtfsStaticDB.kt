@@ -309,6 +309,10 @@ interface GtfsDao {
     @Query("SELECT * FROM calendar_dates WHERE service_id = :serviceId")
     suspend fun getCalendarDates(serviceId: String): List<CalendarDateEntity>
 
+    @SkipQueryVerification
+    @Query("SELECT * FROM service_dates")
+    suspend fun getAllServiceDates(): List<ServiceDateRow>
+
     // ── Metadata ───────────────────────────────────────────
 
     @Query("SELECT COUNT(*) FROM stops")

@@ -9,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.toRoute
-import com.example.learning.repos.GlobbedBusStopRecord
+import com.example.learning.repos.GlobbedStopRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,36 +32,36 @@ object AppViewModelProvider {
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
 
-            HomeViewModel(app.repos.busInfo)
+            HomeViewModel(app.repos.transitInfo)
         }
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
 
-            TripsViewModel(createSavedStateHandle(), app.repos.busInfo)
+            TripsViewModel(createSavedStateHandle(), app.repos.transitInfo)
         }
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
 
-            PickStopViewModel(app.repos.busInfo)
+            PickStopViewModel(app.repos.transitInfo)
         }
     }
 }
 
 class HomeViewModel(
-    private val busInfo: BusInfo
+    private val transitInfo: TransitInfo
 ) : ViewModel() {
-    val focusedBusStop = busInfo.focusedBusStop
+    val focusedBusStop = transitInfo.focusedBusStop
 
-    val availableFiltersForBusStop = busInfo.filtersForBusStop
+    val availableFiltersForBusStop = transitInfo.filtersForBusStop
     // If empty then we don't filter anything, but if not empty we only include what in the set.
-    private val _selectedFiltersForBusStop = MutableStateFlow(setOf<BusFilterOptions>())
+    private val _selectedFiltersForBusStop = MutableStateFlow(setOf<TransitFilterOptions>())
     val selectedFiltersForBusStop = _selectedFiltersForBusStop.asStateFlow()
 
     // The Home row shows a base slice of the available filters, plus any "pinned" extras promoted
     // from the FilterPage so they remain visible (and quickly re-toggleable) even after deselection.
     // A refresh clears the pins, resetting the row to the base slice.
-    private val _pinnedFilters = MutableStateFlow(setOf<BusFilterOptions>())
-    val rowFilters: StateFlow<List<BusFilterOptions>> =
+    private val _pinnedFilters = MutableStateFlow(setOf<TransitFilterOptions>())
+    val rowFilters: StateFlow<List<TransitFilterOptions>> =
         combine(availableFiltersForBusStop, _pinnedFilters) { available, pinned ->
             (available.take(ROW_FILTER_CAP) + pinned.filter { it in available }).distinct()
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -71,35 +71,30 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val associatedStopTimes = combine(
-        busInfo.associatedStopTimes,
-        busInfo.currentMinute,
+        transitInfo.associatedStopTimes,
+        transitInfo.currentMinute,
         selectedFiltersForBusStop
     ) { stopTimes, currentMinute, selectedFilters ->
         val pastBuffer = Duration.ofMinutes(2)
         val realTimeSorted = stopTimes.sortedBy {
             // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
             // Only make the choice to treat it as zero when re-calculating departureTimes.
-            it.busStopTimesRecord.departureTime + (it.realtimeBusStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
+            it.stopTimesRecord.departureTime + (it.realtimeStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
         }
 
         realTimeSorted
-            //TODO: Rarefy the types here so that I'm only pulling in what I need instead of mutating things
-            // all over the place.
-            .filter {
-                val newTime = it.busStopTimesRecord.departureTime +
-                    (it.realtimeBusStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
-                newTime > currentMinute - pastBuffer && (selectedFilters.isEmpty()
-                        || it.applicableFilters.any { filter -> filter in selectedFilters })
-            }
-            .map {
-                val newTime = it.busStopTimesRecord.departureTime +
-                    (it.realtimeBusStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
-                (newTime >= currentMinute) to it
+            .mapNotNull {
+                val newTime = it.stopTimesRecord.departureTime +
+                    (it.realtimeStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
+                val passesTimeFilter = newTime > currentMinute - pastBuffer
+                val passesFilterSet = selectedFilters.isEmpty()
+                        || it.applicableFilters.any { filter -> filter in selectedFilters }
+                if (passesTimeFilter && passesFilterSet) (newTime >= currentMinute) to it else null
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
 
 
-    val isUpToDate = busInfo.gtfsStaticRepository.isUpToDate
+    val isUpToDate = transitInfo.gtfsStaticRepository.isUpToDate
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing = _isRefreshing.asStateFlow()
 
@@ -109,9 +104,9 @@ class HomeViewModel(
     }
 
     private fun focusOnClosestStop() = viewModelScope.launch {
-        busInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
+        transitInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
             Log.d("VM", "Updating focused bus stop after refresh.")
-            busInfo.updateFocusedBusStop(it)
+            transitInfo.updateFocusedBusStop(it)
         }
     }
 
@@ -121,17 +116,17 @@ class HomeViewModel(
         _pinnedFilters.value = emptySet()
         _selectedFiltersForBusStop.value = emptySet()
         try {
-            busInfo.refresh()
+            transitInfo.refresh()
         } finally {
             _isRefreshing.update { false }
         }
     }
 
-    fun addSavedStop(globbedBusStopRecord: GlobbedBusStopRecord) = viewModelScope.launch {
-        busInfo.addSavedStop(globbedBusStopRecord)
+    fun addSavedStop(globbedBusStopRecord: GlobbedStopRecord) = viewModelScope.launch {
+        transitInfo.addSavedStop(globbedBusStopRecord)
     }
 
-    fun toggleFilterForBusStops(busStopFilterOptions: BusFilterOptions) {
+    fun toggleFilterForBusStops(busStopFilterOptions: TransitFilterOptions) {
         if (busStopFilterOptions in selectedFiltersForBusStop.value) {
             _selectedFiltersForBusStop.update { it - busStopFilterOptions}
         } else {
@@ -140,7 +135,7 @@ class HomeViewModel(
     }
 
     // Commit the FilterPage's staged selection, pinning the chosen filters so they show in the Home row.
-    fun applyFilters(selected: Set<BusFilterOptions>) {
+    fun applyFilters(selected: Set<TransitFilterOptions>) {
         _selectedFiltersForBusStop.value = selected
         _pinnedFilters.update { it + selected }
     }
@@ -151,14 +146,14 @@ class HomeViewModel(
 }
 
 class PickStopViewModel(
-    private val busInfo: BusInfo
+    private val transitInfo: TransitInfo
 ) : ViewModel() {
-    val closestBusStops = busInfo.closestBusStops
-    val savedStops = busInfo.savedStops
+    val closestBusStops = transitInfo.closestBusStops
+    val savedStops = transitInfo.savedStops
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
-    val filteredBusStops: StateFlow<List<GlobbedBusStopRecord>> = _query
-        .map { query -> busInfo.searchStops(query) }
+    val filteredBusStops: StateFlow<List<GlobbedStopRecord>> = _query
+        .map { query -> transitInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
@@ -166,27 +161,27 @@ class PickStopViewModel(
             closestBusStops.value
         )
 
-    fun updateFocusedBusStop(stop: GlobbedBusStopRecord) = viewModelScope.launch { busInfo.updateFocusedBusStop(stop) }
+    fun updateFocusedBusStop(stop: GlobbedStopRecord) = viewModelScope.launch { transitInfo.updateFocusedBusStop(stop) }
     fun onQueryChange(q: String) { _query.value = q }
-    fun removeSavedStop(globbedBusStopRecord: GlobbedBusStopRecord) = viewModelScope.launch {
-        busInfo.removeSavedStop(globbedBusStopRecord)
+    fun removeSavedStop(globbedBusStopRecord: GlobbedStopRecord) = viewModelScope.launch {
+        transitInfo.removeSavedStop(globbedBusStopRecord)
     }
 }
 
 class TripsViewModel(
     savedStateHandle: SavedStateHandle,
-    private val busInfo: BusInfo
+    private val transitInfo: TransitInfo
 ) : ViewModel() {
 
     private val args: Trips = savedStateHandle.toRoute()
     val tripId = args.tripId
     val stopId = args.stopId
     val date = LocalDate.parse(args.date)
-    val busStopTimesRecord = flow {
-        val result = busInfo.getByTrip(tripId, date)
+    val stopTimesRecord = flow {
+        val result = transitInfo.getByTrip(tripId, date)
         emit(result)
         Log.d("VM", result.toString())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun updateFocusedBusStopByStopId(stopId: String) = viewModelScope.launch { busInfo.updateFocusedBusStopByStopId(stopId) }
+    fun updateFocusedBusStopByStopId(stopId: String) = viewModelScope.launch { transitInfo.updateFocusedBusStopByStopId(stopId) }
 }

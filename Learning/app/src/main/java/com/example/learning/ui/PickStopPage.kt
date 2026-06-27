@@ -55,8 +55,8 @@ import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
 import com.example.learning.PickStopViewModel
-import com.example.learning.repos.BusStopRecord
-import com.example.learning.repos.GlobbedBusStopRecord
+import com.example.learning.repos.StopRecord
+import com.example.learning.repos.GlobbedStopRecord
 
 enum class SearchTab(val label: String) {
     Search("Search"),
@@ -69,8 +69,8 @@ fun PickStopScreen(
     navController: NavController,
     viewModel: PickStopViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    fun searchCallback(globbedBusStopRecord: GlobbedBusStopRecord) {
-        viewModel.updateFocusedBusStop(globbedBusStopRecord)
+    fun searchCallback(globbedStopRecord: GlobbedStopRecord) {
+        viewModel.updateFocusedBusStop(globbedStopRecord)
         navController.popBackStack()
     }
     val closestStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
@@ -118,11 +118,11 @@ fun PickStopScreen(
 
 @Composable
 fun SearchStopsTabPage(
-    closestStops: List<GlobbedBusStopRecord>,
+    closestStops: List<GlobbedStopRecord>,
     query: String,
     onQueryChange: (String) -> Unit,
-    filteredStops: List<GlobbedBusStopRecord>,
-    searchCallback: (GlobbedBusStopRecord) -> Unit
+    filteredStops: List<GlobbedStopRecord>,
+    searchCallback: (GlobbedStopRecord) -> Unit
 ) {
 
     Box(
@@ -146,8 +146,8 @@ fun SearchStopsTabPage(
 
 @Composable
 fun ClosetStopsList(
-    closestStops: List<GlobbedBusStopRecord>,
-    searchCallback: (GlobbedBusStopRecord) -> Unit
+    closestStops: List<GlobbedStopRecord>,
+    searchCallback: (GlobbedStopRecord) -> Unit
 ) {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -174,9 +174,9 @@ fun ClosetStopsList(
 @Composable
 fun BoxScope.SearchBar(
     query: String,
-    filteredStops: List<GlobbedBusStopRecord>,
+    filteredStops: List<GlobbedStopRecord>,
     onQueryChange: (String) -> Unit,
-    searchCallback: (GlobbedBusStopRecord) -> Unit
+    searchCallback: (GlobbedStopRecord) -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -232,9 +232,9 @@ fun BoxScope.SearchBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedStopsTabPage(
-    savedStops: List<GlobbedBusStopRecord>,
-    onTap: (GlobbedBusStopRecord) -> Unit,
-    onRemove: (GlobbedBusStopRecord) -> Unit
+    savedStops: List<GlobbedStopRecord>,
+    onTap: (GlobbedStopRecord) -> Unit,
+    onRemove: (GlobbedStopRecord) -> Unit
 ) {
     if (savedStops.isEmpty()) {
         EmptyState(modifier = Modifier.fillMaxSize() )
@@ -262,9 +262,9 @@ fun SavedStopsTabPage(
 
 @Composable
 private fun SavedStopRow(
-    stop: GlobbedBusStopRecord,
-    onTap: (GlobbedBusStopRecord) -> Unit,
-    onRemove: (GlobbedBusStopRecord) -> Unit
+    stop: GlobbedStopRecord,
+    onTap: (GlobbedStopRecord) -> Unit,
+    onRemove: (GlobbedStopRecord) -> Unit
 ) {
     ListItem(
         modifier = Modifier.clickable(onClick = {onTap(stop)}),

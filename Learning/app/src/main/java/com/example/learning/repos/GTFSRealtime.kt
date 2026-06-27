@@ -17,7 +17,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 @Immutable
-data class RealtimeBusTripInfo(
+data class RealtimeTripInfo(
     val id: String,
     val tripId: String,
     val updatedAt: LocalDateTime,
@@ -31,7 +31,7 @@ data class RealtimeBusTripInfo(
  * `(tripId, stopId)` in [com.example.learning.BusInfo]. Buses use an empty prefix and pass through
  * unchanged. The entity `id` is left alone — it isn't part of the join key.
  */
-fun RealtimeBusTripInfo.withIdPrefix(idPrefix: String): RealtimeBusTripInfo =
+fun RealtimeTripInfo.withIdPrefix(idPrefix: String): RealtimeTripInfo =
     if (idPrefix.isEmpty()) this
     else copy(
         tripId = idPrefix + tripId,
@@ -43,7 +43,7 @@ fun RealtimeBusTripInfo.withIdPrefix(idPrefix: String): RealtimeBusTripInfo =
  * Plain interface so tests can substitute a state-based fake (see `src/test`).
  */
 interface RealtimeGtfsSource {
-    suspend fun getBusData(): List<RealtimeBusTripInfo>
+    suspend fun getRealtimeData(): List<RealtimeTripInfo>
 }
 
 class GtfsRealtimeRepository(
@@ -62,10 +62,10 @@ class GtfsRealtimeRepository(
         RealtimeFeed("https://api.transport.nsw.gov.au/v2/gtfs/realtime/sydneytrains", idPrefix = "T:"),
     )
 
-    override suspend fun getBusData(): List<RealtimeBusTripInfo> = withContext(Dispatchers.IO) {
-        Log.d("GTFS-Realtime", "Starting getBusData.")
+    override suspend fun getRealtimeData(): List<RealtimeTripInfo> = withContext(Dispatchers.IO) {
+        Log.d("GTFS-Realtime", "Starting getRealtimeData.")
         val merged = feeds.flatMap { fetchFeed(it) }
-        Log.d("GTFS-Realtime", "Finished getBusData (${merged.size} trip updates).")
+        Log.d("GTFS-Realtime", "Finished getRealtimeData (${merged.size} trip updates).")
         merged
     }
 
@@ -73,7 +73,7 @@ class GtfsRealtimeRepository(
      * Fetch and decode a single feed, namespacing its ids. A single feed outage (e.g. trains down)
      * must not wipe out realtime for the others, so failures are logged and yield an empty list.
      */
-    private fun fetchFeed(feed: RealtimeFeed): List<RealtimeBusTripInfo> = try {
+    private fun fetchFeed(feed: RealtimeFeed): List<RealtimeTripInfo> = try {
         val request = Request.Builder().url(feed.url).header("Authorization", "apikey $apiKey").build()
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Failed: $response")
@@ -86,8 +86,8 @@ class GtfsRealtimeRepository(
         emptyList()
     }
 
-    private fun decodeFeed(stream: InputStream): List<RealtimeBusTripInfo> {
-        val tripInfos = mutableListOf<RealtimeBusTripInfo>()
+    private fun decodeFeed(stream: InputStream): List<RealtimeTripInfo> {
+        val tripInfos = mutableListOf<RealtimeTripInfo>()
         val cis = CodedInputStream.newInstance(stream)
 
         while (!cis.isAtEnd) {
@@ -106,10 +106,10 @@ class GtfsRealtimeRepository(
         return tripInfos
     }
 
-    private fun convertToBusInfo(entity: FeedEntity): RealtimeBusTripInfo {
+    private fun convertToBusInfo(entity: FeedEntity): RealtimeTripInfo {
         val tripUpdate = entity.tripUpdate
 
-        return RealtimeBusTripInfo(
+        return RealtimeTripInfo(
             id = entity.id,
             tripId = tripUpdate.trip.tripId,
             updatedAt = LocalDateTime.ofInstant(
@@ -129,7 +129,7 @@ class GtfsRealtimeRepository(
 }
 
 class FakeRealtimeSource(
-    private val busData: List<RealtimeBusTripInfo> = emptyList(),
+    private val busData: List<RealtimeTripInfo> = emptyList(),
 ) : RealtimeGtfsSource {
-    override suspend fun getBusData(): List<RealtimeBusTripInfo> = busData
+    override suspend fun getRealtimeData(): List<RealtimeTripInfo> = busData
 }

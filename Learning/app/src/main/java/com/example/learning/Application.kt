@@ -42,7 +42,7 @@ interface AppContainer {
     val settingsRepo: SettingsSource
     val gtfsRealtimeRepository: RealtimeGtfsSource
     val gtfsStaticRepository: StaticGtfsSource
-    val busInfo: BusInfo
+    val transitInfo: TransitInfo
     val loaded: StateFlow<Boolean>
     val loadError: StateFlow<String?>
     suspend fun initAll()
@@ -62,8 +62,8 @@ class ApplicationRepos(private val applicationContext: Context) : AppContainer {
     override val loadError = MutableStateFlow<String?>(null)
 
 
-    override val busInfo by lazy {
-        BusInfo(
+    override val transitInfo by lazy {
+        TransitInfo(
             gtfsStaticRepository = gtfsStaticRepository,
             gtfsRealtimeRepository = gtfsRealtimeRepository,
             locationRepo = locationRepo,
@@ -123,8 +123,8 @@ class FakeAppContainer(
 
     override val loaded = MutableStateFlow(loadBehaviour == LoadState.StartLoaded)
     override val loadError = MutableStateFlow<String?>(null)
-    override val busInfo by lazy {
-        BusInfo(
+    override val transitInfo by lazy {
+        TransitInfo(
             gtfsStaticRepository,
             gtfsRealtimeRepository,
             locationRepo,
