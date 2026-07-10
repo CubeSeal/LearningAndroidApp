@@ -358,11 +358,11 @@ fun LazyItemScope.BusCard(
                 overlineColor = onDynamicContainer
             ),
             overlineContent = {
-                Text(record.stopTimesRecord.tripHeadsign)
+                Text(record.stopTimesRecord.tripHeadsign.orEmpty())
             },
             headlineContent = {
                 Text(
-                    record.stopTimesRecord.routeShortName,
+                    record.stopTimesRecord.routeShortName.orEmpty(),
                     style = MaterialTheme.typography.bodyLarge
                         .copy(fontStyle = FontStyle.Italic)
                 )

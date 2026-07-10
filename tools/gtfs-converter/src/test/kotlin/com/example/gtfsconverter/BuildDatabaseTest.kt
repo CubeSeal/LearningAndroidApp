@@ -223,6 +223,53 @@ class BuildDatabaseTest {
     }
 
     @Test
+    fun `it drops Out Of Service and Non Revenue trips and their stop_times`() {
+        // These TfNSW-specific non-revenue route types have no boardable destination and often
+        // have null trip_headsign. They must be removed before the DB reaches the app.
+        val feed = InMemoryGtfsRowSource(mapOf(
+            "agency.txt" to listOf(mapOf(
+                "agency_id" to "A1", "agency_name" to "Test Agency",
+                "agency_url" to "http://example.test", "agency_timezone" to "Australia/Sydney",
+            )),
+            "routes.txt" to listOf(
+                mapOf("route_id" to "R1", "agency_id" to "A1", "route_short_name" to "T1",
+                      "route_long_name" to "Normal Route", "route_type" to "2"),
+                mapOf("route_id" to "OOS", "agency_id" to "A1", "route_short_name" to "",
+                      "route_long_name" to "Out Of Service", "route_type" to "2"),
+                mapOf("route_id" to "NR", "agency_id" to "A1", "route_short_name" to "",
+                      "route_long_name" to "Non Revenue", "route_type" to "2"),
+            ),
+            "calendar.txt" to listOf(mapOf(
+                "service_id" to "S1",
+                "monday" to "1", "tuesday" to "1", "wednesday" to "1", "thursday" to "1",
+                "friday" to "1", "saturday" to "1", "sunday" to "1",
+                "start_date" to "20260101", "end_date" to "20261231",
+            )),
+            "trips.txt" to listOf(
+                mapOf("trip_id" to "T1", "route_id" to "R1", "service_id" to "S1", "trip_headsign" to "City"),
+                mapOf("trip_id" to "T2", "route_id" to "OOS", "service_id" to "S1", "trip_headsign" to ""),
+                mapOf("trip_id" to "T3", "route_id" to "NR",  "service_id" to "S1", "trip_headsign" to "Depot"),
+            ),
+            "stops.txt" to listOf(mapOf(
+                "stop_id" to "S1", "stop_name" to "Stop 1",
+                "stop_lat" to "-33.8", "stop_lon" to "151.2", "location_type" to "", "parent_station" to "",
+            )),
+            "stop_times.txt" to listOf(
+                mapOf("trip_id" to "T1", "arrival_time" to "08:00:00", "departure_time" to "08:00:00", "stop_id" to "S1", "stop_sequence" to "1"),
+                mapOf("trip_id" to "T2", "arrival_time" to "08:01:00", "departure_time" to "08:01:00", "stop_id" to "S1", "stop_sequence" to "1"),
+                mapOf("trip_id" to "T3", "arrival_time" to "08:02:00", "departure_time" to "08:02:00", "stop_id" to "S1", "stop_sequence" to "1"),
+            ),
+            "calendar_dates.txt" to emptyList(),
+        ))
+
+        withMergedDb(feed to "") { db ->
+            assertEquals(setOf("T1"), db.ids("SELECT trip_id FROM trips"))
+            assertEquals(1, db.count("stop_times"))
+            assertEquals(1, db.count("routes"))
+        }
+    }
+
+    @Test
     fun `joins resolve through the prefixed foreign keys`() {
         // stop_times.trip_id → trips.trip_id → trips.route_id → routes.route_id are all prefixed in
         // lockstep, so a join from a train stop back to its route still lands.

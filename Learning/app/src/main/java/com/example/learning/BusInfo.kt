@@ -153,10 +153,8 @@ class TransitInfo(
         .mapLatest { associatedTrips ->
             val filterList = mutableSetOf<TransitFilterOptions>()
             associatedTrips.map { stopTimesRecord ->
-                if (stopTimesRecord.routeShortName.isNotBlank())
-                    filterList.add(TransitFilterOptions.RouteShortName(stopTimesRecord.routeShortName))
-                if (stopTimesRecord.tripHeadsign.isNotBlank())
-                    filterList.add(TransitFilterOptions.TripHeadsign(stopTimesRecord.tripHeadsign))
+                stopTimesRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { filterList.add(TransitFilterOptions.RouteShortName(it)) }
+                stopTimesRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { filterList.add(TransitFilterOptions.TripHeadsign(it)) }
                 filterList.add(TransitFilterOptions.TransportMode(transitModeOf(stopTimesRecord.routeType)))
                 focusedBusStop
                     .value
@@ -188,8 +186,8 @@ class TransitInfo(
                     stopTimesRecord = staticRecord,
                     realtimeStopTimesRecord = realtimeStopTimesRecords[staticRecord.tripId to staticRecord.stopId],
                     applicableFilters = setOfNotNull(
-                        staticRecord.routeShortName.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.RouteShortName(it) },
-                        staticRecord.tripHeadsign.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.TripHeadsign(it) },
+                        staticRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.RouteShortName(it) },
+                        staticRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.TripHeadsign(it) },
                         staticRecord.stopName.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.StopStand(it) },
                         TransitFilterOptions.TransportMode(transitModeOf(staticRecord.routeType)),
                     )

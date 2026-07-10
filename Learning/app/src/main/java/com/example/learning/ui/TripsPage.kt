@@ -93,7 +93,7 @@ private fun TripsList(
         LoadingScreen("Loading trip information...")
     } else {
         val first = stopTimesByTrip.first()
-        val routeShortName = first.routeShortName
+        val routeShortName = first.routeShortName.orEmpty()
         val routeLongName = first.routeLongName
 
         LazyColumn(

@@ -45,8 +45,8 @@ data class StopTimesRecord(
     val sequence: Int,
     val routeId: String,
     val serviceId: String,
-    val tripHeadsign: String,
-    val routeShortName: String,
+    val tripHeadsign: String?,
+    val routeShortName: String?,
     val routeLongName: String,
     // GTFS route_type (2 = rail, 3 = bus, plus TfNSW extended ranges). Carries the mode so the
     // app can distinguish trains from buses now that the schedule DB merges both feeds.

@@ -236,6 +236,12 @@ internal fun buildDatabaseInto(
         for (table in tables) loadTable(conn, table, source, idPrefix)
     }
 
+    // Non-revenue routes (Out Of Service, Non Revenue) have no public destination and should never
+    // appear as departures, so strip them before globbing or indexing.
+    println("  Pruning non-revenue routes...")
+    pruneNonRevenueTrips(conn)
+    conn.commit()
+
     // Globbing runs once over the merged stops. Its `'% Station'` filter only catches stops whose
     // pre-comma name ends in "Station" — always true for train platforms, rare for buses — so a
     // bus stop and a train platform sharing a "<X> Station" name glob together into one logical
@@ -542,6 +548,30 @@ private fun PreparedStatement.setNullableInt(i: Int, v: Int?) {
 }
 private fun PreparedStatement.setNullableDouble(i: Int, v: Double?) {
     if (v == null) setNull(i, java.sql.Types.REAL) else setDouble(i, v)
+}
+
+/**
+ * Removes non-passenger routes from the merged DB. TfNSW includes "Out Of Service" (`RTTA_DEF`)
+ * and "Non Revenue" (`RTTA_REV`) movements in the train feed; these have no boardable destination,
+ * often lack a `trip_headsign`, and should never appear as departures in the app.
+ * Deletes in dependency order: stop_times → trips → routes.
+ */
+private fun pruneNonRevenueTrips(conn: Connection) {
+    val nonRevenueLongNames = listOf("Out Of Service", "Non Revenue")
+    val inClause = nonRevenueLongNames.joinToString(",") { "'$it'" }
+    conn.exec("""
+        DELETE FROM stop_times WHERE trip_id IN (
+            SELECT t.trip_id FROM trips t
+            JOIN routes r ON t.route_id = r.route_id
+            WHERE r.route_long_name IN ($inClause)
+        )
+    """)
+    conn.exec("""
+        DELETE FROM trips WHERE route_id IN (
+            SELECT route_id FROM routes WHERE route_long_name IN ($inClause)
+        )
+    """)
+    conn.exec("DELETE FROM routes WHERE route_long_name IN ($inClause)")
 }
 
 private fun createGlobbedStops(conn: Connection) {
