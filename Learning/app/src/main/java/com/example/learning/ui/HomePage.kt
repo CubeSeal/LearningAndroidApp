@@ -373,7 +373,9 @@ fun LazyItemScope.BusCard(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .animateItem(
                 fadeInSpec = tween(300, easing = LinearOutSlowInEasing),
-                fadeOutSpec = tween(300, easing = FastOutLinearInEasing),
+                // No exit fade: removed items disappear instantly, so filtering doesn't leave
+                // outgoing cards interlacing with the ones staying put.
+                fadeOutSpec = null,
                 placementSpec = spring(stiffness = Spring.StiffnessMediumLow)
             )
     ) {

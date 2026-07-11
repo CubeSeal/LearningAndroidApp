@@ -576,8 +576,11 @@ private fun pruneNonRevenueTrips(conn: Connection) {
 
 private fun createGlobbedStops(conn: Connection) {
     conn.exec("DELETE FROM globbed_stops")
+    // Speeds Strategy 3's GROUP BY stop_name duplicate-detection over ~100k stops (stop_name is
+    // otherwise unindexed). Idempotent and cheap to leave in the shipped DB.
+    conn.exec("CREATE INDEX IF NOT EXISTS index_stops_stop_name ON stops(stop_name)")
 
-    // Two strategies, unioned and deduped:
+    // Three strategies, unioned and deduped:
     //
     // 1. parent_station-based (trains): a stop with a non-blank parent_station globs under that
     //    parent's normalised name; the parent itself (location_type=1) also globs under its own name.
@@ -587,7 +590,12 @@ private fun createGlobbedStops(conn: Connection) {
     // 2. Name-parse fallback (buses): stops whose pre-comma name ends in "Station" but have no
     //    parent_station (most bus stops). Retained so bus interchanges keep working.
     //
-    // INSERT OR REPLACE deduplicates on the composite PK (globbed_stop_id, stop_id).
+    // 3. Identical full-name fallback: stops NOT caught by 1/2 that share a byte-identical stop_name
+    //    (e.g. "M2 Motorway, Oakes Rd" under two stop_ids) glob together. Duplicates only, capped.
+    //
+    // INSERT OR REPLACE deduplicates on the composite PK (globbed_stop_id, stop_id). Each strategy's
+    // stop set is disjoint, so no stop_id ends up under two globbed_stop_ids (which would multiply
+    // the app's LEFT JOIN globbed_stops rows).
     conn.exec("""
         INSERT OR REPLACE INTO globbed_stops (
             globbed_stop_id,
@@ -630,6 +638,35 @@ private fun createGlobbedStops(conn: Connection) {
               AND (parent_station IS NULL OR parent_station = '')
         )
         WHERE station_name LIKE '% Station'
+
+        UNION
+
+        -- Strategy 3: identical full-name merge (e.g. "M2 Motorway, Oakes Rd" under two stop_ids).
+        -- Only stops NOT covered by 1a/1b/2, and only names shared by 2..4 eligible stops (the cap
+        -- bounds the per-stop query fan-out and coincidental over-merging). The eligibility predicate
+        -- is repeated in both subqueries on purpose so HAVING COUNT counts only eligible stops.
+        SELECT
+            replace(lower(e.stop_name), ' ', '_') AS globbed_stop_id,
+            e.stop_name                           AS globbed_stop_name,
+            e.stop_id
+        FROM (
+            SELECT stop_id, stop_name FROM stops
+            WHERE stop_name IS NOT NULL
+              AND (parent_station IS NULL OR parent_station = '')       -- excludes 1a
+              AND (location_type IS NULL OR location_type != 1)         -- excludes 1b
+              AND NOT (instr(stop_name, ',') > 0                        -- excludes 2
+                       AND trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) LIKE '% Station')
+        ) e
+        JOIN (
+            SELECT stop_name FROM stops
+            WHERE stop_name IS NOT NULL
+              AND (parent_station IS NULL OR parent_station = '')
+              AND (location_type IS NULL OR location_type != 1)
+              AND NOT (instr(stop_name, ',') > 0
+                       AND trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) LIKE '% Station')
+            GROUP BY stop_name
+            HAVING COUNT(*) BETWEEN 2 AND 4
+        ) dup ON dup.stop_name = e.stop_name
     """)
 }
 

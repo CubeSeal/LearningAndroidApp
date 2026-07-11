@@ -8,6 +8,9 @@ import com.example.learning.db.ServiceDateRow
 import com.example.learning.db.StopTimeWithDetails
 import com.example.learning.db.StopWithGlobbedInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -273,9 +276,15 @@ class GtfsStaticRepository(
     ): List<StopTimesRecord> = withContext(Dispatchers.Default) {
         val dates = serviceDates()
         // Fetch the raw stop-times once — one row per service, NOT per date — so even a huge station
-        // is bounded (this unexpanded fetch is what the OOM-causing ×28 date expansion isn't).
-        val rows = globbedStopRecord.stopRecords
-            .flatMap { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) }
+        // is bounded (this unexpanded fetch is what the OOM-causing ×28 date expansion isn't). Query
+        // the glob's stops concurrently: a globbed stop can span many physical stops (all a station's
+        // platforms, or identical-name duplicates), and Room runs suspend reads on its own executor.
+        val rows = coroutineScope {
+            globbedStopRecord.stopRecords
+                .map { async { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) } }
+                .awaitAll()
+                .flatten()
+        }
         val today = LocalDate.now()
         val now = LocalDateTime.now()
         // `yesterday` catches after-midnight services (GTFS times ≥ 24:00) spilling into today.
