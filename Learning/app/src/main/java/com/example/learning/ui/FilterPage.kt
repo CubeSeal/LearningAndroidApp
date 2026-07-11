@@ -207,7 +207,7 @@ private fun FilterGroup(
                         is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
                         is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
                         is TransitFilterOptions.StopStand -> Text(option.stopStand)
-                        is TransitFilterOptions.TransportMode -> Text(option.mode.label)
+                        is TransitFilterOptions.TransportMode -> ModeRoundel(option.mode)
                     }
                 },
                 colors = FilterChipDefaults.filterChipColors(

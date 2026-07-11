@@ -324,7 +324,7 @@ fun ModeFilterChips(
                             is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
                             is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
                             is TransitFilterOptions.StopStand -> Text(option.stopStand)
-                            is TransitFilterOptions.TransportMode -> Text(option.mode.label)
+                            is TransitFilterOptions.TransportMode -> ModeRoundel(option.mode)
                         }
                     },
                     colors = FilterChipDefaults.filterChipColors(
@@ -452,7 +452,7 @@ private fun ScheduledTimeText(text: String, color: Color) {
  * (orange "T" for trains, blue "B" for buses), so the departure's mode reads at a glance.
  */
 @Composable
-private fun ModeRoundel(mode: TransitMode) {
+internal fun ModeRoundel(mode: TransitMode) {
     val (color, letter, description) = when (mode) {
         TransitMode.TRAIN -> Triple(Color(0xFFF6891F), "T", "Train")   // Sydney Trains orange
         TransitMode.BUS -> Triple(Color(0xFF00B5EF), "B", "Bus")       // TfNSW bus blue
