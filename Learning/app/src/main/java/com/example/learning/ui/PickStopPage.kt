@@ -152,6 +152,7 @@ fun BoxScope.SearchBar(
                 .background(color = MaterialTheme.colorScheme.background)
                 .padding(horizontal = 16.dp, vertical = 0.dp)
                 .semantics { traversalIndex = 0f },
+            windowInsets = WindowInsets(0.dp),
             colors = SearchBarDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.background
             ),
