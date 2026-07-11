@@ -155,7 +155,7 @@ class TransitInfo(
         .filterNotNull()
         .transformLatest {
             val value = gtfsStaticRepository.getGlobbedStopById(it)
-            Log.d("TransitInfo", "Settings focused bus stop to $value")
+            Log.d("TransitInfo", "Settings focused bus stop to ${value?.globbedStopId} (${value?.stopRecords?.size} stops)")
             emit(value)
         }.stateIn(
             scope = scope,
@@ -188,7 +188,9 @@ class TransitInfo(
         .filterNotNull()
         .mapLatest {
             val associatedTrips = gtfsStaticRepository.getStopTimesByStop(it)
-            Log.d("TransitInfo", "Associated Trips = $associatedTrips")
+            // Log only the size: stringifying the whole list OOM-crashes at large stations (Central
+            // expands to a list whose toString() is >100MB).
+            Log.d("TransitInfo", "Associated Trips = ${associatedTrips.size} records")
             associatedTrips
         }.stateIn(
             scope = scope,
@@ -223,7 +225,7 @@ class TransitInfo(
                 .eachCount()
                 .filterValues { it < totalTrips }
                 .keys
-            Log.d("TransitInfo", "Filter list = $filterList")
+            Log.d("TransitInfo", "Filter list = ${filterList.size} options")
             filterList
         }.stateIn(
             scope = scope,
