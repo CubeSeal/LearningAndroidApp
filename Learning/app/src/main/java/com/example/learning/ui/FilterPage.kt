@@ -1,7 +1,6 @@
 package com.example.learning.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -13,8 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,12 +53,19 @@ fun FilterScreen(navController: NavController) {
 
     val available by viewModel.availableFiltersForBusStop.collectAsStateWithLifecycle()
     var staged by remember { mutableStateOf(viewModel.selectedFiltersForBusStop.value) }
+    // Which groups have had their "…" chip flicked to reveal the overflow beyond the top-10 cap.
+    var expandedGroups by remember { mutableStateOf(emptySet<String>()) }
 
     FilterScreenContent(
         available = available,
         staged = staged,
+        expandedGroups = expandedGroups,
         onToggleStaged = { staged = if (it in staged) staged - it else staged + it },
-        onReset = { staged = emptySet() },
+        onExpandGroup = { title -> expandedGroups = expandedGroups + title },
+        onReset = {
+            staged = emptySet()
+            expandedGroups = emptySet()
+        },
         onApply = {
             viewModel.applyFilters(staged)
             navController.popBackStack()
@@ -73,16 +76,18 @@ fun FilterScreen(navController: NavController) {
 
 /**
  * Stateless content of the FilterPage: the available filters grouped into sections by type, plus the
- * always-visible Apply / Cancel controls. The hosting [FilterScreen] owns the staged selection and
- * the navigation/ViewModel wiring; this composable just renders [staged] and reports user intent, so
- * it can be exercised directly in tests.
+ * always-visible Apply / Cancel controls. The hosting [FilterScreen] owns the staged selection, the
+ * per-group expansion state, and the navigation/ViewModel wiring; this composable just renders them
+ * and reports user intent, so it can be exercised directly in tests.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FilterScreenContent(
     available: Set<TransitFilterOptions>,
     staged: Set<TransitFilterOptions>,
+    expandedGroups: Set<String>,
     onToggleStaged: (TransitFilterOptions) -> Unit,
+    onExpandGroup: (String) -> Unit,
     onReset: () -> Unit,
     onApply: () -> Unit,
     onBack: () -> Unit,
@@ -120,12 +125,12 @@ fun FilterScreenContent(
         ) {
             // Broad → specific hierarchy: mode, then stand/platform, then route/line, then
             // destination — mirroring the Home row's `filterTypeRank` order.
-            FilterGroup("Modes", modes, staged, onToggleStaged)
-            FilterGroup("Platforms", platforms, staged, onToggleStaged)
-            FilterGroup("Stands", busStands, staged, onToggleStaged)
-            FilterGroup("Lines", trainLines, staged, onToggleStaged)
-            FilterGroup("Routes", busRoutes, staged, onToggleStaged)
-            FilterGroup("Destinations", destinations, staged, onToggleStaged)
+            FilterGroup("Modes", modes, staged, "Modes" in expandedGroups, onToggleStaged) { onExpandGroup("Modes") }
+            FilterGroup("Platforms", platforms, staged, "Platforms" in expandedGroups, onToggleStaged) { onExpandGroup("Platforms") }
+            FilterGroup("Stands", busStands, staged, "Stands" in expandedGroups, onToggleStaged) { onExpandGroup("Stands") }
+            FilterGroup("Lines", trainLines, staged, "Lines" in expandedGroups, onToggleStaged) { onExpandGroup("Lines") }
+            FilterGroup("Routes", busRoutes, staged, "Routes" in expandedGroups, onToggleStaged) { onExpandGroup("Routes") }
+            FilterGroup("Destinations", destinations, staged, "Destinations" in expandedGroups, onToggleStaged) { onExpandGroup("Destinations") }
         }
 
         Row(
@@ -157,47 +162,40 @@ fun FilterScreenContent(
 private fun <T> byLabel(label: (T) -> String): Comparator<T> =
     compareBy({ label(it).toIntOrNull() ?: Int.MAX_VALUE }, { label(it) })
 
+/** How many chips a group shows before the "…" overflow chip; the rest appear once it's flicked. */
+private const val GROUP_CAP = 10
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun FilterGroup(
     title: String,
     options: List<TransitFilterOptions>,
     staged: Set<TransitFilterOptions>,
+    expanded: Boolean,
     onToggleStaged: (TransitFilterOptions) -> Unit,
+    onExpand: () -> Unit,
 ) {
     if (options.isEmpty()) return
 
-    // Each category collapses independently so a long list (e.g. Stands) can be folded away to reach
-    // another section without scrolling past everything.
-    var expanded by rememberSaveable(title) { mutableStateOf(false) }
+    // Show the top slice until the "…" chip is flicked; overflow is only re-hidden by Reset.
+    val visible = if (expanded) options else options.take(GROUP_CAP)
+    val hasMore = !expanded && options.size > GROUP_CAP
 
-    Row(
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { expanded = !expanded }
             .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(
-            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-            contentDescription = if (expanded) "Collapse $title" else "Expand $title",
-            tint = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-    if (!expanded) return
+    )
 
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        options.forEach { option ->
+        visible.forEach { option ->
             FilterChip(
                 modifier = Modifier.testTag("filterChip"),
                 selected = option in staged,
@@ -213,6 +211,14 @@ private fun FilterGroup(
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
                 ),
+            )
+        }
+        if (hasMore) {
+            FilterChip(
+                modifier = Modifier.testTag("moreChip"),
+                selected = false,
+                onClick = onExpand,
+                label = { Text("…") },
             )
         }
     }
