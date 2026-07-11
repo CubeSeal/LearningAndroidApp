@@ -7,10 +7,14 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -57,8 +61,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,6 +82,8 @@ import com.example.learning.PickStop
 import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.GlobbedStopRecord
+import com.example.learning.repos.TransitMode
+import com.example.learning.repos.transitModeOf
 import kotlinx.coroutines.launch
 import java.time.Duration
 
@@ -318,18 +328,16 @@ fun LazyItemScope.BusCard(
     val (isFirst, record) = item
     val realtime = record.realtimeStopTimesRecord
     val delay = realtime?.stopTimeDelay
+    val scheduledDeparture = item.second.stopTimesRecord.departureTime
     // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
     // Only make the choice to treat it as zero when re-calculating departureTimes.
-    val delayText = delay?.toMinutes()?.let {
-        when {
-            it == 1L -> "Delayed by 1 minute"
-            it == 0L -> "On time"
-            it == -1L -> "Early by 1 minute"
-            it > 1 -> "Delayed by $it minutes"
-            else -> "Early by ${-it} minutes"
-        }
-    } ?: "–"
-    val departureTime = item.second.stopTimesRecord.departureTime + (delay ?: Duration.ZERO)
+    val departureTime = scheduledDeparture + (delay ?: Duration.ZERO)
+    // No realtime at all: the whole row is italicised and the trailing spot shows the scheduled
+    // time in the same italic style, signalling "timetable only".
+    val untracked = realtime == null
+    // The trip is off-schedule (and worth showing both times) only when realtime shifts it by at
+    // least a displayed minute; sub-minute deltas render as the same clock time.
+    val isOffSchedule = delay != null && delay.toMinutes() != 0L
 
     val (dynamicContainer, onDynamicContainer) = when {
         isFirst && realtime != null ->
@@ -373,7 +381,10 @@ fun LazyItemScope.BusCard(
             ),
             leadingContent = { ModeRoundel(transitModeOf(record.stopTimesRecord.routeType)) },
             overlineContent = {
-                Text(record.stopTimesRecord.tripHeadsign.orEmpty())
+                Text(
+                    record.stopTimesRecord.tripHeadsign.orEmpty(),
+                    fontStyle = if (untracked) FontStyle.Italic else null
+                )
             },
             headlineContent = {
                 Text(
@@ -382,16 +393,42 @@ fun LazyItemScope.BusCard(
                         .copy(fontStyle = FontStyle.Italic)
                 )
             },
-            supportingContent = { Text(text = delayText) },
             trailingContent = {
-                Text(
-                    text = printTime(departureTime),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = onDynamicContainer
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    if (untracked) {
+                        // Reserve the (invisible) predicted-time line so the italic scheduled time
+                        // lands in the same vertical spot as the realtime row's second line, rather
+                        // than centring higher.
+                        Text(text = "", style = MaterialTheme.typography.titleMedium)
+                        ScheduledTimeText(printTime(scheduledDeparture), onDynamicContainer)
+                    } else {
+                        Text(
+                            text = printTime(departureTime),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = onDynamicContainer
+                        )
+                        // Always reserve the scheduled-time line (empty when on time) so the
+                        // predicted time aligns with the off-schedule and untracked rows.
+                        ScheduledTimeText(
+                            if (isOffSchedule) printTime(scheduledDeparture) else "",
+                            onDynamicContainer
+                        )
+                    }
+                }
             }
         )
     }
+}
+
+/** The scheduled departure time, rendered in the small italic style shared by the off-schedule and
+ * untracked rows. */
+@Composable
+private fun ScheduledTimeText(text: String, color: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+        color = color,
+    )
 }
 
 /**
