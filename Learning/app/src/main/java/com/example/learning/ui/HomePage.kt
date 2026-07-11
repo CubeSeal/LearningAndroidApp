@@ -45,6 +45,8 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -52,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -71,6 +74,7 @@ import com.example.learning.PickStop
 import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.GlobbedStopRecord
+import kotlinx.coroutines.launch
 import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,6 +90,8 @@ fun HOMEScreen(
     val hasMoreFilters by viewModel.hasMoreFilters.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(associatedBusStopTimes) {
         listState.scrollToItem(0)
@@ -93,9 +99,17 @@ fun HOMEScreen(
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                focusedBusStop?.let { SaveStop { viewModel.addSavedStop(it) } }
+                focusedBusStop?.let { stop ->
+                    SaveStop {
+                        viewModel.addSavedStop(stop)
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Saved ${stop.globbedStopName}")
+                        }
+                    }
+                }
                 EditStop { navController.navigate(PickStop) }
             }
         }
