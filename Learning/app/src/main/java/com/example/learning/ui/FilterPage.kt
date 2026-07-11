@@ -204,7 +204,7 @@ private fun FilterGroup(
                     when (option) {
                         is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
                         is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
-                        is TransitFilterOptions.StopStand -> Text(option.stopStand)
+                        is TransitFilterOptions.StopStand -> Text(shortStandName(option.stopStand))
                         is TransitFilterOptions.TransportMode -> ModeRoundel(option.mode)
                     }
                 },
