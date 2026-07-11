@@ -24,10 +24,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.forEach
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
@@ -184,15 +186,19 @@ class TransitInfo(
             initialValue = emptyMap()
         )
 
+    // flatMapLatest cancels the previous stop's in-flight query on switch; emitting empty first
+    // clears the old stop's departures immediately (rather than leaving them stale while the new
+    // query — which self-widens for sparse stops — runs).
     val associatedTrips = focusedBusStop
         .filterNotNull()
-        .mapLatest {
-            val associatedTrips = gtfsStaticRepository.getStopTimesByStop(it)
-            // Log only the size: stringifying the whole list OOM-crashes at large stations (Central
-            // expands to a list whose toString() is >100MB).
-            Log.d("TransitInfo", "Associated Trips = ${associatedTrips.size} records")
-            associatedTrips
-        }.stateIn(
+        .flatMapLatest { stop ->
+            flow {
+                emit(emptyList())
+                emit(gtfsStaticRepository.getStopTimesByStop(stop))
+            }
+        }
+        .onEach { Log.d("TransitInfo", "Associated Trips = ${it.size} records") }
+        .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
             initialValue = emptyList()
@@ -233,8 +239,10 @@ class TransitInfo(
             initialValue = emptySet()
         )
 
+    // Note: not gated on non-empty — an empty result must propagate so switching to a stop with no
+    // upcoming departures clears the previous stop's list instead of leaving it stale.
     val associatedStopTimes = combine(
-        associatedTrips.filter { it.isNotEmpty() },
+        associatedTrips,
         realtimeStopTimesRecord,
     ) { associatedTrips, realTimeInfo ->
         associatedTrips to realTimeInfo
