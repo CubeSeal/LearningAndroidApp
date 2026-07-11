@@ -20,16 +20,18 @@ import androidx.compose.ui.unit.dp
 fun WonderHeader(
 
 ) {
-    Card(
-        modifier = Modifier
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .height(96.dp)
-            .fillMaxWidth()
-            .padding(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Red
-        )
-    ) {
-        Text("Hello World!")
-    }
+  if (false) {
+      Card(
+          modifier = Modifier
+              .windowInsetsPadding(WindowInsets.statusBars)
+              .height(96.dp)
+              .fillMaxWidth()
+              .padding(8.dp),
+          colors = CardDefaults.cardColors(
+              containerColor = Color.Red
+          )
+      ) {
+          Text("Hello World!")
+      }
+  }
 }
