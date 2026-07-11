@@ -33,6 +33,18 @@ android {
                 "proguard-rules.pro"
             )
         }
+        // A non-debuggable, release-optimised build you can install on-device for performance
+        // checking. Inherits the release config (R8 minify/optimise) but is signed with the debug
+        // key so it installs (as an update over the debug app — same applicationId — which avoids
+        // the "install new app via USB" restriction some ROMs enforce), and stays `profileable` so
+        // Studio's profiler can still attach.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+            isDebuggable = false
+            isProfileable = true
+        }
     }
 
     compileOptions {
