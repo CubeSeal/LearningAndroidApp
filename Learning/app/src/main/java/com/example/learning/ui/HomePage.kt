@@ -33,7 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -284,36 +284,43 @@ fun ModeFilterChips(
     modifier: Modifier = Modifier,
 ) {
     // A compact, horizontally-scrollable row of the base filter slice. When more filters exist than
-    // fit the cap, a trailing chevron opens the full FilterPage rather than expanding in place.
+    // fit the cap, a filter button pinned to the left (outside the scroll) opens the full FilterPage
+    // rather than expanding in place.
     Row(
-        modifier = modifier
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+        modifier = modifier.padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        rowFilters.forEach { option ->
-            FilterChip(
-                selected = option in selectedTransitFilterOptions,
-                onClick = { onToggleMode(option) },
-                label = {
-                    when (option) {
-                        is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
-                        is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
-                        is TransitFilterOptions.StopStand -> Text(option.stopStand)
-                        is TransitFilterOptions.TransportMode -> Text(option.mode.label)
-                    }
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                   selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
-                )
-            )
-        }
         if (showMore) {
             IconButton(onClick = onOpenFilters) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    imageVector = Icons.Filled.FilterList,
                     contentDescription = "More filters",
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            rowFilters.forEach { option ->
+                FilterChip(
+                    selected = option in selectedTransitFilterOptions,
+                    onClick = { onToggleMode(option) },
+                    label = {
+                        when (option) {
+                            is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
+                            is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
+                            is TransitFilterOptions.StopStand -> Text(option.stopStand)
+                            is TransitFilterOptions.TransportMode -> Text(option.mode.label)
+                        }
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                       selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
                 )
             }
         }
