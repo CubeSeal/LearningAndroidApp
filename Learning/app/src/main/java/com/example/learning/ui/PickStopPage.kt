@@ -73,7 +73,6 @@ fun PickStopScreen(
         viewModel.updateFocusedBusStop(globbedStopRecord)
         navController.popBackStack()
     }
-    val closestStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
     val savedStops by viewModel.savedStops.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(SearchTab.Search) }
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -100,7 +99,6 @@ fun PickStopScreen(
 
         when (selectedTab) {
             SearchTab.Search -> SearchStopsTabPage(
-                closestStops = closestStops,
                 query = query,
                 onQueryChange = { viewModel.onQueryChange(it) },
                 filteredStops = filteredStops,
@@ -118,7 +116,6 @@ fun PickStopScreen(
 
 @Composable
 fun SearchStopsTabPage(
-    closestStops: List<GlobbedStopRecord>,
     query: String,
     onQueryChange: (String) -> Unit,
     filteredStops: List<GlobbedStopRecord>,
@@ -127,7 +124,7 @@ fun SearchStopsTabPage(
 
     Box(
         Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .semantics { isTraversalGroup = true }
     ) {
         SearchBar(
@@ -136,37 +133,6 @@ fun SearchStopsTabPage(
             onQueryChange = onQueryChange,
             searchCallback = searchCallback
         )
-    }
-
-    ClosetStopsList(
-        closestStops = closestStops,
-        searchCallback = searchCallback
-    )
-}
-
-@Composable
-fun ClosetStopsList(
-    closestStops: List<GlobbedStopRecord>,
-    searchCallback: (GlobbedStopRecord) -> Unit
-) {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-        thickness = 1.dp,
-        color = MaterialTheme.colorScheme.onSurface
-    )
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(closestStops) {
-            ListItem(
-                modifier = Modifier.clickable { searchCallback(it) },
-                headlineContent = {
-                    Text(
-                        it.globbedStopName,
-                        style = MaterialTheme.typography.bodyLarge
-                            .copy(fontStyle = FontStyle.Italic)
-                    )
-                }
-            )
-        }
     }
 }
 
@@ -184,7 +150,7 @@ fun BoxScope.SearchBar(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .background(color = MaterialTheme.colorScheme.background)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp, vertical = 0.dp)
                 .semantics { traversalIndex = 0f },
             colors = SearchBarDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.background

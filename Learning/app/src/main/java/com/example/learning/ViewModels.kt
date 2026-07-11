@@ -153,7 +153,7 @@ class PickStopViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
     val filteredBusStops: StateFlow<List<GlobbedStopRecord>> = _query
-        .map { query -> transitInfo.searchStops(query) }
+        .map { query -> if (query.isBlank()) closestBusStops.value else transitInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
