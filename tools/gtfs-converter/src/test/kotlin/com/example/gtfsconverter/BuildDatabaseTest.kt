@@ -223,6 +223,91 @@ class BuildDatabaseTest {
     }
 
     @Test
+    fun `it globs stops that share an identical non-station full name`() {
+        // "M2 Motorway, Oakes Rd" appears under two stop_ids: no parent_station, not a station,
+        // pre-comma "M2 Motorway" is not "% Station". Strategy 3 (identical full name) merges them.
+        val feed = gtfsFeed(
+            stops = listOf(
+                "M1" to "M2 Motorway, Oakes Rd",
+                "M2" to "M2 Motorway, Oakes Rd",
+            ),
+        )
+
+        withMergedDb(feed to "") { db ->
+            val globbed = db.query("SELECT globbed_stop_id, stop_id FROM globbed_stops") {
+                it.getString("globbed_stop_id") to it.getString("stop_id")
+            }
+            assertEquals(
+                setOf(
+                    "m2_motorway,_oakes_rd" to "M1",
+                    "m2_motorway,_oakes_rd" to "M2",
+                ),
+                globbed.toSet(),
+            )
+        }
+    }
+
+    @Test
+    fun `it does not glob unique-named non-station stops`() {
+        // Distinct non-station names shared by nobody stay ungloBBed (app falls back to stop_id).
+        // Guards the HAVING COUNT(*) >= 2 lower bound.
+        val feed = gtfsFeed(
+            stops = listOf(
+                "U1" to "M2 Motorway, Oakes Rd",
+                "U2" to "M7 Motorway, Abbott Rd",
+            ),
+        )
+
+        withMergedDb(feed to "") { db ->
+            assertEquals(emptySet<String>(), db.ids("SELECT globbed_stop_id FROM globbed_stops"))
+        }
+    }
+
+    @Test
+    fun `identical-name globbing is capped at the group-size limit`() {
+        // A 4-way group still merges; a 5-way group exceeds the cap and stays ungloBBed. Bounds the
+        // per-stop query fan-out and coincidental over-merging.
+        val four = gtfsFeed(stops = (1..4).map { "F$it" to "M2 Motorway, Oakes Rd" })
+        withMergedDb(four to "") { db ->
+            assertEquals(
+                setOf("m2_motorway,_oakes_rd"),
+                db.ids("SELECT DISTINCT globbed_stop_id FROM globbed_stops"),
+            )
+        }
+
+        val five = gtfsFeed(stops = (1..5).map { "F$it" to "M2 Motorway, Oakes Rd" })
+        withMergedDb(five to "") { db ->
+            assertEquals(emptySet<String>(), db.ids("SELECT globbed_stop_id FROM globbed_stops"))
+        }
+    }
+
+    @Test
+    fun `no stop_id is globbed under more than one globbed_stop_id`() {
+        // Mixed feed exercising all strategies at once; guards the app's LEFT JOIN multiplication
+        // risk — every stop_id must belong to exactly one globbed_stop_id.
+        val parents = gtfsFeedWithParents(
+            parent = Triple("PAR", "Wynyard Station", 1),
+            children = listOf("PLT1" to "Wynyard Station, Platform 3"),
+        )
+        val buses = gtfsFeed(
+            stops = listOf(
+                "B1" to "Central Station, Bay 1",   // Strategy 2
+                "B2" to "Central Station, Bay 2",   // Strategy 2
+                "M1" to "M2 Motorway, Oakes Rd",    // Strategy 3
+                "M2" to "M2 Motorway, Oakes Rd",    // Strategy 3
+                "X1" to "Lonely Rd",                // unique -> ungloBBed
+            ),
+        )
+
+        withMergedDb(parents to "T:", buses to "") { db ->
+            val offenders = db.ids(
+                "SELECT stop_id FROM globbed_stops GROUP BY stop_id HAVING COUNT(DISTINCT globbed_stop_id) > 1"
+            )
+            assertEquals(emptySet<String>(), offenders)
+        }
+    }
+
+    @Test
     fun `it drops Out Of Service and Non Revenue trips and their stop_times`() {
         // These TfNSW-specific non-revenue route types have no boardable destination and often
         // have null trip_headsign. They must be removed before the DB reaches the app.
