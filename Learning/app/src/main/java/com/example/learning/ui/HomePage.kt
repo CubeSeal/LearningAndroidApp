@@ -409,6 +409,12 @@ fun LazyItemScope.BusCard(
                         .copy(fontStyle = FontStyle.Italic)
                 )
             },
+            supportingContent = {
+                Text(
+                    shortStandName(record.stopTimesRecord.stopName),
+                    fontStyle = if (untracked) FontStyle.Italic else null
+                )
+            },
             trailingContent = {
                 Column(horizontalAlignment = Alignment.End) {
                     if (untracked) {
