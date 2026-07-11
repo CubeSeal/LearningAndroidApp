@@ -63,7 +63,15 @@ class HomeViewModel(
     private val _pinnedFilters = MutableStateFlow(setOf<TransitFilterOptions>())
     val rowFilters: StateFlow<List<TransitFilterOptions>> =
         combine(availableFiltersForBusStop, _pinnedFilters) { available, pinned ->
-            (available.take(ROW_FILTER_CAP) + pinned.filter { it in available }).distinct()
+            // Sort the full set into hierarchy order (Modes → Stands/Platforms → Routes/Lines →
+            // Destinations, then train-before-bus) first, so the row cap keeps the highest-priority
+            // tiers rather than whichever filters happened to be discovered first. Pinned extras are
+            // then folded in and re-sorted so they slot into place. The sort is stable, so
+            // within-group order is preserved.
+            val order = compareBy(filterTypeRank, filterModeRank)
+            (available.sortedWith(order).take(ROW_FILTER_CAP) + pinned.filter { it in available })
+                .distinct()
+                .sortedWith(order)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val hasMoreFilters: StateFlow<Boolean> = availableFiltersForBusStop

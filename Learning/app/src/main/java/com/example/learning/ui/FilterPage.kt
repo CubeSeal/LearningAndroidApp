@@ -118,13 +118,14 @@ fun FilterScreenContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            // Mode (Bus/Train) is the broadest cut, so it leads the section list.
+            // Broad → specific hierarchy: mode, then stand/platform, then route/line, then
+            // destination — mirroring the Home row's `filterTypeRank` order.
             FilterGroup("Modes", modes, staged, onToggleStaged)
+            FilterGroup("Platforms", platforms, staged, onToggleStaged)
+            FilterGroup("Stands", busStands, staged, onToggleStaged)
             FilterGroup("Lines", trainLines, staged, onToggleStaged)
             FilterGroup("Routes", busRoutes, staged, onToggleStaged)
             FilterGroup("Destinations", destinations, staged, onToggleStaged)
-            FilterGroup("Platforms", platforms, staged, onToggleStaged)
-            FilterGroup("Stands", busStands, staged, onToggleStaged)
         }
 
         Row(

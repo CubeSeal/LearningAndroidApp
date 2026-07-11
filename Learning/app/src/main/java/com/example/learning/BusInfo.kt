@@ -76,6 +76,41 @@ sealed interface TransitFilterOptions {
     data class TransportMode(val mode: TransitMode): TransitFilterOptions
 }
 
+/**
+ * The natural hierarchy of filter types, broad → specific: mode, then stand/platform, then route/
+ * line, then destination. Used to order the Home filter row (and mirrored by the FilterPage's
+ * section order) consistently, regardless of the order options were discovered in.
+ */
+val filterTypeRank: (TransitFilterOptions) -> Int = { option ->
+    when (option) {
+        is TransitFilterOptions.TransportMode -> 0
+        is TransitFilterOptions.StopStand -> 1
+        is TransitFilterOptions.RouteShortName -> 2
+        is TransitFilterOptions.TripHeadsign -> 3
+    }
+}
+
+/** Within a tier, order transport modes train → bus → other so trains lead. */
+fun transitModeRank(mode: TransitMode): Int = when (mode) {
+    TransitMode.TRAIN -> 0
+    TransitMode.BUS -> 1
+    TransitMode.OTHER -> 2
+}
+
+/**
+ * Secondary ordering key (after [filterTypeRank]) that keeps trains ahead of buses within a tier
+ * that mixes them — i.e. the route/line and stand/platform tiers. The mode-selector chips and
+ * destinations keep their own order (they don't split into train vs bus variants).
+ */
+val filterModeRank: (TransitFilterOptions) -> Int = { option ->
+    when (option) {
+        is TransitFilterOptions.RouteShortName -> transitModeRank(option.mode)
+        is TransitFilterOptions.StopStand -> transitModeRank(option.mode)
+        is TransitFilterOptions.TransportMode -> 0
+        is TransitFilterOptions.TripHeadsign -> 0
+    }
+}
+
 @Immutable
 data class StopTimesRecordWithRealtime(
     // I think it's okay to have nesting like this if the underlying data structures are still flat.
