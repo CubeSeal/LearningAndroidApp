@@ -15,11 +15,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import com.example.learning.BackHeader
 import com.example.learning.TransitFilterOptions
 import com.example.learning.Home
 import com.example.learning.HomeViewModel
+import com.example.learning.repos.TransitMode
 
 /**
  * Route-level FilterPage. Shares the **same** [HomeViewModel] as the Home screen by scoping the
@@ -59,6 +62,7 @@ fun FilterScreen(navController: NavController) {
         available = available,
         staged = staged,
         onToggleStaged = { staged = if (it in staged) staged - it else staged + it },
+        onReset = { staged = emptySet() },
         onApply = {
             viewModel.applyFilters(staged)
             navController.popBackStack()
@@ -79,16 +83,26 @@ fun FilterScreenContent(
     available: Set<TransitFilterOptions>,
     staged: Set<TransitFilterOptions>,
     onToggleStaged: (TransitFilterOptions) -> Unit,
+    onReset: () -> Unit,
     onApply: () -> Unit,
     onBack: () -> Unit,
 ) {
     val modes = available.filterIsInstance<TransitFilterOptions.TransportMode>()
         .sortedWith(byLabel { it.mode.label })
-    val routes = available.filterIsInstance<TransitFilterOptions.RouteShortName>()
+    // Routes and stands split by mode so trains can be named "lines"/"platforms" while buses (and
+    // anything else) keep "routes"/"stands". Empty groups render nothing, so a single-mode stop only
+    // ever shows the terms that apply to it.
+    val allRoutes = available.filterIsInstance<TransitFilterOptions.RouteShortName>()
+    val trainLines = allRoutes.filter { it.mode == TransitMode.TRAIN }
+        .sortedWith(byLabel { it.routeShortName })
+    val busRoutes = allRoutes.filter { it.mode != TransitMode.TRAIN }
         .sortedWith(byLabel { it.routeShortName })
     val destinations = available.filterIsInstance<TransitFilterOptions.TripHeadsign>()
         .sortedWith(byLabel { it.tripHeadsign })
-    val stands = available.filterIsInstance<TransitFilterOptions.StopStand>()
+    val allStands = available.filterIsInstance<TransitFilterOptions.StopStand>()
+    val platforms = allStands.filter { it.mode == TransitMode.TRAIN }
+        .sortedWith(byLabel { it.stopStand })
+    val busStands = allStands.filter { it.mode != TransitMode.TRAIN }
         .sortedWith(byLabel { it.stopStand })
 
     Column(
@@ -106,17 +120,32 @@ fun FilterScreenContent(
         ) {
             // Mode (Bus/Train) is the broadest cut, so it leads the section list.
             FilterGroup("Modes", modes, staged, onToggleStaged)
-            FilterGroup("Routes", routes, staged, onToggleStaged)
+            FilterGroup("Lines", trainLines, staged, onToggleStaged)
+            FilterGroup("Routes", busRoutes, staged, onToggleStaged)
             FilterGroup("Destinations", destinations, staged, onToggleStaged)
-            FilterGroup("Stands", stands, staged, onToggleStaged)
+            FilterGroup("Platforms", platforms, staged, onToggleStaged)
+            FilterGroup("Stands", busStands, staged, onToggleStaged)
         }
 
-        Button(
-            onClick = onApply,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-        ) { Text("Apply") }
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onReset) {
+                Icon(
+                    imageVector = Icons.Default.RestartAlt,
+                    contentDescription = "Reset filters",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            Button(
+                onClick = onApply,
+                modifier = Modifier.weight(1f),
+            ) { Text("Apply") }
+        }
     }
 }
 

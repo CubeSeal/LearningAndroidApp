@@ -61,13 +61,16 @@ private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimes
 }
 
 sealed interface TransitFilterOptions {
-    data class RouteShortName(val routeShortName: String): TransitFilterOptions {
+    // Route/stand carry their [mode] so the UI can name them per transport type (train "lines" and
+    // "platforms" vs bus "routes" and "stands"). The mode is part of the option's identity, so both
+    // the filter-list builder and the per-trip applicable set below must stamp it consistently.
+    data class RouteShortName(val routeShortName: String, val mode: TransitMode): TransitFilterOptions {
         init { require(routeShortName.isNotBlank()) }
     }
     data class TripHeadsign(val tripHeadsign: String): TransitFilterOptions {
         init { require(tripHeadsign.isNotBlank()) }
     }
-    data class StopStand(val stopStand: String): TransitFilterOptions {
+    data class StopStand(val stopStand: String, val mode: TransitMode): TransitFilterOptions {
         init { require(stopStand.isNotBlank()) }
     }
     data class TransportMode(val mode: TransitMode): TransitFilterOptions
@@ -155,16 +158,17 @@ class TransitInfo(
             // it distinguishes some trips from others — an option every trip carries (e.g. a stop served
             // by a single route, or all-bus services) filters nothing, so we drop it.
             val perTripFilters = associatedTrips.map { stopTimesRecord ->
+                val mode = transitModeOf(stopTimesRecord.routeType)
                 buildSet {
-                    stopTimesRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.RouteShortName(it)) }
+                    stopTimesRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.RouteShortName(it, mode)) }
                     stopTimesRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.TripHeadsign(it)) }
-                    add(TransitFilterOptions.TransportMode(transitModeOf(stopTimesRecord.routeType)))
+                    add(TransitFilterOptions.TransportMode(mode))
                     focusedBusStop
                         .value
                         ?.stopRecords
                         ?.takeIf { it.size > 2}
                         ?.filter { it.stopId == stopTimesRecord.stopId }
-                        ?.forEach { if (it.stopName.isNotBlank()) add(TransitFilterOptions.StopStand(it.stopName)) }
+                        ?.forEach { if (it.stopName.isNotBlank()) add(TransitFilterOptions.StopStand(it.stopName, mode)) }
                 }
             }
             val totalTrips = perTripFilters.size
@@ -191,14 +195,15 @@ class TransitInfo(
         .distinctUntilChanged()
         .transformLatest { (trips, realtimeStopTimesRecords) ->
              val stopTimesRecordWithRealtime = trips.map { staticRecord ->
+                val mode = transitModeOf(staticRecord.routeType)
                 StopTimesRecordWithRealtime(
                     stopTimesRecord = staticRecord,
                     realtimeStopTimesRecord = realtimeStopTimesRecords[staticRecord.tripId to staticRecord.stopId],
                     applicableFilters = setOfNotNull(
-                        staticRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.RouteShortName(it) },
+                        staticRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.RouteShortName(it, mode) },
                         staticRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.TripHeadsign(it) },
-                        staticRecord.stopName.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.StopStand(it) },
-                        TransitFilterOptions.TransportMode(transitModeOf(staticRecord.routeType)),
+                        staticRecord.stopName.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.StopStand(it, mode) },
+                        TransitFilterOptions.TransportMode(mode),
                     )
                 )
             }

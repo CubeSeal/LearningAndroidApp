@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -97,7 +98,6 @@ fun HOMEScreen(
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
-    val hasMoreFilters by viewModel.hasMoreFilters.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -136,9 +136,9 @@ fun HOMEScreen(
                 associatedBusStopTimes,
                 rowFilters,
                 selectedFiltersForBusStop,
-                hasMoreFilters,
                 { viewModel.toggleFilterForBusStops(it) },
                 { navController.navigate(Filter) },
+                { viewModel.clearFilters() },
             )
         }
     }
@@ -171,9 +171,9 @@ fun MasterLazyColumn(
     associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
     rowFilters: List<TransitFilterOptions>,
     selectedFiltersForBusStop: Set<TransitFilterOptions>,
-    hasMoreFilters: Boolean,
     onToggleMode: (TransitFilterOptions) -> Unit,
     onOpenFilters: () -> Unit,
+    onResetFilters: () -> Unit,
 ) {
     val headerAlpha by remember {
         derivedStateOf {
@@ -220,9 +220,9 @@ fun MasterLazyColumn(
                 ModeFilterChips(
                     rowFilters,
                     selectedFiltersForBusStop,
-                    hasMoreFilters,
                     onToggleMode,
                     onOpenFilters,
+                    onResetFilters,
                 )
             }
 
@@ -278,25 +278,34 @@ fun StopTitle(closestBusStop: GlobbedStopRecord? ) {
 fun ModeFilterChips(
     rowFilters: List<TransitFilterOptions>,
     selectedTransitFilterOptions: Set<TransitFilterOptions>,
-    showMore: Boolean,
     onToggleMode: (TransitFilterOptions) -> Unit,
     onOpenFilters: () -> Unit,
+    onResetFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // A compact, horizontally-scrollable row of the base filter slice. When more filters exist than
-    // fit the cap, a filter button pinned to the left (outside the scroll) opens the full FilterPage
-    // rather than expanding in place.
+    // The pinned-left button toggles with the filter state: with nothing selected it's a filter
+    // button that opens the full FilterPage; once something is selected it becomes a reset button
+    // that clears the selection (bringing the filter button back).
     Row(
         modifier = modifier.padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (showMore) {
-            IconButton(onClick = onOpenFilters) {
-                Icon(
-                    imageVector = Icons.Filled.FilterList,
-                    contentDescription = "More filters",
-                )
+        if (rowFilters.isNotEmpty()) {
+            if (selectedTransitFilterOptions.isEmpty()) {
+                IconButton(onClick = onOpenFilters) {
+                    Icon(
+                        imageVector = Icons.Filled.FilterList,
+                        contentDescription = "More filters",
+                    )
+                }
+            } else {
+                IconButton(onClick = onResetFilters) {
+                    Icon(
+                        imageVector = Icons.Filled.RestartAlt,
+                        contentDescription = "Reset filters",
+                    )
+                }
             }
         }
         Row(

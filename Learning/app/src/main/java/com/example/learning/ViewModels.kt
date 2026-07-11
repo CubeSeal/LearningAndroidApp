@@ -140,6 +140,13 @@ class HomeViewModel(
         _pinnedFilters.update { it + selected }
     }
 
+    // Reset filtering back to "show everything": clear the active selection and any pinned extras so
+    // the row falls back to its base slice.
+    fun clearFilters() {
+        _selectedFiltersForBusStop.value = emptySet()
+        _pinnedFilters.value = emptySet()
+    }
+
     companion object {
         const val ROW_FILTER_CAP = 10
     }
