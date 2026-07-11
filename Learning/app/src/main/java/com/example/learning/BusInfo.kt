@@ -151,18 +151,29 @@ class TransitInfo(
     val filtersForBusStop = associatedTrips
         .filter { it.isNotEmpty() }
         .mapLatest { associatedTrips ->
-            val filterList = mutableSetOf<TransitFilterOptions>()
-            associatedTrips.map { stopTimesRecord ->
-                stopTimesRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { filterList.add(TransitFilterOptions.RouteShortName(it)) }
-                stopTimesRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { filterList.add(TransitFilterOptions.TripHeadsign(it)) }
-                filterList.add(TransitFilterOptions.TransportMode(transitModeOf(stopTimesRecord.routeType)))
-                focusedBusStop
-                    .value
-                    ?.stopRecords
-                    ?.takeIf { it.size > 2}
-                    ?.filter { it.stopId == stopTimesRecord.stopId }
-                    ?.forEach { if (it.stopName.isNotBlank()) filterList.add(TransitFilterOptions.StopStand(it.stopName)) }
+            // Each trip contributes the set of filter options that apply to it. A filter only helps if
+            // it distinguishes some trips from others — an option every trip carries (e.g. a stop served
+            // by a single route, or all-bus services) filters nothing, so we drop it.
+            val perTripFilters = associatedTrips.map { stopTimesRecord ->
+                buildSet {
+                    stopTimesRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.RouteShortName(it)) }
+                    stopTimesRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.TripHeadsign(it)) }
+                    add(TransitFilterOptions.TransportMode(transitModeOf(stopTimesRecord.routeType)))
+                    focusedBusStop
+                        .value
+                        ?.stopRecords
+                        ?.takeIf { it.size > 2}
+                        ?.filter { it.stopId == stopTimesRecord.stopId }
+                        ?.forEach { if (it.stopName.isNotBlank()) add(TransitFilterOptions.StopStand(it.stopName)) }
+                }
             }
+            val totalTrips = perTripFilters.size
+            val filterList = perTripFilters
+                .flatten()
+                .groupingBy { it }
+                .eachCount()
+                .filterValues { it < totalTrips }
+                .keys
             Log.d("TransitInfo", "Filter list = $filterList")
             filterList
         }.stateIn(
@@ -174,13 +185,11 @@ class TransitInfo(
     val associatedStopTimes = combine(
         associatedTrips.filter { it.isNotEmpty() },
         realtimeStopTimesRecord,
-        filtersForBusStop.filter { it.isNotEmpty() }
-    ) { associatedTrips, realTimeInfo, filters ->
-        Log.d("TransitInfo", "Got over here.")
-        Triple(associatedTrips, realTimeInfo, filters)
+    ) { associatedTrips, realTimeInfo ->
+        associatedTrips to realTimeInfo
     }
         .distinctUntilChanged()
-        .transformLatest { (trips, realtimeStopTimesRecords, filters) ->
+        .transformLatest { (trips, realtimeStopTimesRecords) ->
              val stopTimesRecordWithRealtime = trips.map { staticRecord ->
                 StopTimesRecordWithRealtime(
                     stopTimesRecord = staticRecord,
