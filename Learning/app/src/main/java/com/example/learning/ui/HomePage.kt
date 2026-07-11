@@ -371,6 +371,7 @@ fun LazyItemScope.BusCard(
                 trailingIconColor = onDynamicContainer,
                 overlineColor = onDynamicContainer
             ),
+            leadingContent = { ModeRoundel(transitModeOf(record.stopTimesRecord.routeType)) },
             overlineContent = {
                 Text(record.stopTimesRecord.tripHeadsign.orEmpty())
             },
@@ -389,6 +390,33 @@ fun LazyItemScope.BusCard(
                     color = onDynamicContainer
                 )
             }
+        )
+    }
+}
+
+/**
+ * A Transport for NSW mode "roundel": a solid, brand-coloured circle bearing the mode's letter
+ * (orange "T" for trains, blue "B" for buses), so the departure's mode reads at a glance.
+ */
+@Composable
+private fun ModeRoundel(mode: TransitMode) {
+    val (color, letter, description) = when (mode) {
+        TransitMode.TRAIN -> Triple(Color(0xFFF6891F), "T", "Train")   // Sydney Trains orange
+        TransitMode.BUS -> Triple(Color(0xFF00B5EF), "B", "Bus")       // TfNSW bus blue
+        TransitMode.OTHER -> Triple(Color(0xFF6D6E71), "", "Other transport")
+    }
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .background(color, CircleShape)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = letter,
+            color = Color.White,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
