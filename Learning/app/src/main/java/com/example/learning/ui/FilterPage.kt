@@ -38,6 +38,7 @@ import com.example.learning.BackHeader
 import com.example.learning.TransitFilterOptions
 import com.example.learning.Home
 import com.example.learning.HomeViewModel
+import com.example.learning.transitModeRank
 import com.example.learning.repos.TransitMode
 
 /**
@@ -93,7 +94,7 @@ fun FilterScreenContent(
     onBack: () -> Unit,
 ) {
     val modes = available.filterIsInstance<TransitFilterOptions.TransportMode>()
-        .sortedWith(byLabel { it.mode.label })
+        .sortedBy { transitModeRank(it.mode) }
     // Routes and stands split by mode so trains can be named "lines"/"platforms" while buses (and
     // anything else) keep "routes"/"stands". Empty groups render nothing, so a single-mode stop only
     // ever shows the terms that apply to it.

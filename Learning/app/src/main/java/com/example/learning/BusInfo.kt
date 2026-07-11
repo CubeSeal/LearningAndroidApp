@@ -98,16 +98,26 @@ fun transitModeRank(mode: TransitMode): Int = when (mode) {
 }
 
 /**
- * Secondary ordering key (after [filterTypeRank]) that keeps trains ahead of buses within a tier
- * that mixes them — i.e. the route/line and stand/platform tiers. The mode-selector chips and
- * destinations keep their own order (they don't split into train vs bus variants).
+ * Secondary ordering key (after [filterTypeRank]) that keeps trains ahead of buses within a tier —
+ * the mode-selector chips (train roundel before bus) as well as the route/line and stand/platform
+ * tiers. Destinations are mode-agnostic, so they share a value.
  */
 val filterModeRank: (TransitFilterOptions) -> Int = { option ->
     when (option) {
         is TransitFilterOptions.RouteShortName -> transitModeRank(option.mode)
         is TransitFilterOptions.StopStand -> transitModeRank(option.mode)
-        is TransitFilterOptions.TransportMode -> 0
+        is TransitFilterOptions.TransportMode -> transitModeRank(option.mode)
         is TransitFilterOptions.TripHeadsign -> 0
+    }
+}
+
+/** The user-facing text of a filter option, used as the final alphabetical sort key. */
+val filterLabel: (TransitFilterOptions) -> String = { option ->
+    when (option) {
+        is TransitFilterOptions.RouteShortName -> option.routeShortName
+        is TransitFilterOptions.StopStand -> option.stopStand
+        is TransitFilterOptions.TransportMode -> option.mode.label
+        is TransitFilterOptions.TripHeadsign -> option.tripHeadsign
     }
 }
 
