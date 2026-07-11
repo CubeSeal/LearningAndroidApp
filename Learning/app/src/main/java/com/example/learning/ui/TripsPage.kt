@@ -166,7 +166,9 @@ private fun StopRow(
             .fillMaxWidth()
             .background(container)
             .height(IntrinsicSize.Min)
-            .clickable { onStopClick(busStopRecord.stopId)}
+            // Focus the *globbed* stop (the station), not the raw platform id — getGlobbedStopById
+            // keys off the globbed id, so passing a platform's own stop_id would never match.
+            .clickable { onStopClick(busStopRecord.globbedStopId)}
     ) {
         // Rail spans the full row height including any padding
         Box(
