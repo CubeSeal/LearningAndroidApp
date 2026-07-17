@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 2,
-    "identityHash": "563bd1a2364ea665e053a3b211c6d5a5",
+    "identityHash": "22d2cec4141bdc31806ae137f47b28e0",
     "entities": [
       {
         "tableName": "agency",
@@ -415,6 +415,15 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_stops_parent_station` ON `${TABLE_NAME}` (`parent_station`)"
+          },
+          {
+            "name": "index_stops_stop_name",
+            "unique": false,
+            "columnNames": [
+              "stop_name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_stops_stop_name` ON `${TABLE_NAME}` (`stop_name`)"
           }
         ]
       },
@@ -613,7 +622,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '563bd1a2364ea665e053a3b211c6d5a5')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '22d2cec4141bdc31806ae137f47b28e0')"
     ]
   }
 }

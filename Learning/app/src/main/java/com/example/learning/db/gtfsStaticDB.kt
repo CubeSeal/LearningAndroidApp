@@ -95,7 +95,7 @@ data class TripEntity(
     @ColumnInfo(name = "wheelchair_accessible") val wheelchairAccessible: Int?,
 )
 
-@Entity(tableName = "stops", indices = [Index("parent_station")])
+@Entity(tableName = "stops", indices = [Index("parent_station"), Index("stop_name")])
 data class StopEntity(
     @PrimaryKey @ColumnInfo(name = "stop_id") val stopId: String,
     @ColumnInfo(name = "stop_code") val stopCode: String?,
