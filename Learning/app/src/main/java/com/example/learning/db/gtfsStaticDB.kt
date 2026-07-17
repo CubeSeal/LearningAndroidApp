@@ -12,7 +12,6 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.SkipQueryVerification
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -51,27 +50,6 @@ data class RouteEntity(
     @ColumnInfo(name = "route_url") val routeUrl: String?,
     @ColumnInfo(name = "route_color") val routeColor: String?,
     @ColumnInfo(name = "route_text_color") val routeTextColor: String?,
-)
-
-@Entity(tableName = "calendar")
-data class CalendarEntity(
-    @PrimaryKey @ColumnInfo(name = "service_id") val serviceId: String,
-    @ColumnInfo(name = "monday") val monday: Int,
-    @ColumnInfo(name = "tuesday") val tuesday: Int,
-    @ColumnInfo(name = "wednesday") val wednesday: Int,
-    @ColumnInfo(name = "thursday") val thursday: Int,
-    @ColumnInfo(name = "friday") val friday: Int,
-    @ColumnInfo(name = "saturday") val saturday: Int,
-    @ColumnInfo(name = "sunday") val sunday: Int,
-    @ColumnInfo(name = "start_date") val startDate: String,
-    @ColumnInfo(name = "end_date") val endDate: String,
-)
-
-@Entity(tableName = "calendar_dates", primaryKeys = ["service_id", "date"])
-data class CalendarDateEntity(
-    @ColumnInfo(name = "service_id") val serviceId: String,
-    @ColumnInfo(name = "date") val date: String,
-    @ColumnInfo(name = "exception_type") val exceptionType: Int,
 )
 
 @Entity(
@@ -160,7 +138,8 @@ data class GlobbedStopEntity(
     @ColumnInfo(name = "stop_id") val stopId: String,
 )
 
-data class ServiceDateRow(
+@Entity(tableName = "service_dates", primaryKeys = ["service_id", "date"])
+data class ServiceDateEntity(
     @ColumnInfo(name = "service_id") val serviceId: String,
     @ColumnInfo(name = "date") val date: String,
 )
@@ -298,20 +277,10 @@ interface GtfsDao {
     @Query("SELECT * FROM stop_times WHERE stop_id = :stopId ORDER BY stop_sequence ASC")
     suspend fun getStopTimesForStop(stopId: String): List<StopTimeEntity>
 
-    // ── Calendar ───────────────────────────────────────────
+    // ── Service dates ──────────────────────────────────────
 
-    @Query("SELECT * FROM calendar WHERE service_id = :serviceId")
-    suspend fun getCalendar(serviceId: String): CalendarEntity?
-
-    @Query("SELECT * FROM calendar")
-    suspend fun getAllCalendar(): List<CalendarEntity>
-
-    @Query("SELECT * FROM calendar_dates WHERE service_id = :serviceId")
-    suspend fun getCalendarDates(serviceId: String): List<CalendarDateEntity>
-
-    @SkipQueryVerification
     @Query("SELECT * FROM service_dates")
-    suspend fun getAllServiceDates(): List<ServiceDateRow>
+    suspend fun getAllServiceDates(): List<ServiceDateEntity>
 
     // ── Metadata ───────────────────────────────────────────
 
@@ -513,11 +482,11 @@ interface GtfsDao {
 
 @Database(
     entities = [
-        AgencyEntity::class, RouteEntity::class, CalendarEntity::class,
-        CalendarDateEntity::class, TripEntity::class, StopEntity::class,
-        StopTimeEntity::class, GlobbedStopEntity::class
+        AgencyEntity::class, RouteEntity::class, TripEntity::class,
+        StopEntity::class, StopTimeEntity::class, GlobbedStopEntity::class,
+        ServiceDateEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 internal abstract class GtfsDatabase : RoomDatabase() {

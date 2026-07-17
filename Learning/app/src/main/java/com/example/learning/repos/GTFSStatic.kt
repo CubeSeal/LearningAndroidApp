@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
-import com.example.learning.db.ServiceDateRow
+import com.example.learning.db.ServiceDateEntity
 import com.example.learning.db.StopTimeWithDetails
 import com.example.learning.db.StopWithGlobbedInfo
 import kotlinx.coroutines.Dispatchers

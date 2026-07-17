@@ -44,7 +44,8 @@ class BuildDatabaseTest {
             gtfsFeed(routeId = "R1", serviceId = "S1", routeType = 2) to "T:",
         ) { db ->
             assertEquals(setOf("R1", "T:R1"), db.ids("SELECT route_id FROM routes"))
-            assertEquals(setOf("S1", "T:S1"), db.ids("SELECT service_id FROM calendar"))
+            // calendar is dropped from the shipped DB; trips still carries the (prefixed) service_id.
+            assertEquals(setOf("S1", "T:S1"), db.ids("SELECT DISTINCT service_id FROM trips"))
         }
     }
 

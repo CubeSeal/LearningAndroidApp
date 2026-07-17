@@ -252,6 +252,10 @@ internal fun buildDatabaseInto(
 
     println("  Materialising service dates...")
     createServiceDates(conn, horizon)
+    // calendar/calendar_dates are only inputs for materialising service_dates — drop them so the
+    // shipped DB contains exactly the tables the app (Room) declares.
+    conn.exec("DROP TABLE calendar")
+    conn.exec("DROP TABLE calendar_dates")
     conn.commit()
 
     println("  Creating indices...")

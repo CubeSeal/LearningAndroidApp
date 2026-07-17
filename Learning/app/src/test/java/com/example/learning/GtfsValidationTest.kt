@@ -22,8 +22,7 @@ class GtfsValidationTest {
 
     private fun populateRequiredTables(db: GtfsDatabase) {
         val sql = db.openHelper.writableDatabase
-        // service_dates is not a Room entity; the converter creates it. Create it manually here.
-        sql.execSQL("CREATE TABLE IF NOT EXISTS service_dates (service_id TEXT NOT NULL, date TEXT NOT NULL, PRIMARY KEY (service_id, date))")
+        // service_dates is a Room entity now, so Room creates the table; just seed the rows.
         // Insert one row into each table validateGtfsDb checks: stops, routes, stop_times, service_dates, globbed_stops.
         sql.execSQL("INSERT INTO agency (agency_id, agency_name, agency_url, agency_timezone) VALUES ('A1', 'Agency', 'http://a.com', 'Australia/Sydney')")
         sql.execSQL("INSERT INTO routes (route_id, agency_id, route_short_name, route_long_name, route_desc, route_type) VALUES ('R1', 'A1', '1', 'Route', '', 3)")
@@ -45,7 +44,9 @@ class GtfsValidationTest {
     @Test
     fun `returns Invalid when service_dates table is missing`() {
         val db = buildDb()
-        // Do not create service_dates — Room entities are created but service_dates is not
+        // Room creates service_dates (it's an entity now); drop it to exercise the existence check
+        // that guards against a DB from an old converter build predating service_dates.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE service_dates")
         val result = validateGtfsDb(db)
         assertTrue(result is GtfsValidation.Invalid)
         assertEquals(
@@ -58,10 +59,7 @@ class GtfsValidationTest {
     @Test
     fun `returns Invalid when a required table is empty`() {
         val db = buildDb()
-        // Create service_dates but leave all tables empty
-        db.openHelper.writableDatabase.execSQL(
-            "CREATE TABLE IF NOT EXISTS service_dates (service_id TEXT NOT NULL, date TEXT NOT NULL, PRIMARY KEY (service_id, date))"
-        )
+        // Room creates all entity tables (incl. service_dates) but leaves them empty.
         val result = validateGtfsDb(db)
         assertTrue("must be Invalid when tables are empty", result is GtfsValidation.Invalid)
         db.close()

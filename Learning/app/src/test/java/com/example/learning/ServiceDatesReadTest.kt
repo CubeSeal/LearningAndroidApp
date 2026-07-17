@@ -33,9 +33,7 @@ class ServiceDatesReadTest {
     fun `service_dates is readable for a service that has no calendar row`() = runTest {
         val db = buildDb()
         val sql = db.openHelper.writableDatabase
-        // service_dates is not a Room entity (the converter creates it); create it here.
-        sql.execSQL("CREATE TABLE IF NOT EXISTS service_dates (service_id TEXT NOT NULL, date TEXT NOT NULL, PRIMARY KEY (service_id, date))")
-
+        // service_dates is now a Room entity, so Room creates the table; just seed it.
         // A calendar_dates-only service: present in service_dates, absent from calendar.
         sql.execSQL("INSERT INTO service_dates (service_id, date) VALUES ('SPECIAL', '20260627')")
         sql.execSQL("INSERT INTO service_dates (service_id, date) VALUES ('SPECIAL', '20260628')")
