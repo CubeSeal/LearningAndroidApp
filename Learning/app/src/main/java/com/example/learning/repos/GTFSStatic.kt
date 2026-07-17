@@ -180,15 +180,6 @@ interface StaticGtfsSource {
     )
 }
 
-// Departure-window sizing for getStopTimesByStop. Start with a small near window so a huge station
-// (Central) stays fast, then widen until there are enough upcoming departures to fill the screen —
-// growing all the way to the horizon if the stop is sparse/empty (safe: only sparse stops ever get
-// here, so the extra dates are cheap).
-private const val INITIAL_VISIBLE_DAYS = 1
-private const val MORE_DAYS_STEP = 2
-private const val MAX_VISIBLE_DAYS = 28
-private const val TARGET_DEPARTURES = 10
-
 class GtfsStaticRepository(
     private val context: Context,
     private val fileRepository: FileRepository,
@@ -275,38 +266,20 @@ class GtfsStaticRepository(
         globbedStopRecord: GlobbedStopRecord,
     ): List<StopTimesRecord> = withContext(Dispatchers.Default) {
         val dates = serviceDates()
-        // Fetch the raw stop-times once — one row per service, NOT per date — so even a huge station
-        // is bounded (this unexpanded fetch is what the OOM-causing ×28 date expansion isn't). Query
-        // the glob's stops concurrently: a globbed stop can span many physical stops (all a station's
-        // platforms, or identical-name duplicates), and Room runs suspend reads on its own executor.
+        // Fetch the raw stop-times once — one row per service, NOT per date. Query the glob's stops
+        // concurrently: a globbed stop can span many physical stops (all a station's platforms, or
+        // identical-name duplicates), and Room runs suspend reads on its own executor.
         val rows = coroutineScope {
             globbedStopRecord.stopRecords
                 .map { async { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) } }
                 .awaitAll()
                 .flatten()
         }
-        val today = LocalDate.now()
-        val now = LocalDateTime.now()
-        // `yesterday` catches after-midnight services (GTFS times ≥ 24:00) spilling into today.
-        val windowStart = today.minusDays(1)
-        fun expand(days: Int): List<StopTimesRecord> {
-            val windowEnd = today.plusDays(days.toLong())
-            return rows.flatMap { row ->
-                dates[row.serviceId].orEmpty()
-                    .filter { !it.isBefore(windowStart) && !it.isAfter(windowEnd) }
-                    .map { date -> row.toStopTimesRecord(date) }
-            }
+        // Expand every service date the converter materialised for each service — show everything.
+        // The list is bounded by the materialised horizon, so this stays finite.
+        rows.flatMap { row ->
+            dates[row.serviceId].orEmpty().map { date -> row.toStopTimesRecord(date) }
         }
-        // Expand the date window in memory until there are enough upcoming departures, or the horizon
-        // is exhausted. A busy stop satisfies the target on the first (1-day) pass and returns
-        // immediately; only sparse/empty stops widen — and they have little data, so it stays cheap.
-        var days = INITIAL_VISIBLE_DAYS
-        var trips = expand(days)
-        while (trips.count { !it.departureTime.isBefore(now) } < TARGET_DEPARTURES && days < MAX_VISIBLE_DAYS) {
-            days = (days + MORE_DAYS_STEP).coerceAtMost(MAX_VISIBLE_DAYS)
-            trips = expand(days)
-        }
-        trips
     }
 
     override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord> {

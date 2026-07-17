@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.forEach
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
@@ -188,7 +187,7 @@ class TransitInfo(
 
     // flatMapLatest cancels the previous stop's in-flight query on switch; emitting empty first
     // clears the old stop's departures immediately (rather than leaving them stale while the new
-    // query — which self-widens for sparse stops — runs).
+    // query runs).
     val associatedTrips = focusedBusStop
         .filterNotNull()
         .flatMapLatest { stop ->
@@ -197,7 +196,6 @@ class TransitInfo(
                 emit(gtfsStaticRepository.getStopTimesByStop(stop))
             }
         }
-        .onEach { Log.d("TransitInfo", "Associated Trips = ${it.size} records") }
         .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
