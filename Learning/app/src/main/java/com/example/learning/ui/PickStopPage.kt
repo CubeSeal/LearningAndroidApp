@@ -176,22 +176,22 @@ fun BoxScope.SearchBar(
             },
             expanded = expanded,
             onExpandedChange = { expanded = it },
-        ) {
-            // Show search results in a lazy column for better performance
-            LazyColumn {
-                items(
-                    items = filteredStops,
-                    key = { it.globbedStopId }
-                ) { busStop ->
-                    ListItem(
-                        headlineContent = { Text(busStop.globbedStopName) },
-                        modifier = Modifier
-                            .clickable {
-                                searchCallback(busStop)
-                                expanded = false
-                            }
-                    )
-                }
+        ) { }
+
+        // Show search results in a lazy column for better performance
+        LazyColumn {
+            items(
+                items = filteredStops,
+                key = { it.globbedStopId }
+            ) { busStop ->
+                ListItem(
+                    headlineContent = { Text(busStop.globbedStopName) },
+                    modifier = Modifier
+                        .clickable {
+                            searchCallback(busStop)
+                            expanded = false
+                        }
+                )
             }
         }
 }
