@@ -10,17 +10,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Save
@@ -44,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -68,6 +62,7 @@ fun PickStopScreen(
     val searchExpanded by viewModel.searchExpanded.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val filteredStops by viewModel.filteredBusStops.collectAsStateWithLifecycle()
+    val closestStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->
@@ -99,6 +94,7 @@ fun PickStopScreen(
                 query = query,
                 onQueryChange = { viewModel.onQueryChange(it) },
                 filteredStops = filteredStops,
+                closestStops = closestStops,
                 searchExpanded = searchExpanded,
                 onSearchExpandedChange = { viewModel.onSearchExpandedChange(it) },
                 onStopSelected = { viewModel.onStopSelected(it) },
@@ -118,6 +114,7 @@ fun SearchStopsTabPage(
     query: String,
     onQueryChange: (String) -> Unit,
     filteredStops: List<GlobbedStopRecord>,
+    closestStops: List<GlobbedStopRecord>,
     searchExpanded: Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
     onStopSelected: (GlobbedStopRecord) -> Unit,
@@ -130,6 +127,7 @@ fun SearchStopsTabPage(
         SearchBar(
             query = query,
             filteredStops = filteredStops,
+            closestStops = closestStops,
             onQueryChange = onQueryChange,
             searchExpanded = searchExpanded,
             onSearchExpandedChange = onSearchExpandedChange,
@@ -143,6 +141,7 @@ fun SearchStopsTabPage(
 fun BoxScope.SearchBar(
     query: String,
     filteredStops: List<GlobbedStopRecord>,
+    closestStops: List<GlobbedStopRecord>,
     onQueryChange: (String) -> Unit,
     searchExpanded: Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
@@ -175,11 +174,28 @@ fun BoxScope.SearchBar(
         },
         expanded = searchExpanded,
         onExpandedChange = { onSearchExpandedChange(it) },
-    ) { }
+    ) {
+        LazyColumn {
+            items(
+                items = filteredStops,
+                key = { it.globbedStopId }
+            ) { busStop ->
+                ListItem(
+                    headlineContent = { Text(busStop.globbedStopName) },
+                    modifier = Modifier
+                        .clickable {
+                            onStopSelected(busStop)
+                            onSearchExpandedChange(false)
+                        }
+                )
+            }
+        }
+    }
 
+    // Show closest stops here
     LazyColumn {
         items(
-            items = filteredStops,
+            items = closestStops,
             key = { it.globbedStopId }
         ) { busStop ->
             ListItem(
