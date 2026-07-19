@@ -134,6 +134,12 @@ data class StopTimesRecordWithRealtime(
     val applicableFilters: Set<TransitFilterOptions>
 )
 
+// Departure time adjusted by realtime delay. Null delay means "no realtime info yet" everywhere else,
+// but for ordering/time-filtering we settle it to zero.
+val StopTimesRecordWithRealtime.effectiveDepartureTime: LocalDateTime
+    get() = stopTimesRecord.departureTime +
+        (realtimeStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class TransitInfo(
     val gtfsStaticRepository: StaticGtfsSource,
@@ -260,11 +266,30 @@ class TransitInfo(
                     )
                 )
             }
-            emit(stopTimesRecordWithRealtime)
+            // Sort once here, at the domain layer: order depends only on the record + realtime delay
+            // (both settled by this point), not on the UI's currentMinute or selected filters. Sorting
+            // upstream keeps filter toggles from re-sorting the (potentially huge) list on every tap.
+            emit(stopTimesRecordWithRealtime.sortedBy { it.effectiveDepartureTime })
         }.stateIn(
             scope,
             SharingStarted.Eagerly,
             emptyList()
+        )
+
+    // Inverted index: filter option -> its matching departures, in the same time-sorted order as
+    // associatedStopTimes. Built once per stop (O(4n)) so a selected filter can pull just its
+    // departures instead of scanning the full list. Consumed by HomeViewModel's filtering.
+    val filterIndex: StateFlow<Map<TransitFilterOptions, List<StopTimesRecordWithRealtime>>> =
+        associatedStopTimes.map { sorted ->
+            buildMap<TransitFilterOptions, MutableList<StopTimesRecordWithRealtime>> {
+                for (dep in sorted)
+                    for (f in dep.applicableFilters)
+                        getOrPut(f) { mutableListOf() }.add(dep)
+            }
+        }.stateIn(
+            scope,
+            SharingStarted.Eagerly,
+            emptyMap()
         )
 
     val savedStops: StateFlow<List<GlobbedStopRecord>> = settingsRepo.savedStops

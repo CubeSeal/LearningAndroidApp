@@ -81,25 +81,26 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val associatedStopTimes = combine(
-        transitInfo.associatedStopTimes,
+        transitInfo.associatedStopTimes,   // already time-sorted at the domain layer
+        transitInfo.filterIndex,
         transitInfo.currentMinute,
         selectedFiltersForBusStop
-    ) { stopTimes, currentMinute, selectedFilters ->
+    ) { sorted, filterIndex, currentMinute, selectedFilters ->
         val pastBuffer = Duration.ofMinutes(2)
-        val realTimeSorted = stopTimes.sortedBy {
-            // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
-            // Only make the choice to treat it as zero when re-calculating departureTimes.
-            it.stopTimesRecord.departureTime + (it.realtimeStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
-        }
+        // No filter selected: use the pre-sorted full list as-is (no sort). With filters selected:
+        // pull only the matching departures from the inverted index (a departure can match more than
+        // one selected filter, so dedup), then sort just that smaller subset. Either way the full
+        // list is never re-sorted on a filter toggle.
+        val candidates =
+            if (selectedFilters.isEmpty()) sorted
+            else selectedFilters.flatMap { filterIndex[it].orEmpty() }
+                .distinct()
+                .sortedBy { it.effectiveDepartureTime }
 
-        realTimeSorted
+        candidates
             .mapNotNull {
-                val newTime = it.stopTimesRecord.departureTime +
-                    (it.realtimeStopTimesRecord?.stopTimeDelay ?: Duration.ZERO)
-                val passesTimeFilter = newTime > currentMinute - pastBuffer
-                val passesFilterSet = selectedFilters.isEmpty()
-                        || it.applicableFilters.any { filter -> filter in selectedFilters }
-                if (passesTimeFilter && passesFilterSet) (newTime >= currentMinute) to it else null
+                val newTime = it.effectiveDepartureTime
+                if (newTime > currentMinute - pastBuffer) (newTime >= currentMinute) to it else null
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
 
