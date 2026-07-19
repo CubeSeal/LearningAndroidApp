@@ -2,6 +2,7 @@ package com.example.learning
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.learning.db.GtfsDatabase
 import com.example.learning.repos.GtfsValidation
 import com.example.learning.repos.validateGtfsDb
@@ -9,11 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@RunWith(AndroidJUnit4::class)
 class GtfsValidationTest {
 
     private fun buildDb(): GtfsDatabase = Room.inMemoryDatabaseBuilder(
@@ -22,8 +20,6 @@ class GtfsValidationTest {
 
     private fun populateRequiredTables(db: GtfsDatabase) {
         val sql = db.openHelper.writableDatabase
-        // service_dates is a Room entity now, so Room creates the table; just seed the rows.
-        // Insert one row into each table validateGtfsDb checks: stops, routes, stop_times, service_dates, globbed_stops.
         sql.execSQL("INSERT INTO agency (agency_id, agency_name, agency_url, agency_timezone) VALUES ('A1', 'Agency', 'http://a.com', 'Australia/Sydney')")
         sql.execSQL("INSERT INTO routes (route_id, agency_id, route_short_name, route_long_name, route_desc, route_type) VALUES ('R1', 'A1', '1', 'Route', '', 3)")
         sql.execSQL("INSERT INTO stops (stop_id, stop_name, stop_lat, stop_lon) VALUES ('S1', 'Stop 1', -33.87, 151.21)")
@@ -34,7 +30,7 @@ class GtfsValidationTest {
     }
 
     @Test
-    fun `returns Ok when all required tables are present and non-empty`() {
+    fun returnsOk_whenAllRequiredTablesArePresentAndNonEmpty() {
         val db = buildDb()
         populateRequiredTables(db)
         assertEquals(GtfsValidation.Ok, validateGtfsDb(db))
@@ -42,10 +38,8 @@ class GtfsValidationTest {
     }
 
     @Test
-    fun `returns Invalid when service_dates table is missing`() {
+    fun returnsInvalid_whenServiceDatesTableIsMissing() {
         val db = buildDb()
-        // Room creates service_dates (it's an entity now); drop it to exercise the existence check
-        // that guards against a DB from an old converter build predating service_dates.
         db.openHelper.writableDatabase.execSQL("DROP TABLE service_dates")
         val result = validateGtfsDb(db)
         assertTrue(result is GtfsValidation.Invalid)
@@ -57,9 +51,8 @@ class GtfsValidationTest {
     }
 
     @Test
-    fun `returns Invalid when a required table is empty`() {
+    fun returnsInvalid_whenARequiredTableIsEmpty() {
         val db = buildDb()
-        // Room creates all entity tables (incl. service_dates) but leaves them empty.
         val result = validateGtfsDb(db)
         assertTrue("must be Invalid when tables are empty", result is GtfsValidation.Invalid)
         db.close()

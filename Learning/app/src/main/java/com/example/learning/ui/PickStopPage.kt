@@ -37,10 +37,8 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.isTraversalGroup
@@ -54,14 +52,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
+import com.example.learning.PickStopNavEvent
 import com.example.learning.PickStopViewModel
-import com.example.learning.repos.StopRecord
+import com.example.learning.SearchTab
 import com.example.learning.repos.GlobbedStopRecord
-
-enum class SearchTab(val label: String) {
-    Search("Search"),
-    Saved("Saved")
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,21 +63,24 @@ fun PickStopScreen(
     navController: NavController,
     viewModel: PickStopViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    fun searchCallback(globbedStopRecord: GlobbedStopRecord) {
-        viewModel.updateFocusedBusStop(globbedStopRecord)
-        navController.popBackStack()
-    }
     val savedStops by viewModel.savedStops.collectAsStateWithLifecycle()
-    var selectedTab by rememberSaveable { mutableStateOf(SearchTab.Search) }
+    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+    val searchExpanded by viewModel.searchExpanded.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val filteredStops by viewModel.filteredBusStops.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.navEvents.collect { event ->
+            if (event is PickStopNavEvent.PopBack) navController.popBackStack()
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize().background(MaterialTheme.colorScheme.background)
     )
     {
-        BackHeader({navController.popBackStack()})
+        BackHeader({ navController.popBackStack() })
 
         PrimaryTabRow(
             selectedTabIndex = SearchTab.entries.indexOf(selectedTab)
@@ -91,7 +88,7 @@ fun PickStopScreen(
             SearchTab.entries.forEach { tab ->
                 Tab(
                     selected = selectedTab == tab,
-                    onClick = { selectedTab = tab },
+                    onClick = { viewModel.onTabSelected(tab) },
                     text = { Text(tab.label) }
                 )
             }
@@ -102,12 +99,14 @@ fun PickStopScreen(
                 query = query,
                 onQueryChange = { viewModel.onQueryChange(it) },
                 filteredStops = filteredStops,
-                searchCallback = ::searchCallback
+                searchExpanded = searchExpanded,
+                onSearchExpandedChange = { viewModel.onSearchExpandedChange(it) },
+                onStopSelected = { viewModel.onStopSelected(it) },
             )
 
             SearchTab.Saved -> SavedStopsTabPage(
                savedStops = savedStops,
-               onTap = ::searchCallback,
+               onTap = { viewModel.onStopSelected(it) },
                onRemove = viewModel::removeSavedStop
             )
         }
@@ -119,9 +118,10 @@ fun SearchStopsTabPage(
     query: String,
     onQueryChange: (String) -> Unit,
     filteredStops: List<GlobbedStopRecord>,
-    searchCallback: (GlobbedStopRecord) -> Unit
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    onStopSelected: (GlobbedStopRecord) -> Unit,
 ) {
-
     Box(
         Modifier
             .fillMaxSize()
@@ -131,7 +131,9 @@ fun SearchStopsTabPage(
             query = query,
             filteredStops = filteredStops,
             onQueryChange = onQueryChange,
-            searchCallback = searchCallback
+            searchExpanded = searchExpanded,
+            onSearchExpandedChange = onSearchExpandedChange,
+            onStopSelected = onStopSelected,
         )
     }
 }
@@ -142,58 +144,54 @@ fun BoxScope.SearchBar(
     query: String,
     filteredStops: List<GlobbedStopRecord>,
     onQueryChange: (String) -> Unit,
-    searchCallback: (GlobbedStopRecord) -> Unit
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    onStopSelected: (GlobbedStopRecord) -> Unit,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    SearchBar(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .background(color = MaterialTheme.colorScheme.background)
+            .padding(horizontal = 16.dp, vertical = 0.dp)
+            .semantics { traversalIndex = 0f },
+        windowInsets = WindowInsets(0.dp),
+        colors = SearchBarDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.background
+        ),
+        inputField = {
+            SearchBarDefaults.InputField(
+                query = query,
+                onQueryChange = { onQueryChange(it) },
+                onSearch = {
+                    filteredStops.firstOrNull()?.let { onStopSelected(it) }
+                    onSearchExpandedChange(false)
+                },
+                expanded = searchExpanded,
+                onExpandedChange = { onSearchExpandedChange(it) },
+                placeholder = { Text("Search") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                trailingIcon = null
+            )
+        },
+        expanded = searchExpanded,
+        onExpandedChange = { onSearchExpandedChange(it) },
+    ) { }
 
-        SearchBar(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .background(color = MaterialTheme.colorScheme.background)
-                .padding(horizontal = 16.dp, vertical = 0.dp)
-                .semantics { traversalIndex = 0f },
-            windowInsets = WindowInsets(0.dp),
-            colors = SearchBarDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.background
-            ),
-            inputField = {
-                // Customizable input field implementation
-                SearchBarDefaults.InputField(
-                    query = query,
-                    onQueryChange = { onQueryChange(it) },
-                    onSearch = {
-                        filteredStops.firstOrNull()?.let {
-                            searchCallback(it)
-                        }
-                        expanded = false
-                    },
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it },
-                    placeholder = { Text("Search") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                    trailingIcon = null
-                )
-            },
-            expanded = expanded,
-            onExpandedChange = { expanded = it },
-        ) { }
-
-        // Show search results in a lazy column for better performance
-        LazyColumn {
-            items(
-                items = filteredStops,
-                key = { it.globbedStopId }
-            ) { busStop ->
-                ListItem(
-                    headlineContent = { Text(busStop.globbedStopName) },
-                    modifier = Modifier
-                        .clickable {
-                            searchCallback(busStop)
-                            expanded = false
-                        }
-                )
-            }
+    LazyColumn {
+        items(
+            items = filteredStops,
+            key = { it.globbedStopId }
+        ) { busStop ->
+            ListItem(
+                headlineContent = { Text(busStop.globbedStopName) },
+                modifier = Modifier
+                    .clickable {
+                        onStopSelected(busStop)
+                        onSearchExpandedChange(false)
+                    }
+            )
         }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -44,9 +44,10 @@ import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
 import com.example.learning.LoadingScreen
+import com.example.learning.ScrollTarget
+import com.example.learning.TripsNavEvent
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
-import com.example.learning.repos.StopRecord
 import com.example.learning.repos.StopTimesRecord
 
 @Composable
@@ -55,38 +56,36 @@ fun TripsScreen(
     viewModel: TripsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val stopTimesByTrip by viewModel.stopTimesRecord.collectAsStateWithLifecycle()
-    val stopId = viewModel.stopId
+    val scrollTarget by viewModel.scrollTarget.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.navEvents.collect { event ->
+            if (event is TripsNavEvent.PopBack) navController.popBackStack()
+        }
+    }
 
     Column {
-        BackHeader({navController.popBackStack()})
+        BackHeader({ viewModel.onBackClicked() })
 
         TripsList(
             stopTimesByTrip = stopTimesByTrip,
-            stopId = stopId,
-            onStopClick = {
-                viewModel.updateFocusedBusStopByStopId(it)
-                navController.popBackStack()
-            }
+            stopId = viewModel.stopId,
+            scrollTarget = scrollTarget,
+            onStopClick = { viewModel.onStopClicked(it) },
         )
     }
-
 }
 
 @Composable
 private fun TripsList(
     stopTimesByTrip: List<StopTimesRecord>,
     stopId: String,
-    onStopClick: (String) -> Unit
+    scrollTarget: ScrollTarget?,
+    onStopClick: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(stopId, stopTimesByTrip.size) {
-        val targetIndex = stopTimesByTrip.indexOfFirst { it.stopId == stopId }
-        if (targetIndex >= 0 && stopTimesByTrip.isNotEmpty()) {
-            listState.scrollToItem(
-                index = targetIndex + 1,
-                scrollOffset = -24
-            )
-        }
+    LaunchedEffect(scrollTarget) {
+        scrollTarget?.let { listState.scrollToItem(it.index, it.offset) }
     }
 
     if (stopTimesByTrip.isEmpty()) {

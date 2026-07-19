@@ -67,8 +67,6 @@ android {
             // Stubbed android.* methods (e.g. android.util.Log) return defaults instead of
             // throwing, so domain code that logs can run as a plain JVM test without Robolectric.
             isReturnDefaultValues = true
-            // Robolectric-backed Compose UI tests need access to resources + the test manifest.
-            isIncludeAndroidResources = true
         }
     }
 }
@@ -115,11 +113,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
-    testImplementation(platform(libs.androidx.compose.bom))
-    testImplementation(libs.androidx.compose.ui.test.junit4)
-    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)

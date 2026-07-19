@@ -56,10 +56,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -77,6 +76,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.TransitFilterOptions
 import com.example.learning.StopTimesRecordWithRealtime
 import com.example.learning.Filter
+import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
@@ -85,7 +85,6 @@ import com.example.learning.printTime
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
 import com.example.learning.repos.transitModeOf
-import kotlinx.coroutines.launch
 import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,10 +100,23 @@ fun HOMEScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val headerAlpha by viewModel.headerAlpha.collectAsStateWithLifecycle()
 
-    LaunchedEffect(associatedBusStopTimes) {
-        listState.scrollToItem(0)
+    LaunchedEffect(Unit) { viewModel.scrollToTop.collect { listState.scrollToItem(0) } }
+    LaunchedEffect(Unit) { viewModel.snackbarMessages.collect { snackbarHostState.showSnackbar(it) } }
+    LaunchedEffect(Unit) {
+        viewModel.navEvents.collect { event ->
+            when (event) {
+                HomeNavEvent.OpenPickStop -> navController.navigate(PickStop)
+                HomeNavEvent.OpenFilters -> navController.navigate(Filter)
+                is HomeNavEvent.OpenTrip -> navController.navigate(Trips(event.tripId, event.stopId, event.date))
+                HomeNavEvent.PopBack -> navController.popBackStack()
+            }
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (i, o) -> viewModel.onListScrolled(i, o) }
     }
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -113,14 +125,9 @@ fun HOMEScreen(
         floatingActionButton = {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 focusedBusStop?.let { stop ->
-                    SaveStop {
-                        viewModel.addSavedStop(stop)
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Saved ${stop.globbedStopName}")
-                        }
-                    }
+                    SaveStop { viewModel.addSavedStop(stop) }
                 }
-                EditStop { navController.navigate(PickStop) }
+                EditStop { viewModel.onEditStopClicked() }
             }
         }
     )
@@ -131,14 +138,15 @@ fun HOMEScreen(
         ) {
             MasterLazyColumn(
                 listState,
-                navController,
+                headerAlpha,
                 focusedBusStop,
                 associatedBusStopTimes,
                 rowFilters,
                 selectedFiltersForBusStop,
                 { viewModel.toggleFilterForBusStops(it) },
-                { navController.navigate(Filter) },
+                { viewModel.onOpenFilters() },
                 { viewModel.clearFilters() },
+                { viewModel.onDepartureClicked(it) },
             )
         }
     }
@@ -166,7 +174,7 @@ fun EditStop(onClick: () -> Unit) {
 @Composable
 fun MasterLazyColumn(
     listState: LazyListState,
-    navController: NavController,
+    headerAlpha: Float,
     focusedBusStop: GlobbedStopRecord?,
     associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
     rowFilters: List<TransitFilterOptions>,
@@ -174,22 +182,8 @@ fun MasterLazyColumn(
     onToggleMode: (TransitFilterOptions) -> Unit,
     onOpenFilters: () -> Unit,
     onResetFilters: () -> Unit,
+    onDepartureClicked: (StopTimesRecordWithRealtime) -> Unit,
 ) {
-    val headerAlpha by remember {
-        derivedStateOf {
-            // If we've scrolled past the first item, it's completely invisible
-            if (listState.firstVisibleItemIndex > 1) {
-                0f
-            } else {
-                // How fast it fades out (in pixels). Tweak this number to your liking!
-                val fadeDistance = 400f
-                val offset = listState.firstVisibleItemScrollOffset
-                // Calculate opacity: 1f (fully visible) down to 0f (invisible)
-                (1f - (offset / fadeDistance)).coerceIn(0f, 1f)
-            }
-        }
-    }
-
     LazyColumn(
         state = listState,
         contentPadding = WindowInsets.navigationBars.asPaddingValues(),
@@ -230,7 +224,7 @@ fun MasterLazyColumn(
                 items = associatedBusStopTimes,
                 key = { item -> item.second.stopTimesRecord.let { Triple(it.stopId,it.tripId, it.departureTime) } }
             ) { item ->
-                BusCard(navController, item)
+                BusCard(onClick = { onDepartureClicked(item.second) }, item = item)
             }
         }
 
@@ -338,7 +332,7 @@ fun ModeFilterChips(
 
 @Composable
 fun LazyItemScope.BusCard(
-    navController: NavController,
+    onClick: () -> Unit,
     item: Pair<Boolean, StopTimesRecordWithRealtime>
 ) {
     val (isFirst, record) = item
@@ -381,15 +375,7 @@ fun LazyItemScope.BusCard(
     ) {
         Log.d("Home-Page", "Item is $item")
         ListItem(
-            modifier = Modifier.clickable {
-                navController.navigate(
-                    Trips(
-                        item.second.stopTimesRecord.tripId,
-                        item.second.stopTimesRecord.stopId,
-                        item.second.stopTimesRecord.departureTime.toLocalDate().toString(),
-                    )
-                )
-            },
+            modifier = Modifier.clickable { onClick() },
             colors = ListItemDefaults.colors(
                 containerColor = dynamicContainer,
                 headlineColor = onDynamicContainer,

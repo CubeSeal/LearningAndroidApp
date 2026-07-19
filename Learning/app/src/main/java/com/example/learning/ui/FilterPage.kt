@@ -22,10 +22,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -35,9 +34,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
-import com.example.learning.TransitFilterOptions
 import com.example.learning.Home
+import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
+import com.example.learning.TransitFilterOptions
 import com.example.learning.transitModeRank
 import com.example.learning.repos.TransitMode
 
@@ -53,24 +53,24 @@ fun FilterScreen(navController: NavController) {
     val viewModel: HomeViewModel = viewModel(homeEntry, factory = AppViewModelProvider.Factory)
 
     val available by viewModel.availableFiltersForBusStop.collectAsStateWithLifecycle()
-    var staged by remember { mutableStateOf(viewModel.selectedFiltersForBusStop.value) }
-    // Which groups have had their "…" chip flicked to reveal the overflow beyond the top-10 cap.
-    var expandedGroups by remember { mutableStateOf(emptySet<String>()) }
+    val staged by viewModel.stagedFilters.collectAsStateWithLifecycle()
+    val expandedGroups by viewModel.expandedFilterGroups.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) { viewModel.beginStaging() }
+    LaunchedEffect(Unit) {
+        viewModel.navEvents.collect { event ->
+            if (event is HomeNavEvent.PopBack) navController.popBackStack()
+        }
+    }
 
     FilterScreenContent(
         available = available,
         staged = staged,
         expandedGroups = expandedGroups,
-        onToggleStaged = { staged = if (it in staged) staged - it else staged + it },
-        onExpandGroup = { title -> expandedGroups = expandedGroups + title },
-        onReset = {
-            staged = emptySet()
-            expandedGroups = emptySet()
-        },
-        onApply = {
-            viewModel.applyFilters(staged)
-            navController.popBackStack()
-        },
+        onToggleStaged = { viewModel.toggleStaged(it) },
+        onExpandGroup = { viewModel.expandFilterGroup(it) },
+        onReset = { viewModel.resetStaging() },
+        onApply = { viewModel.applyStaging() },
         onBack = { navController.popBackStack() },
     )
 }
