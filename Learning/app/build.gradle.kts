@@ -68,6 +68,11 @@ android {
             // throwing, so domain code that logs can run as a plain JVM test without Robolectric.
             isReturnDefaultValues = true
         }
+        unitTests.all {
+            it.testLogging {
+                showStandardStreams = true
+            }
+        }
     }
 }
 

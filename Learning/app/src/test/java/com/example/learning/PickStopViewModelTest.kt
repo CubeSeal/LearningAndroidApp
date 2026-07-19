@@ -29,8 +29,8 @@ class PickStopViewModelTest {
     private fun TestScope.buildVm(): PickStopViewModel {
         val transitInfo = TransitInfo(
             gtfsStaticRepository = FakeStaticGtfsSource(
-                stopsById = mapOf("G1" to stop),
-                closest = listOf(stop),
+                globbedStops = listOf(stop),
+                stopTimesRecords = emptyList(),
             ),
             gtfsRealtimeRepository = FakeRealtimeSource(),
             locationRepo = FakeLocationSource(),
@@ -74,6 +74,45 @@ class PickStopViewModelTest {
         vm.navEvents.test {
             vm.onStopSelected(stop)
             assertEquals(PickStopNavEvent.PopBack, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun filteredStopsIsEmptyListWhenQueryEmpty() = runTest(rule.dispatcher) {
+        val vm = buildVm()
+        vm.onQueryChange("")
+        assertTrue(vm.filteredBusStops.value.isEmpty())
+    }
+
+    @Test
+    fun showStopsInFilteredList() = runTest(rule.dispatcher) {
+        val stopLoc = LatLon(-33.8688, 151.2093)
+        val stop1 = stop
+        val stop2 = GlobbedStopRecord(
+            globbedStopId = "G2",
+            globbedStopName = "Wynyard",
+            stopRecords = listOf(
+                StopRecord("S1", "Test Stop 1", stopLoc, false),
+                StopRecord("S2", "Test Stop 2", stopLoc, false),
+            )
+        )
+        val transitInfo = TransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(
+                globbedStops = listOf(stop1, stop2)
+            ),
+            gtfsRealtimeRepository = FakeRealtimeSource(),
+            locationRepo = FakeLocationSource(),
+            settingsRepo = FakeSettingsSource(),
+            scope = backgroundScope,
+        )
+        val vm = PickStopViewModel(transitInfo)
+
+        vm.filteredBusStops.test {
+            skipItems(1)
+            vm.onQueryChange("Wynyard")
+            val value = awaitItem()
+            assertEquals("value = $value",  stop2, value.firstOrNull())
             cancelAndIgnoreRemainingEvents()
         }
     }

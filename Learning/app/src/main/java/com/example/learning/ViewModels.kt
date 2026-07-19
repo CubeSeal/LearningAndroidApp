@@ -274,12 +274,12 @@ class PickStopViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
     val filteredBusStops: StateFlow<List<GlobbedStopRecord>> = _query
-        .map { query -> if (query.isBlank()) closestBusStops.value else transitInfo.searchStops(query) }
+        .map { query -> if (query.isBlank()) emptyList() else transitInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
-            closestBusStops.value
+            emptyList()
         )
 
     private val _selectedTab = MutableStateFlow(SearchTab.Search)
@@ -290,7 +290,7 @@ class PickStopViewModel(
     private val _navEvents = Channel<PickStopNavEvent>(Channel.BUFFERED)
     val navEvents: Flow<PickStopNavEvent> = _navEvents.receiveAsFlow()
 
-    fun onQueryChange(q: String) { _query.value = q }
+    fun onQueryChange(q: String) {  _query.value = q }
     fun onTabSelected(tab: SearchTab) { _selectedTab.value = tab }
     fun onSearchExpandedChange(expanded: Boolean) { _searchExpanded.value = expanded }
     fun removeSavedStop(globbedBusStopRecord: GlobbedStopRecord) = viewModelScope.launch {

@@ -42,9 +42,8 @@ class HomeViewModelTest {
     private fun TestScope.buildVm(departures: List<StopTimesRecord> = emptyList()): HomeViewModel {
         val transitInfo = TransitInfo(
             gtfsStaticRepository = FakeStaticGtfsSource(
-                stopsById = mapOf(stopId to stop),
-                closest = listOf(stop),
-                stopTimesByStop = mapOf(stopId to departures),
+                globbedStops = listOf(stop),
+                stopTimesRecords = departures,
             ),
             gtfsRealtimeRepository = FakeRealtimeSource(),
             locationRepo = FakeLocationSource(),

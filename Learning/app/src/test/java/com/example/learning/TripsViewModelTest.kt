@@ -36,7 +36,7 @@ class TripsViewModelTest {
     private fun TestScope.buildVm(focusedStopId: String = "S2"): TripsViewModel {
         val transitInfo = TransitInfo(
             gtfsStaticRepository = FakeStaticGtfsSource(
-                stopTimesByTrip = mapOf("T1" to tripStops),
+                stopTimesRecords = tripStops,
             ),
             gtfsRealtimeRepository = FakeRealtimeSource(),
             locationRepo = FakeLocationSource(),

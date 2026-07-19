@@ -470,7 +470,7 @@ interface GtfsDao {
         COALESCE(B.globbed_stop_name, A.stop_name) as globbedStopName
     FROM stops A
     LEFT JOIN globbed_stops B ON A.stop_id = B.stop_id
-    WHERE stop_name LIKE '%' || :globbedStopName || '%' COLLATE NOCASE
+    WHERE globbedStopName LIKE '%' || :globbedStopName || '%' COLLATE NOCASE
     """
     )
     suspend fun getStopsByNameWithGlobbedStops(globbedStopName: String): List<StopWithGlobbedInfo>

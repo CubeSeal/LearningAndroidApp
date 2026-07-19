@@ -62,6 +62,28 @@ data class StopTimesRecord(
     val wheelchairBoarding: Boolean
 )
 
+// Helper method for conversion
+fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
+    return StopTimesRecord(
+        tripId = this.tripId,
+        departureTime = parseGtfsDateTime(date, this.departureTime),
+        arrivalTime = parseGtfsDateTime(date, this.arrivalTime),
+        sequence = this.stopSequence,
+        routeId = this.routeId,
+        serviceId = this.serviceId,
+        tripHeadsign = this.tripHeadsign,
+        routeShortName = this.routeShortName,
+        routeLongName = this.routeLongName,
+        routeType = this.routeType,
+        globbedStopId = this.globbedStopId,
+        globbedStopName = this.globbedStopName,
+        stopId = this.stopId,
+        stopName = this.stopName,
+        stopLoc = LatLon(this.stopLat, this.stopLon),
+        wheelchairBoarding = this.wheelchairBoarding == 1
+    )
+}
+
 /**
  * The transport mode a departure belongs to, derived from GTFS `route_type`. The schedule DB merges
  * the TfNSW bus and train feeds, so this is how the app tells trains and buses apart.
@@ -89,6 +111,33 @@ data class GlobbedStopRecord(
     val globbedStopName: String,
     val stopRecords: List<StopRecord>
 )
+
+// Helper func for conversions
+fun List<StopWithGlobbedInfo>.collateToGlobbedStopRecord(): List<GlobbedStopRecord> {
+    if (this.isEmpty()) return emptyList()
+
+    return this.groupBy { it.globbedStopId }.map {
+        val globbedStopId = it.value.first().globbedStopId
+        val globbedStopName = it.value.first().globbedStopName
+        val mappedStopRecords = it.value.map { record ->
+            StopRecord(
+                stopId = record.stopId,
+                stopName = record.stopName ?: return emptyList(),
+                stopLoc = LatLon(
+                    latitude = record.stopLat ?: return emptyList(),
+                    longitude = record.stopLon ?: return emptyList()
+                ),
+                wheelchairBoarding = record.wheelchairBoarding == 1
+            )
+        }
+
+        return@map GlobbedStopRecord(
+            globbedStopId = globbedStopId,
+            globbedStopName = globbedStopName,
+            stopRecords = mappedStopRecords
+        )
+    }
+}
 
 @Immutable
 data class StopRecord(
@@ -198,52 +247,7 @@ class GtfsStaticRepository(
                 .also { _serviceDates = it }
         }
 
-    private fun List<StopWithGlobbedInfo>.collateToGlobbedStopRecord(): List<GlobbedStopRecord> {
-        if (this.isEmpty()) return emptyList()
 
-        return this.groupBy { it.globbedStopId }.map {
-            val globbedStopId = it.value.first().globbedStopId
-            val globbedStopName = it.value.first().globbedStopName
-            val mappedStopRecords = it.value.map { record ->
-                StopRecord(
-                    stopId = record.stopId,
-                    stopName = record.stopName ?: return emptyList(),
-                    stopLoc = LatLon(
-                        latitude = record.stopLat ?: return emptyList(),
-                        longitude = record.stopLon ?: return emptyList()
-                    ),
-                    wheelchairBoarding = record.wheelchairBoarding == 1
-                )
-            }
-
-            return@map GlobbedStopRecord(
-                globbedStopId = globbedStopId,
-                globbedStopName = globbedStopName,
-                stopRecords = mappedStopRecords
-            )
-        }
-    }
-
-    private fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
-        return StopTimesRecord(
-            tripId = this.tripId,
-            departureTime = parseGtfsDateTime(date, this.departureTime),
-            arrivalTime = parseGtfsDateTime(date, this.arrivalTime),
-            sequence = this.stopSequence,
-            routeId = this.routeId,
-            serviceId = this.serviceId,
-            tripHeadsign = this.tripHeadsign,
-            routeShortName = this.routeShortName,
-            routeLongName = this.routeLongName,
-            routeType = this.routeType,
-            globbedStopId = this.globbedStopId,
-            globbedStopName = this.globbedStopName,
-            stopId = this.stopId,
-            stopName = this.stopName,
-            stopLoc = LatLon(this.stopLat, this.stopLon),
-            wheelchairBoarding = this.wheelchairBoarding == 1
-        )
-    }
 
     override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord? {
         return gtfsDao.getStopsWithGlobbedStops(globbedStopId).collateToGlobbedStopRecord().firstOrNull()
@@ -417,28 +421,49 @@ class GtfsStaticRepository(
 }
 
 class FakeStaticGtfsSource(
-    private val stopsById: Map<String, GlobbedStopRecord> = emptyMap(),
-    private val stopsByName: Map<String, List<GlobbedStopRecord>> = emptyMap(),
-    private val closest: List<GlobbedStopRecord> = emptyList(),
-    private val stopTimesByStop: Map<String, List<StopTimesRecord>> = emptyMap(),
-    private val stopTimesByTrip: Map<String, List<StopTimesRecord>> = emptyMap(),
+    private val globbedStops: List<GlobbedStopRecord> = emptyList(),
+    private val stopTimesRecords: List<StopTimesRecord> = emptyList()
 ) : StaticGtfsSource {
     override val isUpToDate = MutableStateFlow(false)
 
     override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord? =
-        stopsById[globbedStopId]
+        globbedStops.firstOrNull { it.globbedStopId == globbedStopId }
 
     override suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedStopRecord> =
-        stopsByName[globbedStopName] ?: emptyList()
+        globbedStops.filter { it.globbedStopName.contains(globbedStopName) }
 
-    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedStopRecord> =
-        closest.take(length)
+    override suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedStopRecord> {
+        // TODO: Mimics the same behaviour as the prod version by not necessarily giving the same length as in the arg
+        // See the comment in the prod method for details.
+        val sortedStopsWithGlobbedInfo = globbedStops
+            // Just a custom tuple to keep the globbed Stop with the stopRecord for later conversion
+            .flatMap { it.stopRecords.map { stopRecord -> stopRecord to (it.globbedStopId to it.globbedStopName)}}
+            .sortedBy {
+                val stopLon = it.first.stopLoc.longitude
+                val stopLat = it.first.stopLoc.latitude
+                val userLat = location.latitude
+                val userLon = location.longitude
+                ((stopLat - userLat) * (stopLat - userLat) + (stopLon - userLon) * (stopLon - userLon))
+            }
+
+        return sortedStopsWithGlobbedInfo
+            .take(length)
+            // Group by Globbed Stop ID
+            .groupBy { it.second }
+            .map {
+                GlobbedStopRecord(
+                   globbedStopId = it.key.first,
+                   globbedStopName = it.key.second,
+                   stopRecords = it.value.map { (record, _ ) -> record }
+                )
+            }
+    }
 
     override suspend fun getStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<StopTimesRecord> =
-        stopTimesByStop[globbedStopRecord.globbedStopId] ?: emptyList()
+        stopTimesRecords.filter { it.globbedStopId == globbedStopRecord.globbedStopId }
 
     override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord> =
-        stopTimesByTrip[tripId] ?: emptyList()
+        stopTimesRecords.filter { it.tripId == tripId }
 
     override suspend fun syncGtfsDatabase(
         ghOwner: String,
