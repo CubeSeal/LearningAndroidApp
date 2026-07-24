@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
@@ -33,15 +32,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,7 +47,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -120,19 +117,15 @@ fun HOMEScreen(
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                focusedBusStop?.let { stop ->
-                    SaveStop { viewModel.addSavedStop(stop) }
-                }
-                EditStop { viewModel.onEditStopClicked() }
-            }
-        }
     )
     { _ ->
         // Static header (stop name + filter chips) pinned above the scrolling departures list.
         Column(modifier = Modifier.fillMaxSize()) {
-            HomeHeader(focusedBusStop)
+            HomeHeader(
+                focusedBusStop = focusedBusStop,
+                onSaveStop = { focusedBusStop?.let { viewModel.addSavedStop(it) } },
+                onEditStop = { viewModel.onEditStopClicked() },
+            )
             ModeFilterChips(
                 rowFilters,
                 selectedFiltersForBusStop,
@@ -156,35 +149,42 @@ fun HOMEScreen(
     }
 }
 
-/** The Home screen's static header: a divider and the focused stop's name, pinned above the list. */
+/**
+ * The Home screen's static header: a divider, then a top-right pair of icon buttons (save the stop /
+ * pencil-edit to open the stop picker) above the centred stop name. Pinned above the list.
+ */
 @Composable
-fun HomeHeader(focusedBusStop: GlobbedStopRecord?) {
+fun HomeHeader(
+    focusedBusStop: GlobbedStopRecord?,
+    onSaveStop: () -> Unit,
+    onEditStop: () -> Unit,
+) {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 96.dp, vertical = 8.dp),
         thickness = 2.dp,
     )
-    Box(modifier = Modifier.padding(16.dp)) {
-        StopTitle(focusedBusStop)
-    }
-}
-
-@Composable
-fun SaveStop(onClick: () -> Unit) {
-    SmallFloatingActionButton(
-        onClick = { onClick() },
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.End,
     ) {
-        Icon(Icons.Filled.Save, "Save stop.")
+        IconButton(onClick = onSaveStop) {
+            Icon(Icons.Filled.Save, contentDescription = "Save stop")
+        }
+        IconButton(onClick = onEditStop) {
+            Icon(Icons.Filled.Edit, contentDescription = "Change stop")
+        }
     }
-}
-
-
-@Composable
-fun EditStop(onClick: () -> Unit) {
-    FloatingActionButton(
-        onClick = { onClick() },
-    ) {
-        Icon(Icons.Filled.Search, "Edit Stop.")
-    }
+    // Fixed gap from the icon row so the icon↔name spacing is identical regardless of the stop's
+    // name length (1 vs multi-line) or whether filter chips follow below.
+    StopTitle(
+        focusedBusStop,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 16.dp),
+    )
 }
 
 @Composable
@@ -234,20 +234,16 @@ fun BypassHeader(isAppReady: Boolean ){
 }
 
 @Composable
-fun StopTitle(closestBusStop: GlobbedStopRecord? ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(96.dp)
-    ) {
-        Text(
-            text = closestBusStop?.globbedStopName ?: "Loading local stop...",
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.headlineLarge,
-        )
-    }
+fun StopTitle(closestBusStop: GlobbedStopRecord?, modifier: Modifier = Modifier) {
+    // Top-aligned (no tall centering box) so the gap to whatever sits above is a fixed value set by
+    // the caller, not a function of the text's line count.
+    Text(
+        text = closestBusStop?.globbedStopName ?: "Loading local stop...",
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = modifier,
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.headlineLarge,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
