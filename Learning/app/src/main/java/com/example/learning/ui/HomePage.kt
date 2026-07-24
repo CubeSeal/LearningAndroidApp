@@ -75,6 +75,8 @@ import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.TransitFilterOptions
 import com.example.learning.StopTimesRecordWithRealtime
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.Lifecycle
 import com.example.learning.Filter
 import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
@@ -101,6 +103,9 @@ fun HOMEScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val headerAlpha by viewModel.headerAlpha.collectAsStateWithLifecycle()
+
+    // Re-arm the ViewModel's "navigate once" latch each time this screen is shown again.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
 
     LaunchedEffect(Unit) { viewModel.scrollToTop.collect { listState.scrollToItem(0) } }
     LaunchedEffect(Unit) { viewModel.snackbarMessages.collect { snackbarHostState.showSnackbar(it) } }

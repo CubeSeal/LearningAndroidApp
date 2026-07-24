@@ -78,6 +78,20 @@ class PickStopViewModelTest {
         }
     }
 
+    // A single gesture that delivers two intents (fast double-tap, or a tap landing during the slide
+    // transition) must pop the stack once, not twice.
+    @Test
+    fun `duplicate onStopSelected pops back once`() = runTest(rule.dispatcher) {
+        val vm = buildVm()
+        vm.navEvents.test {
+            vm.onStopSelected(stop)
+            assertEquals(PickStopNavEvent.PopBack, awaitItem())
+            vm.onStopSelected(stop)
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     @Test
     fun filteredStopsIsEmptyListWhenQueryEmpty() = runTest(rule.dispatcher) {
         val vm = buildVm()

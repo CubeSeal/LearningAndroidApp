@@ -148,6 +148,25 @@ class HomeViewModelTest {
         }
     }
 
+    // A single gesture that delivers two intents (fast double-tap, or a tap landing during the slide
+    // transition) must push one destination; the latch re-arms once the screen is shown again.
+    @Test
+    fun `duplicate onDepartureClicked navigates once until the screen is shown again`() = runTest(rule.dispatcher) {
+        val vm = buildVm(listOf(dep("100", "Downtown")))
+        vm.navEvents.test {
+            val record = vm.associatedStopTimes.value.first().second
+            vm.onDepartureClicked(record)
+            assertTrue(awaitItem() is HomeNavEvent.OpenTrip)   // first tap navigates
+            vm.onDepartureClicked(record)                       // duplicate of the same gesture
+            expectNoEvents()                                    // ...is dropped
+
+            vm.onScreenResumed()                                // returned to Home
+            vm.onDepartureClicked(record)
+            assertTrue(awaitItem() is HomeNavEvent.OpenTrip)    // navigates again
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     @Test
     fun `addSavedStop emits snackbar message containing stop name`() = runTest(rule.dispatcher) {
         val vm = buildVm()

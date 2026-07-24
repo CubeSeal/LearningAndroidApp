@@ -84,4 +84,18 @@ class TripsViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    // A single gesture that delivers two intents (fast double-tap, or a tap landing during the slide
+    // transition) must pop the stack once, not twice.
+    @Test
+    fun `duplicate onBackClicked pops back once`() = runTest(rule.dispatcher) {
+        val vm = buildVm()
+        vm.navEvents.test {
+            vm.onBackClicked()
+            assertEquals(TripsNavEvent.PopBack, awaitItem())
+            vm.onBackClicked()
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

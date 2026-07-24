@@ -41,6 +41,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -64,6 +66,9 @@ fun PickStopScreen(
     val filteredStops by viewModel.filteredBusStops.collectAsStateWithLifecycle()
     val closestStops by viewModel.closestBusStops.collectAsStateWithLifecycle()
 
+    // Re-arm the ViewModel's "navigate once" latch each time this screen is shown.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
+
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->
             if (event is PickStopNavEvent.PopBack) navController.popBackStack()
@@ -75,7 +80,7 @@ fun PickStopScreen(
             .fillMaxSize().background(MaterialTheme.colorScheme.background)
     )
     {
-        BackHeader({ navController.popBackStack() })
+        BackHeader({ viewModel.onBackClicked() })
 
         PrimaryTabRow(
             selectedTabIndex = SearchTab.entries.indexOf(selectedTab)

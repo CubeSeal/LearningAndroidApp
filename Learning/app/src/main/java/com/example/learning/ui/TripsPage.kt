@@ -38,6 +38,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -57,6 +59,9 @@ fun TripsScreen(
 ) {
     val stopTimesByTrip by viewModel.stopTimesRecord.collectAsStateWithLifecycle()
     val scrollTarget by viewModel.scrollTarget.collectAsStateWithLifecycle()
+
+    // Re-arm the ViewModel's "navigate once" latch each time this screen is shown.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
 
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->

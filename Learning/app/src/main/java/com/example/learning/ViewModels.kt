@@ -168,6 +168,20 @@ class HomeViewModel(
     private val _navEvents = Channel<HomeNavEvent>(Channel.BUFFERED)
     val navEvents: Flow<HomeNavEvent> = _navEvents.receiveAsFlow()
 
+    // Guards against a single user gesture producing two navigations: a fast double-tap, or a tap
+    // landing during the slide transition while the leaving screen is still interactive, both queue
+    // two intents on the channel and previously pushed the destination twice (forcing a double
+    // back-press). Once we emit a nav intent the latch drops any further one until the screen is
+    // shown again ([onScreenResumed], forwarded from the composable's ON_RESUME) — reset on resume
+    // because this same ViewModel drives both Home→Filter and Filter→Home navigation.
+    private var navigating = false
+    fun onScreenResumed() { navigating = false }
+    private fun navigate(event: HomeNavEvent) {
+        if (navigating) return
+        navigating = true
+        _navEvents.trySend(event)
+    }
+
     // --- FilterPage staging (shared: FilterScreen uses this same back-stack-scoped ViewModel) ---
     private val _stagedFilters = MutableStateFlow(setOf<TransitFilterOptions>())
     val stagedFilters: StateFlow<Set<TransitFilterOptions>> = _stagedFilters.asStateFlow()
@@ -232,12 +246,14 @@ class HomeViewModel(
         _scrollPosition.value = ScrollPosition(firstVisibleItemIndex, firstVisibleItemScrollOffset)
     }
 
-    fun onEditStopClicked() { _navEvents.trySend(HomeNavEvent.OpenPickStop) }
-    fun onOpenFilters() { _navEvents.trySend(HomeNavEvent.OpenFilters) }
+    fun onEditStopClicked() = navigate(HomeNavEvent.OpenPickStop)
+    fun onOpenFilters() = navigate(HomeNavEvent.OpenFilters)
     fun onDepartureClicked(record: StopTimesRecordWithRealtime) {
         val r = record.stopTimesRecord
-        _navEvents.trySend(HomeNavEvent.OpenTrip(r.tripId, r.stopId, r.departureTime.toLocalDate().toString()))
+        navigate(HomeNavEvent.OpenTrip(r.tripId, r.stopId, r.departureTime.toLocalDate().toString()))
     }
+    // The FilterPage's back button (discards the staged selection and returns).
+    fun onFilterBackClicked() = navigate(HomeNavEvent.PopBack)
 
     // --- FilterPage staging actions ---
     // Seed the staged selection from the committed one when the filter screen opens.
@@ -256,7 +272,7 @@ class HomeViewModel(
     // Commit the staged selection and return to Home.
     fun applyStaging() {
         applyFilters(_stagedFilters.value)
-        _navEvents.trySend(HomeNavEvent.PopBack)
+        navigate(HomeNavEvent.PopBack)
     }
 
     companion object {
@@ -290,6 +306,11 @@ class PickStopViewModel(
     private val _navEvents = Channel<PickStopNavEvent>(Channel.BUFFERED)
     val navEvents: Flow<PickStopNavEvent> = _navEvents.receiveAsFlow()
 
+    // See HomeViewModel.navigating — drops the duplicate intent from a single gesture so the screen
+    // pops once. Checked synchronously (before launching) so it wins the race against the second tap.
+    private var navigating = false
+    fun onScreenResumed() { navigating = false }
+
     fun onQueryChange(q: String) {  _query.value = q }
     fun onTabSelected(tab: SearchTab) { _selectedTab.value = tab }
     fun onSearchExpandedChange(expanded: Boolean) { _searchExpanded.value = expanded }
@@ -298,8 +319,18 @@ class PickStopViewModel(
     }
 
     // Focus the chosen stop, then return to Home.
-    fun onStopSelected(stop: GlobbedStopRecord) = viewModelScope.launch {
-        transitInfo.updateFocusedBusStop(stop)
+    fun onStopSelected(stop: GlobbedStopRecord) {
+        if (navigating) return
+        navigating = true
+        viewModelScope.launch {
+            transitInfo.updateFocusedBusStop(stop)
+            _navEvents.trySend(PickStopNavEvent.PopBack)
+        }
+    }
+
+    fun onBackClicked() {
+        if (navigating) return
+        navigating = true
         _navEvents.trySend(PickStopNavEvent.PopBack)
     }
 }
@@ -328,10 +359,23 @@ class TripsViewModel(
     private val _navEvents = Channel<TripsNavEvent>(Channel.BUFFERED)
     val navEvents: Flow<TripsNavEvent> = _navEvents.receiveAsFlow()
 
-    fun onBackClicked() { _navEvents.trySend(TripsNavEvent.PopBack) }
-    // Focus the *globbed* stop (the station) tapped in the trip, then return to Home.
-    fun onStopClicked(globbedStopId: String) = viewModelScope.launch {
-        transitInfo.updateFocusedBusStopByStopId(globbedStopId)
+    // See HomeViewModel.navigating — drops the duplicate intent from a single gesture so the screen
+    // pops once. Checked synchronously (before launching) so it wins the race against the second tap.
+    private var navigating = false
+    fun onScreenResumed() { navigating = false }
+
+    fun onBackClicked() {
+        if (navigating) return
+        navigating = true
         _navEvents.trySend(TripsNavEvent.PopBack)
+    }
+    // Focus the *globbed* stop (the station) tapped in the trip, then return to Home.
+    fun onStopClicked(globbedStopId: String) {
+        if (navigating) return
+        navigating = true
+        viewModelScope.launch {
+            transitInfo.updateFocusedBusStopByStopId(globbedStopId)
+            _navEvents.trySend(TripsNavEvent.PopBack)
+        }
     }
 }

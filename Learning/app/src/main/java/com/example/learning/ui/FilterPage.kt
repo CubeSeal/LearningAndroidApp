@@ -29,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -56,6 +58,9 @@ fun FilterScreen(navController: NavController) {
     val staged by viewModel.stagedFilters.collectAsStateWithLifecycle()
     val expandedGroups by viewModel.expandedFilterGroups.collectAsStateWithLifecycle()
 
+    // Re-arm the shared HomeViewModel's "navigate once" latch each time this screen is shown.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
+
     LaunchedEffect(Unit) { viewModel.beginStaging() }
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->
@@ -71,7 +76,7 @@ fun FilterScreen(navController: NavController) {
         onExpandGroup = { viewModel.expandFilterGroup(it) },
         onReset = { viewModel.resetStaging() },
         onApply = { viewModel.applyStaging() },
-        onBack = { navController.popBackStack() },
+        onBack = { viewModel.onFilterBackClicked() },
     )
 }
 
