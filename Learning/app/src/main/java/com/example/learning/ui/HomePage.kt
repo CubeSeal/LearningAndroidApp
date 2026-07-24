@@ -130,9 +130,16 @@ fun HOMEScreen(
         }
     )
     { _ ->
-        // Static header pinned above the scrolling departures list.
+        // Static header (stop name + filter chips) pinned above the scrolling departures list.
         Column(modifier = Modifier.fillMaxSize()) {
             HomeHeader(focusedBusStop)
+            ModeFilterChips(
+                rowFilters,
+                selectedFiltersForBusStop,
+                { viewModel.toggleFilterForBusStops(it) },
+                { viewModel.onOpenFilters() },
+                { viewModel.clearFilters() },
+            )
 
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
@@ -142,11 +149,6 @@ fun HOMEScreen(
                 MasterLazyColumn(
                     listState,
                     associatedBusStopTimes,
-                    rowFilters,
-                    selectedFiltersForBusStop,
-                    { viewModel.toggleFilterForBusStops(it) },
-                    { viewModel.onOpenFilters() },
-                    { viewModel.clearFilters() },
                     { viewModel.onDepartureClicked(it) },
                 )
             }
@@ -189,11 +191,6 @@ fun EditStop(onClick: () -> Unit) {
 fun MasterLazyColumn(
     listState: LazyListState,
     associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
-    rowFilters: List<TransitFilterOptions>,
-    selectedFiltersForBusStop: Set<TransitFilterOptions>,
-    onToggleMode: (TransitFilterOptions) -> Unit,
-    onOpenFilters: () -> Unit,
-    onResetFilters: () -> Unit,
     onDepartureClicked: (StopTimesRecordWithRealtime) -> Unit,
 ) {
     LazyColumn(
@@ -206,16 +203,6 @@ fun MasterLazyColumn(
             Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
             item() { LoadingScreen("Loading trips...") }
         } else {
-            item() {
-                ModeFilterChips(
-                    rowFilters,
-                    selectedFiltersForBusStop,
-                    onToggleMode,
-                    onOpenFilters,
-                    onResetFilters,
-                )
-            }
-
             items(
                 items = associatedBusStopTimes,
                 key = { item -> item.second.stopTimesRecord.let { Triple(it.stopId,it.tripId, it.departureTime) } }
