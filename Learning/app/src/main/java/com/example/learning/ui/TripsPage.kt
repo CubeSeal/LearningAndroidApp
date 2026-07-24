@@ -47,6 +47,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
 import com.example.learning.LoadingScreen
 import com.example.learning.ScrollTarget
+import com.example.learning.TripHeader
 import com.example.learning.TripsNavEvent
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
@@ -59,6 +60,7 @@ fun TripsScreen(
 ) {
     val stopTimesByTrip by viewModel.stopTimesRecord.collectAsStateWithLifecycle()
     val scrollTarget by viewModel.scrollTarget.collectAsStateWithLifecycle()
+    val tripHeader by viewModel.tripHeader.collectAsStateWithLifecycle()
 
     // Re-arm the ViewModel's "navigate once" latch each time this screen is shown.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
@@ -70,13 +72,36 @@ fun TripsScreen(
     }
 
     Column {
+        // Static header pinned above the scrolling stop list.
         BackHeader({ viewModel.onBackClicked() })
+        tripHeader?.let { TripRouteHeader(it) }
 
         TripsList(
             stopTimesByTrip = stopTimesByTrip,
             stopId = viewModel.stopId,
             scrollTarget = scrollTarget,
             onStopClick = { viewModel.onStopClicked(it) },
+        )
+    }
+}
+
+/** The Trips screen's static route-name header. */
+@Composable
+private fun TripRouteHeader(header: TripHeader) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Text(
+            header.routeShortName,
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text(
+            header.routeLongName,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -96,34 +121,11 @@ private fun TripsList(
     if (stopTimesByTrip.isEmpty()) {
         LoadingScreen("Loading trip information...")
     } else {
-        val first = stopTimesByTrip.first()
-        val routeShortName = first.routeShortName.orEmpty()
-        val routeLongName = first.routeLongName
-
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp),
             state = listState
         ) {
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        routeShortName,
-                        style = MaterialTheme.typography.displaySmall,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        routeLongName,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
             itemsIndexed(
                 items = stopTimesByTrip,
                 key = { _, item -> item.sequence }

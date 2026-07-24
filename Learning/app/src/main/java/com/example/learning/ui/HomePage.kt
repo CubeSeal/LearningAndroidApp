@@ -58,11 +58,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
@@ -102,7 +100,6 @@ fun HOMEScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val headerAlpha by viewModel.headerAlpha.collectAsStateWithLifecycle()
 
     // Re-arm the ViewModel's "navigate once" latch each time this screen is shown again.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
@@ -119,10 +116,6 @@ fun HOMEScreen(
             }
         }
     }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (i, o) -> viewModel.onListScrolled(i, o) }
-    }
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     Scaffold(
@@ -137,23 +130,39 @@ fun HOMEScreen(
         }
     )
     { _ ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refresh() }
-        ) {
-            MasterLazyColumn(
-                listState,
-                headerAlpha,
-                focusedBusStop,
-                associatedBusStopTimes,
-                rowFilters,
-                selectedFiltersForBusStop,
-                { viewModel.toggleFilterForBusStops(it) },
-                { viewModel.onOpenFilters() },
-                { viewModel.clearFilters() },
-                { viewModel.onDepartureClicked(it) },
-            )
+        // Static header pinned above the scrolling departures list.
+        Column(modifier = Modifier.fillMaxSize()) {
+            HomeHeader(focusedBusStop)
+
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.weight(1f),
+            ) {
+                MasterLazyColumn(
+                    listState,
+                    associatedBusStopTimes,
+                    rowFilters,
+                    selectedFiltersForBusStop,
+                    { viewModel.toggleFilterForBusStops(it) },
+                    { viewModel.onOpenFilters() },
+                    { viewModel.clearFilters() },
+                    { viewModel.onDepartureClicked(it) },
+                )
+            }
         }
+    }
+}
+
+/** The Home screen's static header: a divider and the focused stop's name, pinned above the list. */
+@Composable
+fun HomeHeader(focusedBusStop: GlobbedStopRecord?) {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 96.dp, vertical = 8.dp),
+        thickness = 2.dp,
+    )
+    Box(modifier = Modifier.padding(16.dp)) {
+        StopTitle(focusedBusStop)
     }
 }
 
@@ -179,8 +188,6 @@ fun EditStop(onClick: () -> Unit) {
 @Composable
 fun MasterLazyColumn(
     listState: LazyListState,
-    headerAlpha: Float,
-    focusedBusStop: GlobbedStopRecord?,
     associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
     rowFilters: List<TransitFilterOptions>,
     selectedFiltersForBusStop: Set<TransitFilterOptions>,
@@ -195,22 +202,6 @@ fun MasterLazyColumn(
         modifier = Modifier
             .fillMaxSize()
     ) {
-        item() {
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 96.dp, vertical = 8.dp),
-                thickness = 2.dp,
-            )
-        }
-        item() {
-            Box(
-                modifier = Modifier
-                    .graphicsLayer { alpha = headerAlpha }
-                    .padding(16.dp)
-            ) {
-                StopTitle(focusedBusStop)
-            }
-        }
-
         if (associatedBusStopTimes.isEmpty()) {
             Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
             item() { LoadingScreen("Loading trips...") }

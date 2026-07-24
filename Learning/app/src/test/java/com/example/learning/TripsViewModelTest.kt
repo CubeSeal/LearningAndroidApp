@@ -52,11 +52,33 @@ class TripsViewModelTest {
         assertEquals(3, vm.stopTimesRecord.value.size)
     }
 
+    // The static header's route text is derived in the ViewModel (not the composable) so it's
+    // testable: it comes off the trip's first stop-time.
     @Test
-    fun `scrollTarget points one past focused stop index`() = runTest(rule.dispatcher) {
+    fun `tripHeader exposes the route names from the first stop`() = runTest(rule.dispatcher) {
+        val vm = buildVm()
+        assertEquals(TripHeader("100", "Route 100"), vm.tripHeader.value)
+    }
+
+    @Test
+    fun `tripHeader is null when the trip has no stops`() = runTest(rule.dispatcher) {
+        val transitInfo = TransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(stopTimesRecords = emptyList()),
+            gtfsRealtimeRepository = FakeRealtimeSource(),
+            locationRepo = FakeLocationSource(),
+            settingsRepo = FakeSettingsSource(),
+            scope = backgroundScope,
+        )
+        val vm = TripsViewModel("T1", "S2", date, transitInfo)
+        assertNull(vm.tripHeader.value)
+    }
+
+    @Test
+    fun `scrollTarget points at the focused stop's row index`() = runTest(rule.dispatcher) {
         val vm = buildVm(focusedStopId = "S2")
-        // S2 is at index 1, scrollTarget.index should be 2
-        assertEquals(ScrollTarget(2, -24), vm.scrollTarget.value)
+        // S2 is at index 1; the route header is now a static element outside the list, so the row
+        // sits at list index 1 (no +1 offset for an in-list header item any more).
+        assertEquals(ScrollTarget(1, -24), vm.scrollTarget.value)
     }
 
     @Test

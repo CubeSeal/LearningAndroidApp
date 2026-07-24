@@ -93,20 +93,6 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `headerAlpha is 1f at top, 0f past first item, partial when partially scrolled`() = runTest(rule.dispatcher) {
-        val vm = buildVm()
-        vm.onListScrolled(0, 0)
-        assertEquals(1f, vm.headerAlpha.value)
-
-        vm.onListScrolled(2, 0)
-        assertEquals(0f, vm.headerAlpha.value)
-
-        vm.onListScrolled(0, 200)
-        val alpha = vm.headerAlpha.value
-        assertTrue("expected 0 < alpha < 1, got $alpha", alpha > 0f && alpha < 1f)
-    }
-
-    @Test
     fun `scrollToTop fires when data loads`() = runTest(rule.dispatcher) {
         val vm = buildVm(listOf(dep("100", "Downtown")))
         vm.scrollToTop.test {

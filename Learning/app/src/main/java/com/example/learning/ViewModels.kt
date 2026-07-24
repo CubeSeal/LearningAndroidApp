@@ -62,9 +62,9 @@ enum class SearchTab(val label: String) {
  *  it to its [androidx.compose.foundation.lazy.LazyListState]. */
 data class ScrollTarget(val index: Int, val offset: Int)
 
-/** The list's scroll position, pushed *into* the ViewModel by the composable so scroll-derived state
- *  (e.g. the header fade) can be computed here rather than in composition. */
-data class ScrollPosition(val firstVisibleItemIndex: Int, val firstVisibleItemScrollOffset: Int)
+/** The Trips screen's static header text, derived in the ViewModel so the composable stays a dumb
+ *  renderer. Null until the trip loads. */
+data class TripHeader(val routeShortName: String, val routeLongName: String)
 
 /** One-shot navigation intents emitted by [HomeViewModel]. The composable collects these and drives
  *  the NavController, so the *decision* to navigate lives (and is tested) in the ViewModel. */
@@ -144,18 +144,6 @@ class HomeViewModel(
     val isUpToDate = transitInfo.gtfsStaticRepository.isUpToDate
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing = _isRefreshing.asStateFlow()
-
-    // --- Scroll-derived state (fed by the composable via onListScrolled) ---
-    private val _scrollPosition = MutableStateFlow(ScrollPosition(0, 0))
-    // The header fades as the list scrolls: fully hidden past the first item, otherwise linearly
-    // interpolated over the first HEADER_FADE_DISTANCE px of scroll. Was a `derivedStateOf` in the
-    // composable; now pure, testable state.
-    val headerAlpha: StateFlow<Float> = _scrollPosition
-        .map { pos ->
-            if (pos.firstVisibleItemIndex > 1) 0f
-            else (1f - (pos.firstVisibleItemScrollOffset / HEADER_FADE_DISTANCE)).coerceIn(0f, 1f)
-        }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 1f)
 
     // One-shot effects. The list resets to the top whenever its contents change (new stop / refresh
     // / minute tick), and saving a stop surfaces a snackbar — both emitted here so the composable is
@@ -241,11 +229,7 @@ class HomeViewModel(
         _pinnedFilters.value = emptySet()
     }
 
-    // --- Scroll / navigation actions (called by the composable) ---
-    fun onListScrolled(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
-        _scrollPosition.value = ScrollPosition(firstVisibleItemIndex, firstVisibleItemScrollOffset)
-    }
-
+    // --- Navigation actions (called by the composable) ---
     fun onEditStopClicked() = navigate(HomeNavEvent.OpenPickStop)
     fun onOpenFilters() = navigate(HomeNavEvent.OpenFilters)
     fun onDepartureClicked(record: StopTimesRecordWithRealtime) {
@@ -277,8 +261,6 @@ class HomeViewModel(
 
     companion object {
         const val ROW_FILTER_CAP = 10
-        // How fast the header fades out, in pixels of scroll.
-        private const val HEADER_FADE_DISTANCE = 400f
     }
 }
 
@@ -347,12 +329,18 @@ class TripsViewModel(
         Log.d("VM", result.toString())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // Where to scroll so the focused stop is in view (one item past it, nudged up 24px). Null until
-    // the trip loads / when the focused stop isn't in this trip.
+    // The static header (route names), taken off the trip's first stop. Null until the trip loads.
+    val tripHeader: StateFlow<TripHeader?> = stopTimesRecord
+        .map { list -> list.firstOrNull()?.let { TripHeader(it.routeShortName.orEmpty(), it.routeLongName) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // Where to scroll so the focused stop's row is in view (nudged down 24px so it isn't flush at the
+    // top). The route header is a static element outside the list, so the row's list index is just
+    // its position in the trip. Null until the trip loads / when the focused stop isn't in this trip.
     val scrollTarget: StateFlow<ScrollTarget?> = stopTimesRecord
         .map { list ->
             val idx = list.indexOfFirst { it.stopId == stopId }
-            if (idx >= 0 && list.isNotEmpty()) ScrollTarget(idx + 1, -24) else null
+            if (idx >= 0 && list.isNotEmpty()) ScrollTarget(idx, -24) else null
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
