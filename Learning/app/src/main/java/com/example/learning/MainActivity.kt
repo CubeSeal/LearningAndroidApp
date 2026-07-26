@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -56,6 +57,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.learning.ui.FilterScreen
 import com.example.learning.ui.HOMEScreen
 import com.example.learning.ui.PickStopScreen
+import com.example.learning.ui.SavedStopsScreen
 import com.example.learning.ui.TripsScreen
 import com.example.learning.ui.WonderHeader
 import com.example.learning.ui.theme.TfNSWTheme
@@ -78,6 +80,9 @@ data object PickStop
 
 @Serializable
 data object Filter
+
+@Serializable
+data object Saved
 
 fun NavController.resetTo(route: Any) {
     navigate(route) {
@@ -151,7 +156,13 @@ class MainActivity : ComponentActivity() {
                                 icon = { Icon(Icons.Default.Home, "Home") },
                                 label = { Text("Home") },
                                 selected = currentDestination?.hasRoute<Home>() == true,
-                                onClick = { navController.resetTo(Home) }
+                                onClick = { navController.resetTo(Home) },
+                            )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Bookmark, "Saved") },
+                                label = { Text("Saved") },
+                                selected = currentDestination?.hasRoute<Saved>() == true,
+                                onClick = { navController.resetTo(Saved) },
                             )
                         }
                     },
@@ -187,12 +198,14 @@ fun HomeNavHost(
 //        popExitTransition = { fadeOut(tween(blinkDuration)) }
     ) {
         composable<Home>(
-            // Match the Trips/PickStop slide-in duration so Home's fade-out ends exactly when the
-            // incoming screen finishes sliding. Without this, Home inherits the NavHost-default
-            // fadeOut(700ms), which lingers ~400ms after the 300ms slide has already settled.
             exitTransition = { fadeOut(tween(slideDuration)) },
             popEnterTransition = { fadeIn(tween(slideDuration)) },
         ) { HOMEScreen(navController) }
+
+        composable<Saved>(
+            enterTransition = { fadeIn(tween(blinkDuration)) },
+            exitTransition = { fadeOut(tween(blinkDuration)) },
+        ) { SavedStopsScreen(navController) }
 
         composable<Trips>(
             enterTransition = {

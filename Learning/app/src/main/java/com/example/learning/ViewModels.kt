@@ -35,7 +35,6 @@ object AppViewModelProvider {
 
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
-
             HomeViewModel(app.repos.transitInfo)
         }
         initializer {
@@ -45,17 +44,13 @@ object AppViewModelProvider {
         }
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
-
             PickStopViewModel(app.repos.transitInfo)
         }
+        initializer {
+            val app = (this[APPLICATION_KEY] as LearningApplication)
+            SavedStopsViewModel(app.repos.transitInfo)
+        }
     }
-}
-
-/** The two tabs of the stop picker. Owned by [PickStopViewModel] so the selection survives config
- *  changes and is testable without rendering. */
-enum class SearchTab(val label: String) {
-    Search("Search"),
-    Saved("Saved")
 }
 
 /** Where the departure list should scroll to, computed by the ViewModel; the composable just applies
@@ -81,6 +76,10 @@ sealed interface PickStopNavEvent {
 
 sealed interface TripsNavEvent {
     data object PopBack : TripsNavEvent
+}
+
+sealed interface SavedNavEvent {
+    data object NavigateToHome : SavedNavEvent
 }
 
 class HomeViewModel(
@@ -277,64 +276,25 @@ class PickStopViewModel(
     private val transitInfo: TransitInfo
 ) : ViewModel() {
     val closestBusStops = transitInfo.closestBusStops
-    val savedStops = transitInfo.savedStops
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
     val filteredBusStops: StateFlow<List<GlobbedStopRecord>> = _query
         .map { query -> if (query.isBlank()) emptyList() else transitInfo.searchStops(query) }
         .flowOn(Dispatchers.Default)
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            emptyList()
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _selectedTab = MutableStateFlow(SearchTab.Search)
-    val selectedTab: StateFlow<SearchTab> = _selectedTab.asStateFlow()
     private val _searchExpanded = MutableStateFlow(false)
     val searchExpanded: StateFlow<Boolean> = _searchExpanded.asStateFlow()
-
-    // Which saved stops have their combo dropdown expanded (keyed by globbedStopId) — mirrors the
-    // FilterPage's expandedFilterGroups pattern.
-    private val _expandedSavedStops = MutableStateFlow(setOf<String>())
-    val expandedSavedStops: StateFlow<Set<String>> = _expandedSavedStops.asStateFlow()
-
-    // The stop pending a "clear all" confirmation (null = no dialog). Held here so the dialog is a
-    // dumb renderer of VM state and the confirm/dismiss decision is testable.
-    private val _pendingClearAll = MutableStateFlow<GlobbedStopRecord?>(null)
-    val pendingClearAll: StateFlow<GlobbedStopRecord?> = _pendingClearAll.asStateFlow()
 
     private val _navEvents = Channel<PickStopNavEvent>(Channel.BUFFERED)
     val navEvents: Flow<PickStopNavEvent> = _navEvents.receiveAsFlow()
 
-    // See HomeViewModel.navigating — drops the duplicate intent from a single gesture so the screen
-    // pops once. Checked synchronously (before launching) so it wins the race against the second tap.
     private var navigating = false
     fun onScreenResumed() { navigating = false }
 
-    fun onQueryChange(q: String) {  _query.value = q }
-    fun onTabSelected(tab: SearchTab) { _selectedTab.value = tab }
+    fun onQueryChange(q: String) { _query.value = q }
     fun onSearchExpandedChange(expanded: Boolean) { _searchExpanded.value = expanded }
 
-    fun toggleExpanded(stopId: String) {
-        _expandedSavedStops.update { if (stopId in it) it - stopId else it + stopId }
-    }
-
-    // Remove a single saved filter combo from a stop (no confirmation — the stop itself stays saved).
-    fun removeCombo(stopId: String, combo: Set<TransitFilterOptions>) = viewModelScope.launch {
-        transitInfo.removeSavedCombo(stopId, combo)
-    }
-
-    // Clear-all is destructive (wipes the stop + every combo), so it goes through a confirmation.
-    fun onClearAllClicked(stop: GlobbedStopRecord) { _pendingClearAll.value = stop }
-    fun onDismissClearAll() { _pendingClearAll.value = null }
-    fun onConfirmClearAll() {
-        val stop = _pendingClearAll.value ?: return
-        _pendingClearAll.value = null
-        viewModelScope.launch { transitInfo.removeSavedStop(stop) }
-    }
-
-    // Focus the chosen stop (search tab), then return to Home. Leaves the active filters untouched.
     fun onStopSelected(stop: GlobbedStopRecord) {
         if (navigating) return
         navigating = true
@@ -344,20 +304,55 @@ class PickStopViewModel(
         }
     }
 
-    // Focus a saved stop and apply [combo] (empty = naked), then return to Home.
+    fun onBackClicked() {
+        if (navigating) return
+        navigating = true
+        _navEvents.trySend(PickStopNavEvent.PopBack)
+    }
+}
+
+class SavedStopsViewModel(
+    private val transitInfo: TransitInfo
+) : ViewModel() {
+    val savedStops = transitInfo.savedStops
+
+    private val _expandedSavedStops = MutableStateFlow(setOf<String>())
+    val expandedSavedStops: StateFlow<Set<String>> = _expandedSavedStops.asStateFlow()
+
+    // The stop pending a "clear all" confirmation (null = no dialog). Held here so the dialog is a
+    // dumb renderer of VM state and the confirm/dismiss decision is testable.
+    private val _pendingClearAll = MutableStateFlow<GlobbedStopRecord?>(null)
+    val pendingClearAll: StateFlow<GlobbedStopRecord?> = _pendingClearAll.asStateFlow()
+
+    private val _navEvents = Channel<SavedNavEvent>(Channel.BUFFERED)
+    val navEvents: Flow<SavedNavEvent> = _navEvents.receiveAsFlow()
+
+    private var navigating = false
+    fun onScreenResumed() { navigating = false }
+
+    fun toggleExpanded(stopId: String) {
+        _expandedSavedStops.update { if (stopId in it) it - stopId else it + stopId }
+    }
+
+    fun removeCombo(stopId: String, combo: Set<TransitFilterOptions>) = viewModelScope.launch {
+        transitInfo.removeSavedCombo(stopId, combo)
+    }
+
+    fun onClearAllClicked(stop: GlobbedStopRecord) { _pendingClearAll.value = stop }
+    fun onDismissClearAll() { _pendingClearAll.value = null }
+    fun onConfirmClearAll() {
+        val stop = _pendingClearAll.value ?: return
+        _pendingClearAll.value = null
+        viewModelScope.launch { transitInfo.removeSavedStop(stop) }
+    }
+
     fun onSavedStopSelected(stop: GlobbedStopRecord, combo: Set<TransitFilterOptions>) {
         if (navigating) return
         navigating = true
         viewModelScope.launch {
             transitInfo.selectSavedStop(stop, combo)
-            _navEvents.trySend(PickStopNavEvent.PopBack)
+            _navEvents.trySend(SavedNavEvent.NavigateToHome)
         }
-    }
-
-    fun onBackClicked() {
-        if (navigating) return
-        navigating = true
-        _navEvents.trySend(PickStopNavEvent.PopBack)
     }
 }
 
