@@ -292,7 +292,6 @@ private fun SavedStopRow(
     ListItem(
         modifier = Modifier.clickable { onSelect(stop, emptySet()) },
         headlineContent = { Text(stop.globbedStopName) },
-        supportingContent = { Text("Stop ${stop.globbedStopId}") },
         leadingContent = {
             if (saved.combos.isNotEmpty()) {
                 IconButton(onClick = { onToggleExpanded(stop.globbedStopId) }) {
