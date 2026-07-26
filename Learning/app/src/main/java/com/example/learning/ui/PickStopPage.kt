@@ -6,10 +6,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,11 +28,12 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
@@ -58,7 +63,6 @@ import com.example.learning.PickStopViewModel
 import com.example.learning.SavedStop
 import com.example.learning.SearchTab
 import com.example.learning.TransitFilterOptions
-import com.example.learning.filterLabel
 import com.example.learning.repos.GlobbedStopRecord
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -329,6 +333,7 @@ private fun SavedStopRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SavedComboRow(
     stop: GlobbedStopRecord,
@@ -336,23 +341,40 @@ private fun SavedComboRow(
     onSelect: (GlobbedStopRecord, Set<TransitFilterOptions>) -> Unit,
     onRemoveCombo: (String, Set<TransitFilterOptions>) -> Unit,
 ) {
-    // Indented sub-row: tap applies this exact filter combo; the trailing x removes just this combo.
-    ListItem(
+    // Indented sub-row: the combo is shown as the same FilterChips used on the filter page (default
+    // unselected look — outline, no fill — on the normal background); tapping the row (or any chip)
+    // applies the combo, and the trailing x removes just this combo.
+    Row(
         modifier = Modifier
+            .fillMaxWidth()
             .clickable { onSelect(stop, combo) }
-            .padding(start = 32.dp),
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        headlineContent = { Text(combo.joinToString(", ") { filterLabel(it) }) },
-        trailingContent = {
-            IconButton(onClick = { onRemoveCombo(stop.globbedStopId, combo) }) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Remove filter",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+            .padding(start = 48.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            combo.forEach { option ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onSelect(stop, combo) },
+                    label = { FilterChipLabel(option) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    ),
                 )
             }
         }
-    )
+        IconButton(onClick = { onRemoveCombo(stop.globbedStopId, combo) }) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Remove filter",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable

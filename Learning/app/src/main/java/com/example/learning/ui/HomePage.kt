@@ -292,14 +292,7 @@ fun ModeFilterChips(
                 FilterChip(
                     selected = option in selectedTransitFilterOptions,
                     onClick = { onToggleMode(option) },
-                    label = {
-                        when (option) {
-                            is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
-                            is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
-                            is TransitFilterOptions.StopStand -> Text(shortStandName(option.stopStand))
-                            is TransitFilterOptions.TransportMode -> ModeRoundel(option.mode)
-                        }
-                    },
+                    label = { FilterChipLabel(option) },
                     colors = FilterChipDefaults.filterChipColors(
                        selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
                     )
@@ -459,4 +452,19 @@ internal fun shortStandName(fullName: String): String {
     if (stationEnd < 0) return fullName
     val rest = fullName.substring(stationEnd + marker.length).removePrefix(",").trimStart()
     return rest.ifBlank { fullName }
+}
+
+/**
+ * The label content of a filter chip — a mode roundel for transport modes, otherwise the option's
+ * text. Shared by the Home filter row, the FilterPage, and the saved-stop combos so all three render
+ * filters identically.
+ */
+@Composable
+internal fun FilterChipLabel(option: TransitFilterOptions) {
+    when (option) {
+        is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
+        is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
+        is TransitFilterOptions.StopStand -> Text(shortStandName(option.stopStand))
+        is TransitFilterOptions.TransportMode -> ModeRoundel(option.mode)
+    }
 }
