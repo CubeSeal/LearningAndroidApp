@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.yield
 
 enum class LocationMode {
     HighAccuracy,   // GPS + wifi/cell — walking nav, precise stop disambiguation
@@ -214,5 +215,16 @@ class FakeLocationSource(
     override fun setMode(mode: LocationMode) { _mode.value = mode }
     override fun onPermissionGranted() { _hasPermission.value = true }
     override fun onPermissionRevoked() = Unit
-    override suspend fun requestFreshFix(): Unit = Unit
+
+    // Tracked so tests can assert a fresh fix was (or wasn't) requested, e.g. when re-enabling
+    // follow-my-location. Yields once so it has a genuine suspension point like the real
+    // implementation (which awaits the fused location client) — without it, callers that bracket
+    // this with state changes (e.g. a refresh spinner) would see both changes collapse before a
+    // test collector ever observes the "in progress" one.
+    var freshFixRequests = 0
+        private set
+    override suspend fun requestFreshFix() {
+        freshFixRequests++
+        yield()
+    }
 }

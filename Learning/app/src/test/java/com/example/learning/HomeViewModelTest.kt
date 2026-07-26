@@ -10,6 +10,7 @@ import com.example.learning.repos.LatLon
 import com.example.learning.repos.StopRecord
 import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -214,5 +215,152 @@ class HomeViewModelTest {
 
         vm.refresh()
         assertTrue(vm.selectedFiltersForBusStop.value.isEmpty())
+    }
+
+    // --- Follow-my-location toggle ---
+
+    private val stop2Loc = LatLon(-33.9, 151.3)
+    private val stop2 = GlobbedStopRecord(
+        globbedStopId = "G2",
+        globbedStopName = "Other Stop",
+        stopRecords = listOf(StopRecord("S2", "Other Stop", stop2Loc, false)),
+    )
+
+    private fun TestScope.buildInfoWithTwoStops(
+        location: FakeLocationSource = FakeLocationSource(stopLoc),
+        settings: FakeSettingsSource = FakeSettingsSource(),
+    ): TransitInfo = TransitInfo(
+        gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop, stop2)),
+        gtfsRealtimeRepository = FakeRealtimeSource(),
+        locationRepo = location,
+        settingsRepo = settings,
+        scope = backgroundScope,
+    )
+
+    @Test
+    fun `followLocation defaults to true`() = runTest(rule.dispatcher) {
+        val vm = HomeViewModel(buildInfoWithTwoStops())
+        assertTrue(vm.followLocation.value)
+    }
+
+    @Test
+    fun `toggleFollowLocation flips and persists`() = runTest(rule.dispatcher) {
+        val settings = FakeSettingsSource()
+        val vm = HomeViewModel(buildInfoWithTwoStops(settings = settings))
+
+        vm.toggleFollowLocation()
+        assertFalse(vm.followLocation.value)
+        assertFalse(settings.followLocation.first())
+
+        vm.toggleFollowLocation()
+        assertTrue(vm.followLocation.value)
+        assertTrue(settings.followLocation.first())
+    }
+
+    @Test
+    fun `while following, moving location re-focuses the closest stop`() = runTest(rule.dispatcher) {
+        val location = FakeLocationSource(stopLoc)
+        val transitInfo = buildInfoWithTwoStops(location = location)
+
+        transitInfo.focusedBusStop.test {
+            assertEquals("G1", awaitItem()?.globbedStopId)
+            location.changeLocation(stop2Loc)
+            assertEquals("G2", awaitItem()?.globbedStopId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `with following off, moving location leaves the focused stop alone`() = runTest(rule.dispatcher) {
+        val location = FakeLocationSource(stopLoc)
+        val transitInfo = buildInfoWithTwoStops(location = location)
+        val vm = HomeViewModel(transitInfo)
+        vm.toggleFollowLocation()
+
+        transitInfo.focusedBusStop.test {
+            assertEquals("G1", awaitItem()?.globbedStopId)
+            location.changeLocation(stop2Loc)
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `enabling following re-snaps to the closest stop`() = runTest(rule.dispatcher) {
+        val location = FakeLocationSource(stop2Loc)
+        val transitInfo = buildInfoWithTwoStops(location = location)
+        val vm = HomeViewModel(transitInfo)
+        vm.toggleFollowLocation() // off
+        assertEquals("G2", transitInfo.focusedBusStop.value?.globbedStopId)
+
+        vm.toggleFollowLocation() // back on
+        assertEquals("G2", transitInfo.focusedBusStop.value?.globbedStopId)
+    }
+
+    @Test
+    fun `re-enabling follow after a manual pick snaps back to the closest stop`() = runTest(rule.dispatcher) {
+        val location = FakeLocationSource(stopLoc) // closest is G1
+        val transitInfo = buildInfoWithTwoStops(location = location)
+        val vm = HomeViewModel(transitInfo)
+        assertEquals("G1", transitInfo.focusedBusStop.value?.globbedStopId)
+
+        // Manually pick the far stop (G2) — turns following off, same as picking it from search.
+        transitInfo.updateFocusedBusStop(stop2)
+        assertEquals("G2", transitInfo.focusedBusStop.value?.globbedStopId)
+        assertFalse(transitInfo.followLocation.value)
+
+        // Re-enable following without the phone having moved: closest is still G1, the same value
+        // it was before the manual pick, so a plain distinctUntilChangedBy on the closest stop's id
+        // would (wrongly) think nothing changed and skip re-snapping.
+        vm.toggleFollowLocation()
+        assertEquals("G1", transitInfo.focusedBusStop.value?.globbedStopId)
+    }
+
+    @Test
+    fun `enabling follow location requests a fresh fix, disabling does not`() = runTest(rule.dispatcher) {
+        val location = FakeLocationSource(stopLoc)
+        val vm = HomeViewModel(buildInfoWithTwoStops(location = location))
+        val baseline = location.freshFixRequests // init's refresh() already requested one
+
+        vm.toggleFollowLocation() // on -> off
+        assertEquals(baseline, location.freshFixRequests)
+
+        vm.toggleFollowLocation() // off -> on
+        assertEquals(baseline + 1, location.freshFixRequests)
+    }
+
+    @Test
+    fun `enabling follow location shows the refresh spinner while it runs`() = runTest(rule.dispatcher) {
+        val vm = HomeViewModel(buildInfoWithTwoStops())
+        vm.toggleFollowLocation() // on -> off, settles before we start observing
+
+        vm.isRefreshing.test {
+            assertFalse(awaitItem())
+            vm.toggleFollowLocation() // off -> on: should spin while the fresh fix is requested
+            assertTrue(awaitItem())
+            assertFalse(awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `disabling follow location does not show the refresh spinner`() = runTest(rule.dispatcher) {
+        val vm = HomeViewModel(buildInfoWithTwoStops())
+        vm.isRefreshing.test {
+            assertFalse(awaitItem())
+            vm.toggleFollowLocation() // on -> off: no location fetch needed
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `selecting a saved stop turns following off`() = runTest(rule.dispatcher) {
+        val transitInfo = buildInfoWithTwoStops()
+        HomeViewModel(transitInfo)
+        assertTrue(transitInfo.followLocation.value)
+
+        transitInfo.selectSavedStop(stop2, emptySet())
+        assertFalse(transitInfo.followLocation.value)
     }
 }

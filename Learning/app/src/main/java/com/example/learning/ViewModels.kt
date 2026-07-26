@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
@@ -176,9 +175,12 @@ class HomeViewModel(
     private val _expandedFilterGroups = MutableStateFlow(setOf<String>())
     val expandedFilterGroups: StateFlow<Set<String>> = _expandedFilterGroups.asStateFlow()
 
+    // Whether the focused stop keeps following the user's current location. Owned by TransitInfo
+    // (survives independently of which screen is on the stack); this just re-exposes it.
+    val followLocation: StateFlow<Boolean> = transitInfo.followLocation
+
     init {
         refresh()
-        focusOnClosestStop()
         // Scroll the list back to the top whenever its contents change.
         associatedStopTimes.onEach { _scrollToTop.trySend(Unit) }.launchIn(viewModelScope)
         // A combo picked from the saved-stops list applies its filters here (empty set = the naked
@@ -189,10 +191,20 @@ class HomeViewModel(
             .launchIn(viewModelScope)
     }
 
-    private fun focusOnClosestStop() = viewModelScope.launch {
-        transitInfo.closestBusStops.first { it.isNotEmpty() }.firstOrNull()?.let {
-            Log.d("VM", "Updating focused bus stop after refresh.")
-            transitInfo.updateFocusedBusStop(it)
+    // Turning follow-location ON re-fetches a fresh fix (see TransitInfo.setFollowLocation), so the
+    // same refresh spinner used by pull-to-refresh shows while that's in flight. Turning it off is
+    // instant (no location fetch), so the spinner stays untouched.
+    fun toggleFollowLocation() = viewModelScope.launch {
+        val enabling = !transitInfo.followLocation.value
+        if (!enabling) {
+            transitInfo.setFollowLocation(false)
+            return@launch
+        }
+        _isRefreshing.update { true }
+        try {
+            transitInfo.setFollowLocation(true)
+        } finally {
+            _isRefreshing.update { false }
         }
     }
 

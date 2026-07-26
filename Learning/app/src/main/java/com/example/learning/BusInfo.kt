@@ -6,6 +6,7 @@ import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.GTFS_GH_OWNER
 import com.example.learning.repos.GTFS_GH_REPO
 import com.example.learning.repos.GlobbedStopRecord
+import com.example.learning.repos.LocationMode
 import com.example.learning.repos.LocationSource
 import com.example.learning.repos.RealtimeTripInfo
 import com.example.learning.repos.RealtimeGtfsSource
@@ -29,8 +30,10 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.forEach
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -203,6 +206,43 @@ class TransitInfo(
         initialValue = emptyList()
     )
 
+    // Whether the focused stop should keep following the user's current location. Defaults to true;
+    // turned off by any manual stop pick (see updateFocusedBusStop) so the user's choice isn't
+    // silently overwritten by the next location update.
+    val followLocation: StateFlow<Boolean> = settingsRepo.followLocation
+        .stateIn(scope = scope, started = SharingStarted.Eagerly, initialValue = true)
+
+    suspend fun setFollowLocation(enabled: Boolean) {
+        settingsRepo.setFollowLocation(enabled)
+        if (enabled) locationRepo.requestFreshFix() // re-snap immediately, don't wait for the poll
+    }
+
+    init {
+        // Drive the location provider from the toggle: Balanced gives continuous updates while
+        // following, Off stops them entirely (setMode was previously never called anywhere, so
+        // location updates never actually ran beyond the one-shot requestFreshFix() in refresh()).
+        followLocation
+            .onEach { locationRepo.setMode(if (it) LocationMode.Balanced else LocationMode.Off) }
+            .launchIn(scope)
+
+        // While following, keep the focused stop pinned to the closest one. Written straight to
+        // settingsRepo (not updateFocusedBusStop) so this doesn't itself trip the manual-pick auto-off.
+        //
+        // distinctUntilChanged is keyed on (follow, stopId) together, not stopId alone: a manual pick
+        // happens while follow=false, so it never reaches this pipeline (filtered out below), and
+        // never updates "the last stopId seen here". If the user then re-enables following while
+        // standing in the same spot as before the manual pick, the closest stop id is identical to
+        // what it was pre-pick — keying on stopId alone would treat that as "no change" and skip
+        // re-snapping, silently leaving the manually-picked stop focused. Including `follow` in the
+        // key ensures the false->true edge is never conflated away.
+        combine(followLocation, closestBusStops) { follow, closest ->
+            follow to closest.firstOrNull()?.globbedStopId
+        }
+            .distinctUntilChanged()
+            .onEach { (follow, stopId) -> if (follow && stopId != null) settingsRepo.setHomeStopId(stopId) }
+            .launchIn(scope)
+    }
+
     private val realtimeStopTimesRecord: StateFlow<Map<Pair<String, String>, RealtimeStopTimesRecord>> =
         locationRepo.currentLocation.map { _ ->
             gtfsRealtimeRepository.getRealtimeData()
@@ -341,7 +381,10 @@ class TransitInfo(
         _filterSelection.trySend(combo)
     }
 
+    // A manual stop pick (search, trip stop tap, or a saved stop via selectSavedStop above). Turns
+    // off follow-my-location so this choice isn't overwritten by the next location update.
     suspend fun updateFocusedBusStop(globbedBusStopRecord: GlobbedStopRecord) {
+        settingsRepo.setFollowLocation(false)
         settingsRepo.setHomeStopId(globbedBusStopRecord.globbedStopId)
         Log.d("TransitInfo", "Setting home bus stop to ${globbedBusStopRecord.globbedStopId}")
     }

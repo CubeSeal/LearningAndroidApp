@@ -26,7 +26,7 @@ class PickStopViewModelTest {
         stopRecords = listOf(StopRecord("S1", "Test Stop", stopLoc, false)),
     )
 
-    private fun TestScope.buildVm(): PickStopViewModel = PickStopViewModel(
+    private fun TestScope.buildInfo(settings: FakeSettingsSource = FakeSettingsSource()): TransitInfo =
         TransitInfo(
             gtfsStaticRepository = FakeStaticGtfsSource(
                 globbedStops = listOf(stop),
@@ -34,10 +34,11 @@ class PickStopViewModelTest {
             ),
             gtfsRealtimeRepository = FakeRealtimeSource(),
             locationRepo = FakeLocationSource(),
-            settingsRepo = FakeSettingsSource(),
+            settingsRepo = settings,
             scope = backgroundScope,
         )
-    )
+
+    private fun TestScope.buildVm(): PickStopViewModel = PickStopViewModel(buildInfo())
 
     @Test
     fun `searchExpanded defaults to false`() = runTest(rule.dispatcher) {
@@ -74,6 +75,17 @@ class PickStopViewModelTest {
             expectNoEvents()
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `onStopSelected turns off follow-my-location`() = runTest(rule.dispatcher) {
+        val settings = FakeSettingsSource()
+        val transitInfo = buildInfo(settings)
+        val vm = PickStopViewModel(transitInfo)
+
+        assertTrue(transitInfo.followLocation.value)
+        vm.onStopSelected(stop)
+        assertFalse(transitInfo.followLocation.value)
     }
 
     @Test

@@ -34,6 +34,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.LocationDisabled
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Card
@@ -91,6 +93,7 @@ fun HOMEScreen(
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
+    val followLocation by viewModel.followLocation.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
@@ -123,6 +126,8 @@ fun HOMEScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             HomeHeader(
                 focusedBusStop = focusedBusStop,
+                followLocation = followLocation,
+                onToggleFollowLocation = { viewModel.toggleFollowLocation() },
                 onSaveStop = { focusedBusStop?.let { viewModel.addSavedStop(it) } },
                 onEditStop = { viewModel.onEditStopClicked() },
             )
@@ -150,12 +155,15 @@ fun HOMEScreen(
 }
 
 /**
- * The Home screen's static header: a divider, then a top-right pair of icon buttons (save the stop /
- * pencil-edit to open the stop picker) above the centred stop name. Pinned above the list.
+ * The Home screen's static header: a divider, then a top-right row of icon buttons (follow-location
+ * toggle, save the stop, pencil-edit to open the stop picker) above the centred stop name. Pinned
+ * above the list.
  */
 @Composable
 fun HomeHeader(
     focusedBusStop: GlobbedStopRecord?,
+    followLocation: Boolean,
+    onToggleFollowLocation: () -> Unit,
     onSaveStop: () -> Unit,
     onEditStop: () -> Unit,
 ) {
@@ -169,6 +177,14 @@ fun HomeHeader(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.End,
     ) {
+        IconButton(onClick = onToggleFollowLocation) {
+            Icon(
+                if (followLocation) Icons.Filled.MyLocation else Icons.Filled.LocationDisabled,
+                contentDescription = if (followLocation) "Stop following my location" else "Follow my location",
+                tint = if (followLocation) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         IconButton(onClick = onSaveStop) {
             Icon(Icons.Filled.Save, contentDescription = "Save stop")
         }

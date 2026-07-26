@@ -30,11 +30,16 @@ val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(na
 interface SettingsSource {
     val homeStopId: Flow<String?>
     val savedStops: Flow<List<SavedStopEntry>>
+    // Whether the focused stop should keep following the user's current location. Defaults to true
+    // (matches the app's original always-follow behaviour); turned off whenever the user manually
+    // picks a stop (saved stop, search, or a trip's stop tap).
+    val followLocation: Flow<Boolean>
     suspend fun setHomeStopId(stopId: String)
     suspend fun addSavedStop(stopId: String)
     suspend fun addSavedCombo(stopId: String, combo: List<TransitFilterOptions>)
     suspend fun removeSavedCombo(stopId: String, combo: List<TransitFilterOptions>)
     suspend fun removeSavedStop(stopId: String)
+    suspend fun setFollowLocation(enabled: Boolean)
 }
 
 /** Ensure an entry for [stopId] exists (naked), returning the possibly-extended list. */
@@ -62,6 +67,7 @@ class SettingsRepository(private val context: Context) : SettingsSource {
         // once for migration so existing users keep their saved stops.
         val SAVED_STOPS = stringSetPreferencesKey("saved_stops")
         val SAVED_STOP_ENTRIES = stringPreferencesKey("saved_stop_entries")
+        val FOLLOW_LOCATION = booleanPreferencesKey("follow_location")
     }
 
     val darkTheme: Flow<Boolean> = context.settingsDataStore.data
@@ -78,6 +84,12 @@ class SettingsRepository(private val context: Context) : SettingsSource {
 
     override val savedStops: Flow<List<SavedStopEntry>> = context.settingsDataStore.data
         .map { prefs -> prefs.readSavedStops() }
+
+    override val followLocation: Flow<Boolean> = context.settingsDataStore.data
+        .map { it[Keys.FOLLOW_LOCATION] ?: true }
+    override suspend fun setFollowLocation(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.FOLLOW_LOCATION] = enabled }
+    }
 
     override suspend fun addSavedStop(stopId: String) = editSavedStops { it.ensureStop(stopId) }
     override suspend fun addSavedCombo(stopId: String, combo: List<TransitFilterOptions>) =
@@ -103,6 +115,7 @@ class SettingsRepository(private val context: Context) : SettingsSource {
 class FakeSettingsSource(
     homeStopId: String? = null,
     savedStops: List<SavedStopEntry> = emptyList(),
+    followLocation: Boolean = true,
 ) : SettingsSource {
     private val _homeStopId = MutableStateFlow(homeStopId)
     override val homeStopId: Flow<String?> = _homeStopId
@@ -110,8 +123,15 @@ class FakeSettingsSource(
     private val _savedStops = MutableStateFlow(savedStops)
     override val savedStops: Flow<List<SavedStopEntry>> = _savedStops
 
+    private val _followLocation = MutableStateFlow(followLocation)
+    override val followLocation: Flow<Boolean> = _followLocation
+
     override suspend fun setHomeStopId(stopId: String) {
         _homeStopId.value = stopId
+    }
+
+    override suspend fun setFollowLocation(enabled: Boolean) {
+        _followLocation.value = enabled
     }
 
     override suspend fun addSavedStop(stopId: String) {
