@@ -15,7 +15,9 @@ import com.example.learning.repos.TransitMode
 import com.example.learning.repos.transitModeOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -29,10 +31,12 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.forEach
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -61,21 +65,40 @@ private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimes
     }
 }
 
+// @Serializable so saved-stop filter combos can be persisted (see [SavedStopEntry]); the sealed
+// hierarchy is polymorphically encoded by kotlinx.serialization.
+@Serializable
 sealed interface TransitFilterOptions {
     // Route/stand carry their [mode] so the UI can name them per transport type (train "lines" and
     // "platforms" vs bus "routes" and "stands"). The mode is part of the option's identity, so both
     // the filter-list builder and the per-trip applicable set below must stamp it consistently.
+    @Serializable
     data class RouteShortName(val routeShortName: String, val mode: TransitMode): TransitFilterOptions {
         init { require(routeShortName.isNotBlank()) }
     }
+    @Serializable
     data class TripHeadsign(val tripHeadsign: String): TransitFilterOptions {
         init { require(tripHeadsign.isNotBlank()) }
     }
+    @Serializable
     data class StopStand(val stopStand: String, val mode: TransitMode): TransitFilterOptions {
         init { require(stopStand.isNotBlank()) }
     }
+    @Serializable
     data class TransportMode(val mode: TransitMode): TransitFilterOptions
 }
+
+/**
+ * A saved stop as persisted: the stop id plus the filter **combos** saved against it. Each combo is
+ * a set of filters (stored as a `List` for stable serialization). An entry with no combos is a
+ * "naked" saved stop. See [SettingsSource]. [SavedStop] is the hydrated, UI-facing projection.
+ */
+@Serializable
+data class SavedStopEntry(val stopId: String, val combos: List<List<TransitFilterOptions>> = emptyList())
+
+/** Hydrated saved stop for the UI: the resolved [GlobbedStopRecord] plus its saved filter combos. */
+@Immutable
+data class SavedStop(val stop: GlobbedStopRecord, val combos: List<Set<TransitFilterOptions>>)
 
 /**
  * The natural hierarchy of filter types, broad → specific: mode, then stand/platform, then route/
@@ -292,15 +315,31 @@ class TransitInfo(
             emptyMap()
         )
 
-    val savedStops: StateFlow<List<GlobbedStopRecord>> = settingsRepo.savedStops
-        .map { ids ->
-            ids.mapNotNull { id -> gtfsStaticRepository.getGlobbedStopById(id) }
+    val savedStops: StateFlow<List<SavedStop>> = settingsRepo.savedStops
+        .map { entries ->
+            entries.mapNotNull { entry ->
+                gtfsStaticRepository.getGlobbedStopById(entry.stopId)?.let { stop ->
+                    SavedStop(stop, entry.combos.map { it.toSet() })
+                }
+            }
         }
         .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
             initialValue = emptyList()
         )
+
+    // One-shot filter combo chosen from the saved-stops picker. PickStop emits it (via
+    // [selectSavedStop]); Home — retained on the back stack while PickStop is on top — collects it and
+    // applies the filters. An empty set means the "naked" stop (clear filters).
+    private val _filterSelection = Channel<Set<TransitFilterOptions>>(Channel.BUFFERED)
+    val filterSelection: Flow<Set<TransitFilterOptions>> = _filterSelection.receiveAsFlow()
+
+    /** Focus [stop] and hand [combo] to Home to apply (empty = naked). */
+    suspend fun selectSavedStop(stop: GlobbedStopRecord, combo: Set<TransitFilterOptions>) {
+        updateFocusedBusStop(stop)
+        _filterSelection.trySend(combo)
+    }
 
     suspend fun updateFocusedBusStop(globbedBusStopRecord: GlobbedStopRecord) {
         settingsRepo.setHomeStopId(globbedBusStopRecord.globbedStopId)
@@ -329,10 +368,18 @@ class TransitInfo(
         return gtfsStaticRepository.getStopTimesByTripId(tripId, date)
     }
 
-    suspend fun addSavedStop(globbedBusStopRecord: GlobbedStopRecord) {
-        settingsRepo.addSavedStop(globbedBusStopRecord.globbedStopId)
+    /** Save [stop]; if [filters] is non-empty, also save it as a filter combo under that stop. */
+    suspend fun saveStop(stop: GlobbedStopRecord, filters: Set<TransitFilterOptions>) {
+        if (filters.isEmpty()) settingsRepo.addSavedStop(stop.globbedStopId)
+        else settingsRepo.addSavedCombo(stop.globbedStopId, filters.toList())
     }
 
+    /** Remove a single saved filter combo from a stop (the stop itself stays saved). */
+    suspend fun removeSavedCombo(stopId: String, combo: Set<TransitFilterOptions>) {
+        settingsRepo.removeSavedCombo(stopId, combo.toList())
+    }
+
+    /** Clear-all: remove the whole saved stop, combos included. */
     suspend fun removeSavedStop(globbedBusStopRecord: GlobbedStopRecord) {
         settingsRepo.removeSavedStop(globbedBusStopRecord.globbedStopId)
     }

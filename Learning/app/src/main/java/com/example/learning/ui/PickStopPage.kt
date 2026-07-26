@@ -18,13 +18,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SearchBar
@@ -50,7 +55,10 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
 import com.example.learning.PickStopNavEvent
 import com.example.learning.PickStopViewModel
+import com.example.learning.SavedStop
 import com.example.learning.SearchTab
+import com.example.learning.TransitFilterOptions
+import com.example.learning.filterLabel
 import com.example.learning.repos.GlobbedStopRecord
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +68,8 @@ fun PickStopScreen(
     viewModel: PickStopViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val savedStops by viewModel.savedStops.collectAsStateWithLifecycle()
+    val expandedSavedStops by viewModel.expandedSavedStops.collectAsStateWithLifecycle()
+    val pendingClearAll by viewModel.pendingClearAll.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val searchExpanded by viewModel.searchExpanded.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -106,11 +116,22 @@ fun PickStopScreen(
             )
 
             SearchTab.Saved -> SavedStopsTabPage(
-               savedStops = savedStops,
-               onTap = { viewModel.onStopSelected(it) },
-               onRemove = viewModel::removeSavedStop
+                savedStops = savedStops,
+                expandedSavedStops = expandedSavedStops,
+                onToggleExpanded = viewModel::toggleExpanded,
+                onSelect = { stop, combo -> viewModel.onSavedStopSelected(stop, combo) },
+                onRemoveCombo = { stopId, combo -> viewModel.removeCombo(stopId, combo) },
+                onClearAll = { viewModel.onClearAllClicked(it) },
             )
         }
+    }
+
+    pendingClearAll?.let { stop ->
+        ConfirmClearAllDialog(
+            stop = stop,
+            onConfirm = { viewModel.onConfirmClearAll() },
+            onDismiss = { viewModel.onDismissClearAll() },
+        )
     }
 }
 
@@ -218,9 +239,12 @@ fun BoxScope.SearchBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedStopsTabPage(
-    savedStops: List<GlobbedStopRecord>,
-    onTap: (GlobbedStopRecord) -> Unit,
-    onRemove: (GlobbedStopRecord) -> Unit
+    savedStops: List<SavedStop>,
+    expandedSavedStops: Set<String>,
+    onToggleExpanded: (String) -> Unit,
+    onSelect: (GlobbedStopRecord, Set<TransitFilterOptions>) -> Unit,
+    onRemoveCombo: (String, Set<TransitFilterOptions>) -> Unit,
+    onClearAll: (GlobbedStopRecord) -> Unit,
 ) {
     if (savedStops.isEmpty()) {
         EmptyState(modifier = Modifier.fillMaxSize() )
@@ -231,12 +255,15 @@ fun SavedStopsTabPage(
         ) {
             items(
                 items = savedStops,
-                key = { it.globbedStopId }
-            ) { stop ->
+                key = { it.stop.globbedStopId }
+            ) { saved ->
                 SavedStopRow(
-                    stop = stop,
-                    onTap = onTap,
-                    onRemove = onRemove
+                    saved = saved,
+                    expanded = saved.stop.globbedStopId in expandedSavedStops,
+                    onToggleExpanded = onToggleExpanded,
+                    onSelect = onSelect,
+                    onRemoveCombo = onRemoveCombo,
+                    onClearAll = onClearAll,
                 )
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant
@@ -248,23 +275,39 @@ fun SavedStopsTabPage(
 
 @Composable
 private fun SavedStopRow(
-    stop: GlobbedStopRecord,
-    onTap: (GlobbedStopRecord) -> Unit,
-    onRemove: (GlobbedStopRecord) -> Unit
+    saved: SavedStop,
+    expanded: Boolean,
+    onToggleExpanded: (String) -> Unit,
+    onSelect: (GlobbedStopRecord, Set<TransitFilterOptions>) -> Unit,
+    onRemoveCombo: (String, Set<TransitFilterOptions>) -> Unit,
+    onClearAll: (GlobbedStopRecord) -> Unit,
 ) {
+    val stop = saved.stop
+    // Top-level row = the naked stop. Tap selects it with no filters; the chevron (only when combos
+    // exist) reveals them; the trailing x is the destructive clear-all (confirmed via dialog).
     ListItem(
-        modifier = Modifier.clickable(onClick = {onTap(stop)}),
+        modifier = Modifier.clickable { onSelect(stop, emptySet()) },
         headlineContent = { Text(stop.globbedStopName) },
         supportingContent = { Text("Stop ${stop.globbedStopId}") },
         leadingContent = {
-            Icon(
-                Icons.Default.DirectionsBus,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
+            if (saved.combos.isNotEmpty()) {
+                IconButton(onClick = { onToggleExpanded(stop.globbedStopId) }) {
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse saved filters" else "Show saved filters",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            } else {
+                Icon(
+                    Icons.Default.DirectionsBus,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         },
         trailingContent = {
-            IconButton(onClick = {onRemove(stop)}) {
+            IconButton(onClick = { onClearAll(stop) }) {
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Remove ${stop.globbedStopName}",
@@ -272,6 +315,58 @@ private fun SavedStopRow(
                 )
             }
         }
+    )
+
+    if (expanded) {
+        saved.combos.forEach { combo ->
+            SavedComboRow(
+                stop = stop,
+                combo = combo,
+                onSelect = onSelect,
+                onRemoveCombo = onRemoveCombo,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SavedComboRow(
+    stop: GlobbedStopRecord,
+    combo: Set<TransitFilterOptions>,
+    onSelect: (GlobbedStopRecord, Set<TransitFilterOptions>) -> Unit,
+    onRemoveCombo: (String, Set<TransitFilterOptions>) -> Unit,
+) {
+    // Indented sub-row: tap applies this exact filter combo; the trailing x removes just this combo.
+    ListItem(
+        modifier = Modifier
+            .clickable { onSelect(stop, combo) }
+            .padding(start = 32.dp),
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        headlineContent = { Text(combo.joinToString(", ") { filterLabel(it) }) },
+        trailingContent = {
+            IconButton(onClick = { onRemoveCombo(stop.globbedStopId, combo) }) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Remove filter",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun ConfirmClearAllDialog(
+    stop: GlobbedStopRecord,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove saved stop?") },
+        text = { Text("This removes ${stop.globbedStopName} and all of its saved filters.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Remove") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

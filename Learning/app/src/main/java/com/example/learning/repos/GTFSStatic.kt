@@ -88,6 +88,7 @@ fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
  * The transport mode a departure belongs to, derived from GTFS `route_type`. The schedule DB merges
  * the TfNSW bus and train feeds, so this is how the app tells trains and buses apart.
  */
+@kotlinx.serialization.Serializable
 enum class TransitMode(val label: String) {
     BUS("Bus"),
     TRAIN("Train"),

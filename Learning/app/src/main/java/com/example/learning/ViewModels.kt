@@ -182,6 +182,12 @@ class HomeViewModel(
         focusOnClosestStop()
         // Scroll the list back to the top whenever its contents change.
         associatedStopTimes.onEach { _scrollToTop.trySend(Unit) }.launchIn(viewModelScope)
+        // A combo picked from the saved-stops list applies its filters here (empty set = the naked
+        // stop, so clear). Home is retained on the back stack while PickStop is on top, so this
+        // collector is live when the selection arrives.
+        transitInfo.filterSelection
+            .onEach { if (it.isEmpty()) clearFilters() else applyFilters(it) }
+            .launchIn(viewModelScope)
     }
 
     private fun focusOnClosestStop() = viewModelScope.launch {
@@ -203,9 +209,12 @@ class HomeViewModel(
         }
     }
 
+    // Save the stop along with whatever filters are currently active (an empty set saves it "naked").
     fun addSavedStop(globbedBusStopRecord: GlobbedStopRecord) = viewModelScope.launch {
-        transitInfo.addSavedStop(globbedBusStopRecord)
-        _snackbarMessages.trySend("Saved ${globbedBusStopRecord.globbedStopName}")
+        val filters = _selectedFiltersForBusStop.value
+        transitInfo.saveStop(globbedBusStopRecord, filters)
+        val suffix = if (filters.isEmpty()) "" else " with filters"
+        _snackbarMessages.trySend("Saved ${globbedBusStopRecord.globbedStopName}$suffix")
     }
 
     fun toggleFilterForBusStops(busStopFilterOptions: TransitFilterOptions) {
@@ -285,6 +294,16 @@ class PickStopViewModel(
     private val _searchExpanded = MutableStateFlow(false)
     val searchExpanded: StateFlow<Boolean> = _searchExpanded.asStateFlow()
 
+    // Which saved stops have their combo dropdown expanded (keyed by globbedStopId) — mirrors the
+    // FilterPage's expandedFilterGroups pattern.
+    private val _expandedSavedStops = MutableStateFlow(setOf<String>())
+    val expandedSavedStops: StateFlow<Set<String>> = _expandedSavedStops.asStateFlow()
+
+    // The stop pending a "clear all" confirmation (null = no dialog). Held here so the dialog is a
+    // dumb renderer of VM state and the confirm/dismiss decision is testable.
+    private val _pendingClearAll = MutableStateFlow<GlobbedStopRecord?>(null)
+    val pendingClearAll: StateFlow<GlobbedStopRecord?> = _pendingClearAll.asStateFlow()
+
     private val _navEvents = Channel<PickStopNavEvent>(Channel.BUFFERED)
     val navEvents: Flow<PickStopNavEvent> = _navEvents.receiveAsFlow()
 
@@ -296,16 +315,41 @@ class PickStopViewModel(
     fun onQueryChange(q: String) {  _query.value = q }
     fun onTabSelected(tab: SearchTab) { _selectedTab.value = tab }
     fun onSearchExpandedChange(expanded: Boolean) { _searchExpanded.value = expanded }
-    fun removeSavedStop(globbedBusStopRecord: GlobbedStopRecord) = viewModelScope.launch {
-        transitInfo.removeSavedStop(globbedBusStopRecord)
+
+    fun toggleExpanded(stopId: String) {
+        _expandedSavedStops.update { if (stopId in it) it - stopId else it + stopId }
     }
 
-    // Focus the chosen stop, then return to Home.
+    // Remove a single saved filter combo from a stop (no confirmation — the stop itself stays saved).
+    fun removeCombo(stopId: String, combo: Set<TransitFilterOptions>) = viewModelScope.launch {
+        transitInfo.removeSavedCombo(stopId, combo)
+    }
+
+    // Clear-all is destructive (wipes the stop + every combo), so it goes through a confirmation.
+    fun onClearAllClicked(stop: GlobbedStopRecord) { _pendingClearAll.value = stop }
+    fun onDismissClearAll() { _pendingClearAll.value = null }
+    fun onConfirmClearAll() {
+        val stop = _pendingClearAll.value ?: return
+        _pendingClearAll.value = null
+        viewModelScope.launch { transitInfo.removeSavedStop(stop) }
+    }
+
+    // Focus the chosen stop (search tab), then return to Home. Leaves the active filters untouched.
     fun onStopSelected(stop: GlobbedStopRecord) {
         if (navigating) return
         navigating = true
         viewModelScope.launch {
             transitInfo.updateFocusedBusStop(stop)
+            _navEvents.trySend(PickStopNavEvent.PopBack)
+        }
+    }
+
+    // Focus a saved stop and apply [combo] (empty = naked), then return to Home.
+    fun onSavedStopSelected(stop: GlobbedStopRecord, combo: Set<TransitFilterOptions>) {
+        if (navigating) return
+        navigating = true
+        viewModelScope.launch {
+            transitInfo.selectSavedStop(stop, combo)
             _navEvents.trySend(PickStopNavEvent.PopBack)
         }
     }

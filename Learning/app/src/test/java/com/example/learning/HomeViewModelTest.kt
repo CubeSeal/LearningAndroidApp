@@ -39,8 +39,8 @@ class HomeViewModelTest {
         stopId = "S1", stopName = "Test Stop", stopLoc = stopLoc, wheelchairBoarding = false,
     )
 
-    private fun TestScope.buildVm(departures: List<StopTimesRecord> = emptyList()): HomeViewModel {
-        val transitInfo = TransitInfo(
+    private fun TestScope.buildInfo(departures: List<StopTimesRecord> = emptyList()): TransitInfo =
+        TransitInfo(
             gtfsStaticRepository = FakeStaticGtfsSource(
                 globbedStops = listOf(stop),
                 stopTimesRecords = departures,
@@ -50,8 +50,11 @@ class HomeViewModelTest {
             settingsRepo = FakeSettingsSource(),
             scope = backgroundScope,
         )
-        return HomeViewModel(transitInfo)
-    }
+
+    private fun TestScope.buildVm(departures: List<StopTimesRecord> = emptyList()): HomeViewModel =
+        HomeViewModel(buildInfo(departures))
+
+    private val filter100 = TransitFilterOptions.RouteShortName("100", TransitMode.BUS)
 
     @Test
     fun `route filter narrows departures then restores`() = runTest(rule.dispatcher) {
@@ -162,6 +165,44 @@ class HomeViewModelTest {
             assertTrue(msg.contains("Test Stop"))
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `addSavedStop with active filters saves them as a combo`() = runTest(rule.dispatcher) {
+        val transitInfo = buildInfo(listOf(dep("100", "Downtown")))
+        val vm = HomeViewModel(transitInfo)
+        vm.toggleFilterForBusStops(filter100)
+
+        vm.addSavedStop(stop)
+
+        val saved = transitInfo.savedStops.value.single()
+        assertEquals("G1", saved.stop.globbedStopId)
+        assertEquals(listOf(setOf<TransitFilterOptions>(filter100)), saved.combos)
+    }
+
+    @Test
+    fun `addSavedStop with no active filters saves a naked stop`() = runTest(rule.dispatcher) {
+        val transitInfo = buildInfo()
+        val vm = HomeViewModel(transitInfo)
+
+        vm.addSavedStop(stop)
+
+        val saved = transitInfo.savedStops.value.single()
+        assertEquals("G1", saved.stop.globbedStopId)
+        assertTrue(saved.combos.isEmpty())
+    }
+
+    @Test
+    fun `a saved-stop combo selection is applied to the home filters`() = runTest(rule.dispatcher) {
+        val transitInfo = buildInfo()
+        val vm = HomeViewModel(transitInfo)
+
+        transitInfo.selectSavedStop(stop, setOf(filter100))
+        assertEquals(setOf(filter100), vm.selectedFiltersForBusStop.value)
+
+        // The naked option clears the filters again.
+        transitInfo.selectSavedStop(stop, emptySet())
+        assertTrue(vm.selectedFiltersForBusStop.value.isEmpty())
     }
 
     @Test
