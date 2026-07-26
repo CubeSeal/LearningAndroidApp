@@ -148,6 +148,32 @@ val filterLabel: (TransitFilterOptions) -> String = { option ->
     }
 }
 
+/**
+ * The FilterPage's tab categories, broad -> specific matching [filterTypeRank]. Trains and buses use
+ * different terminology for the same facet (platforms vs stands, lines vs routes), so those tiers
+ * split into a train and a bus tab; destinations are mode-agnostic.
+ */
+enum class FilterCategory(val title: String) {
+    Modes("Modes"),
+    Platforms("Platforms"),
+    Stands("Stands"),
+    Lines("Lines"),
+    Routes("Routes"),
+    Destinations("Destinations"),
+}
+
+/** Which [FilterCategory] tab a filter option belongs under. */
+val filterCategoryOf: (TransitFilterOptions) -> FilterCategory = { option ->
+    when (option) {
+        is TransitFilterOptions.TransportMode -> FilterCategory.Modes
+        is TransitFilterOptions.StopStand ->
+            if (option.mode == TransitMode.TRAIN) FilterCategory.Platforms else FilterCategory.Stands
+        is TransitFilterOptions.RouteShortName ->
+            if (option.mode == TransitMode.TRAIN) FilterCategory.Lines else FilterCategory.Routes
+        is TransitFilterOptions.TripHeadsign -> FilterCategory.Destinations
+    }
+}
+
 @Immutable
 data class StopTimesRecordWithRealtime(
     // I think it's okay to have nesting like this if the underlying data structures are still flat.

@@ -97,6 +97,23 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `beginStaging seeds the first available filter category`() = runTest(rule.dispatcher) {
+        val vm = buildVm(listOf(dep("100", "Downtown"), dep("200", "Uptown", soon.plusMinutes(10))))
+        vm.beginStaging()
+        // Both departures are bus-only, so Modes never differentiates anything and is dropped;
+        // Routes precedes Destinations in FilterCategory's broad -> specific order.
+        assertEquals(FilterCategory.Routes, vm.selectedFilterCategory.value)
+    }
+
+    @Test
+    fun `selectFilterCategory updates the selected category`() = runTest(rule.dispatcher) {
+        val vm = buildVm(listOf(dep("100", "Downtown"), dep("200", "Uptown", soon.plusMinutes(10))))
+        vm.beginStaging()
+        vm.selectFilterCategory(FilterCategory.Destinations)
+        assertEquals(FilterCategory.Destinations, vm.selectedFilterCategory.value)
+    }
+
+    @Test
     fun `scrollToTop fires when data loads`() = runTest(rule.dispatcher) {
         val vm = buildVm(listOf(dep("100", "Downtown")))
         vm.scrollToTop.test {

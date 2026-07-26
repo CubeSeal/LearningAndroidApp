@@ -171,9 +171,9 @@ class HomeViewModel(
     // --- FilterPage staging (shared: FilterScreen uses this same back-stack-scoped ViewModel) ---
     private val _stagedFilters = MutableStateFlow(setOf<TransitFilterOptions>())
     val stagedFilters: StateFlow<Set<TransitFilterOptions>> = _stagedFilters.asStateFlow()
-    // Which filter groups have had their "…" overflow chip flicked open.
-    private val _expandedFilterGroups = MutableStateFlow(setOf<String>())
-    val expandedFilterGroups: StateFlow<Set<String>> = _expandedFilterGroups.asStateFlow()
+    // Which tab is showing on the FilterPage's tab bar. Null only before beginStaging() has ever run.
+    private val _selectedFilterCategory = MutableStateFlow<FilterCategory?>(null)
+    val selectedFilterCategory: StateFlow<FilterCategory?> = _selectedFilterCategory.asStateFlow()
 
     // Whether the focused stop keeps following the user's current location. Owned by TransitInfo
     // (survives independently of which screen is on the stack); this just re-exposes it.
@@ -260,18 +260,20 @@ class HomeViewModel(
     fun onFilterBackClicked() = navigate(HomeNavEvent.PopBack)
 
     // --- FilterPage staging actions ---
-    // Seed the staged selection from the committed one when the filter screen opens.
+    // Seed the staged selection from the committed one when the filter screen opens, and default the
+    // tab bar to the first available category (in filterTypeRank order) for this stop.
     fun beginStaging() {
         _stagedFilters.value = _selectedFiltersForBusStop.value
-        _expandedFilterGroups.value = emptySet()
+        val available = availableFiltersForBusStop.value
+        _selectedFilterCategory.value =
+            FilterCategory.entries.firstOrNull { category -> available.any { filterCategoryOf(it) == category } }
     }
     fun toggleStaged(option: TransitFilterOptions) {
         _stagedFilters.update { if (option in it) it - option else it + option }
     }
-    fun expandFilterGroup(title: String) { _expandedFilterGroups.update { it + title } }
+    fun selectFilterCategory(category: FilterCategory) { _selectedFilterCategory.value = category }
     fun resetStaging() {
         _stagedFilters.value = emptySet()
-        _expandedFilterGroups.value = emptySet()
     }
     // Commit the staged selection and return to Home.
     fun applyStaging() {
