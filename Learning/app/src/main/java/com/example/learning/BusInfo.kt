@@ -389,9 +389,9 @@ class TransitInfo(
             initialValue = emptyList()
         )
 
-    // One-shot filter combo chosen from the saved-stops picker. PickStop emits it (via
-    // [selectSavedStop]); Home — retained on the back stack while PickStop is on top — collects it and
-    // applies the filters. An empty set means the "naked" stop (clear filters).
+    // One-shot filter combo chosen from the saved-stops page. SavedStops emits it (via
+    // [selectSavedStop]); Home — retained on the back stack while the saved-stops page is on top —
+    // collects it and applies the filters. An empty set means the "naked" stop (clear filters).
     private val _filterSelection = Channel<Set<TransitFilterOptions>>(Channel.BUFFERED)
     val filterSelection: Flow<Set<TransitFilterOptions>> = _filterSelection.receiveAsFlow()
 

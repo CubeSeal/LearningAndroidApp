@@ -31,26 +31,71 @@ class SavedStopsViewModelTest {
     private val filter100 = TransitFilterOptions.RouteShortName("100", TransitMode.BUS)
     private val filter200 = TransitFilterOptions.RouteShortName("200", TransitMode.BUS)
 
-    private fun TestScope.buildInfo(
-        settings: FakeSettingsSource = FakeSettingsSource(),
+    // Standard type to return injected dependencies to inspect.
+    private data class TestDependencies(
+        val vm: SavedStopsViewModel,
+        val gtfsStaticRepository: FakeStaticGtfsSource,
+        val gtfsRealtimeRepository: FakeRealtimeSource,
+        val locationRepository: FakeLocationSource,
+        val settingsRepository: FakeSettingsSource,
+    )
+
+    // A saved-stop tap also drives Home (focus + filter combo), so the cross-screen tests need both
+    // ViewModels over one TransitInfo. Everything else only needs the saved-stops VM.
+    private data class TestVmPair(
+        val vm: SavedStopsViewModel,
+        val homeViewModel: HomeViewModel,
+        val settingsRepository: FakeSettingsSource,
+    )
+
+    private fun TestScope.buildTransitInfo(
+        gtfsStaticRepository: FakeStaticGtfsSource =
+            FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = emptyList()),
+        gtfsRealtimeRepository: FakeRealtimeSource = FakeRealtimeSource(),
+        locationRepo: FakeLocationSource = FakeLocationSource(),
+        settingsRepo: FakeSettingsSource = FakeSettingsSource(),
     ) = TransitInfo(
-        gtfsStaticRepository = FakeStaticGtfsSource(
-            globbedStops = listOf(stop),
-            stopTimesRecords = emptyList(),
-        ),
-        gtfsRealtimeRepository = FakeRealtimeSource(),
-        locationRepo = FakeLocationSource(),
-        settingsRepo = settings,
-        scope = backgroundScope,
+        gtfsStaticRepository,
+        gtfsRealtimeRepository,
+        locationRepo,
+        settingsRepo,
+        backgroundScope,
     )
 
     private fun TestScope.buildVm(
         entries: List<SavedStopEntry> = emptyList(),
-    ): SavedStopsViewModel = SavedStopsViewModel(buildInfo(FakeSettingsSource(savedStops = entries)))
+    ): TestDependencies {
+        val gtfsStaticRepository =
+            FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = emptyList())
+        val gtfsRealtimeRepository = FakeRealtimeSource()
+        val locationRepo = FakeLocationSource()
+        val settingsRepo = FakeSettingsSource(savedStops = entries)
+
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository,
+            gtfsRealtimeRepository,
+            locationRepo,
+            settingsRepo,
+        )
+
+        return TestDependencies(
+            SavedStopsViewModel(transitInfo),
+            gtfsStaticRepository,
+            gtfsRealtimeRepository,
+            locationRepo,
+            settingsRepo,
+        )
+    }
+
+    private fun TestScope.buildVmPair(entries: List<SavedStopEntry> = emptyList()): TestVmPair {
+        val settingsRepo = FakeSettingsSource(savedStops = entries)
+        val transitInfo = buildTransitInfo(settingsRepo = settingsRepo)
+        return TestVmPair(SavedStopsViewModel(transitInfo), HomeViewModel(transitInfo), settingsRepo)
+    }
 
     @Test
     fun `savedStops hydrates each stop with its filter combos`() = runTest(rule.dispatcher) {
-        val vm = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
+        val (vm, _) = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
         val saved = vm.savedStops.value.single()
         assertEquals("G1", saved.stop.globbedStopId)
         assertEquals(listOf(setOf(filter100)), saved.combos)
@@ -58,7 +103,7 @@ class SavedStopsViewModelTest {
 
     @Test
     fun `toggleExpanded adds then removes the stop id`() = runTest(rule.dispatcher) {
-        val vm = buildVm(listOf(SavedStopEntry("G1")))
+        val (vm, _) = buildVm(listOf(SavedStopEntry("G1")))
         assertEquals(emptySet<String>(), vm.expandedSavedStops.value)
         vm.toggleExpanded("G1")
         assertEquals(setOf("G1"), vm.expandedSavedStops.value)
@@ -67,33 +112,30 @@ class SavedStopsViewModelTest {
     }
 
     @Test
-    fun `onSavedStopSelected focuses the stop and emits its combo`() = runTest(rule.dispatcher) {
-        val settings = FakeSettingsSource(savedStops = listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
-        val transitInfo = buildInfo(settings)
-        val vm = SavedStopsViewModel(transitInfo)
+    fun `onSavedStopSelected focuses the stop and applies its combo to Home`() = runTest(rule.dispatcher) {
+        val (vm, homeViewModel, settings) =
+            buildVmPair(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
 
-        transitInfo.filterSelection.test {
-            vm.onSavedStopSelected(stop, setOf(filter100))
-            assertEquals(setOf(filter100), awaitItem())
-            cancelAndIgnoreRemainingEvents()
-        }
+        vm.onSavedStopSelected(stop, setOf(filter100))
+
+        assertEquals(setOf(filter100), homeViewModel.selectedFiltersForBusStop.value)
         assertEquals("G1", settings.homeStopId.first())
     }
 
     @Test
-    fun `naked onSavedStopSelected emits an empty selection`() = runTest(rule.dispatcher) {
-        val transitInfo = buildInfo(FakeSettingsSource(savedStops = listOf(SavedStopEntry("G1"))))
-        val vm = SavedStopsViewModel(transitInfo)
-        transitInfo.filterSelection.test {
-            vm.onSavedStopSelected(stop, emptySet())
-            assertEquals(emptySet<TransitFilterOptions>(), awaitItem())
-            cancelAndIgnoreRemainingEvents()
-        }
+    fun `naked onSavedStopSelected clears the Home filters`() = runTest(rule.dispatcher) {
+        val (vm, homeViewModel, _) = buildVmPair(listOf(SavedStopEntry("G1")))
+        // Start with something selected, so clearing is an observable change rather than a no-op.
+        homeViewModel.toggleFilterForBusStops(filter100)
+
+        vm.onSavedStopSelected(stop, emptySet())
+
+        assertEquals(emptySet<TransitFilterOptions>(), homeViewModel.selectedFiltersForBusStop.value)
     }
 
     @Test
     fun `duplicate onSavedStopSelected navigates to Home once`() = runTest(rule.dispatcher) {
-        val vm = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
+        val (vm, _) = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
         vm.navEvents.test {
             vm.onSavedStopSelected(stop, setOf(filter100))
             assertEquals(SavedNavEvent.NavigateToHome, awaitItem())
@@ -105,7 +147,7 @@ class SavedStopsViewModelTest {
 
     @Test
     fun `removeCombo drops just that combo, keeping the stop`() = runTest(rule.dispatcher) {
-        val vm = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100), listOf(filter200)))))
+        val (vm, _) = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100), listOf(filter200)))))
         vm.removeCombo("G1", setOf(filter100))
         val saved = vm.savedStops.value.single()
         assertEquals(listOf(setOf(filter200)), saved.combos)
@@ -113,7 +155,7 @@ class SavedStopsViewModelTest {
 
     @Test
     fun `clear-all shows confirmation, then removes the whole stop on confirm`() = runTest(rule.dispatcher) {
-        val vm = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
+        val (vm, _) = buildVm(listOf(SavedStopEntry("G1", listOf(listOf(filter100)))))
         assertNull(vm.pendingClearAll.value)
         vm.onClearAllClicked(stop)
         assertEquals(stop, vm.pendingClearAll.value)
@@ -124,7 +166,7 @@ class SavedStopsViewModelTest {
 
     @Test
     fun `dismissing clear-all keeps the stop`() = runTest(rule.dispatcher) {
-        val vm = buildVm(listOf(SavedStopEntry("G1")))
+        val (vm, _) = buildVm(listOf(SavedStopEntry("G1")))
         vm.onClearAllClicked(stop)
         vm.onDismissClearAll()
         assertNull(vm.pendingClearAll.value)

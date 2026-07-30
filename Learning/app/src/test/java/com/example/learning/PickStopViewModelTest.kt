@@ -8,6 +8,7 @@ import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LatLon
 import com.example.learning.repos.StopRecord
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -26,29 +27,48 @@ class PickStopViewModelTest {
         stopRecords = listOf(StopRecord("S1", "Test Stop", stopLoc, false)),
     )
 
-    private fun TestScope.buildInfo(settings: FakeSettingsSource = FakeSettingsSource()): TransitInfo =
-        TransitInfo(
-            gtfsStaticRepository = FakeStaticGtfsSource(
-                globbedStops = listOf(stop),
-                stopTimesRecords = emptyList(),
-            ),
-            gtfsRealtimeRepository = FakeRealtimeSource(),
-            locationRepo = FakeLocationSource(),
-            settingsRepo = settings,
-            scope = backgroundScope,
+    // Standard type to return injected dependencies to inspect.
+    private data class TestDependencies(
+        val vm: PickStopViewModel,
+        val gtfsStaticRepository: FakeStaticGtfsSource,
+        val gtfsRealtimeRepository: FakeRealtimeSource,
+        val locationRepository: FakeLocationSource,
+        val settingsRepository: FakeSettingsSource,
+    )
+
+    private fun TestScope.buildVm(): TestDependencies {
+        val gtfsStaticRepository =
+            FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = emptyList())
+        val gtfsRealtimeRepository = FakeRealtimeSource()
+        val locationRepo = FakeLocationSource()
+        val settingsRepo = FakeSettingsSource()
+
+        val transitInfo = TransitInfo(
+            gtfsStaticRepository,
+            gtfsRealtimeRepository,
+            locationRepo,
+            settingsRepo,
+            backgroundScope,
         )
 
-    private fun TestScope.buildVm(): PickStopViewModel = PickStopViewModel(buildInfo())
+        return TestDependencies(
+            PickStopViewModel(transitInfo),
+            gtfsStaticRepository,
+            gtfsRealtimeRepository,
+            locationRepo,
+            settingsRepo,
+        )
+    }
 
     @Test
     fun `searchExpanded defaults to false`() = runTest(rule.dispatcher) {
-        val vm = buildVm()
+        val (vm, _) = buildVm()
         assertFalse(vm.searchExpanded.value)
     }
 
     @Test
     fun `onSearchExpandedChange updates searchExpanded`() = runTest(rule.dispatcher) {
-        val vm = buildVm()
+        val (vm, _) = buildVm()
         vm.onSearchExpandedChange(true)
         assertTrue(vm.searchExpanded.value)
         vm.onSearchExpandedChange(false)
@@ -57,7 +77,7 @@ class PickStopViewModelTest {
 
     @Test
     fun `onStopSelected emits PopBack`() = runTest(rule.dispatcher) {
-        val vm = buildVm()
+        val (vm, _) = buildVm()
         vm.navEvents.test {
             vm.onStopSelected(stop)
             assertEquals(PickStopNavEvent.PopBack, awaitItem())
@@ -67,7 +87,7 @@ class PickStopViewModelTest {
 
     @Test
     fun `duplicate onStopSelected pops back once`() = runTest(rule.dispatcher) {
-        val vm = buildVm()
+        val (vm, _) = buildVm()
         vm.navEvents.test {
             vm.onStopSelected(stop)
             assertEquals(PickStopNavEvent.PopBack, awaitItem())
@@ -79,18 +99,16 @@ class PickStopViewModelTest {
 
     @Test
     fun `onStopSelected turns off follow-my-location`() = runTest(rule.dispatcher) {
-        val settings = FakeSettingsSource()
-        val transitInfo = buildInfo(settings)
-        val vm = PickStopViewModel(transitInfo)
+        val (vm, _, _, _, fakeSettingsSource) = buildVm()
 
-        assertTrue(transitInfo.followLocation.value)
+        assertTrue(fakeSettingsSource.followLocation.first())
         vm.onStopSelected(stop)
-        assertFalse(transitInfo.followLocation.value)
+        assertFalse(fakeSettingsSource.followLocation.first())
     }
 
     @Test
     fun filteredStopsIsEmptyListWhenQueryEmpty() = runTest(rule.dispatcher) {
-        val vm = buildVm()
+        val (vm, _) = buildVm()
         vm.onQueryChange("")
         assertTrue(vm.filteredBusStops.value.isEmpty())
     }

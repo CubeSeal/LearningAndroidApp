@@ -92,8 +92,14 @@ The **humble-object** regime below applies to the **app** (`Learning/`). The con
 
 **Persistent state = `StateFlow`; one-shot effects (nav, snackbar, scroll-to-top) = `Channel(BUFFERED).receiveAsFlow()` exposed as `Flow`.** Each screen's composable collects these with `LaunchedEffect` and applies them to the NavController or local Compose state. Composables hold no decision state.
 
+**A test's only entry point is a ViewModel method; its only exits are a VM flow or an injected fake.** `TransitInfo` is *wiring* — construct it, hand it to the VMs, then never read or call it again. Poking it skips VM logic that actually ships: the `navigating` double-nav latch, `applyFilters`' pinning of the filter row. Calling `transitInfo.selectSavedStop` twice in a row "works"; calling `SavedStopsViewModel.onSavedStopSelected` twice does not, because on the real screen the first tap navigates away. Driving the domain layer directly hides that.
+
+**Assert side effects at the fake, not the domain cache.** `fakeSettingsSource.savedStops` is what actually got persisted (`SavedStopEntry`, `combos: List<List<…>>`); `transitInfo.savedStops` is only the hydrated in-memory rebuild, so asserting there passes even if nothing reached the seam.
+
+**Cross-screen behaviour = two real ViewModels sharing one `TransitInfo`.** A saved-stop tap landing on Home is tested by constructing both `SavedStopsViewModel` and `HomeViewModel` over the same `TransitInfo` and asserting on the *Home* VM's flows. **Script the lifecycle beats the real screen would emit** — `onScreenResumed()` between two selections stands in for the composable's `ON_RESUME` forwarding after the round trip to Home. That call is part of the user's journey, not scaffolding to dodge the latch.
+
 **What belongs in JVM tests (`src/test/`)**:
-- `HomeViewModelTest`, `PickStopViewModelTest`, `TripsViewModelTest` — drive VMs directly via `runTest(rule.dispatcher)` + Turbine; construct `TransitInfo` from `Fake*Source` doubles with `scope = backgroundScope`.
+- `HomeViewModelTest`, `PickStopViewModelTest`, `SavedStopsViewModelTest`, `TripsViewModelTest` — drive VMs directly via `runTest(rule.dispatcher)` + Turbine; construct `TransitInfo` from `Fake*Source` doubles with `scope = backgroundScope`.
 - `BootstrapGtfsTest` — pure function, no Android deps.
 - Canonical pure/library functions (`parseGtfsDateTime`, `transitModeOf`) tested at their own API.
 
@@ -102,19 +108,32 @@ The **humble-object** regime below applies to the **app** (`Learning/`). The con
 
 > **Do NOT** (anti-patterns that must not come back):
 > - Re-introduce Robolectric / `ActivityScenario` / `createEmptyComposeRule` in `src/test/` — the point of humble objects is that this is no longer needed.
-> - Poke `TransitInfo` flows directly in a Compose rendering context — use Turbine + VM tests instead.
+> - Read or call `TransitInfo` from a test — no `transitInfo.someFlow.value`, no `transitInfo.selectSavedStop(…)`. Unconditional, not just inside Compose: go through the VM that owns the action and assert on a VM flow or the fake.
 > - Add `@Config(sdk=[34])` / `@RunWith(RobolectricTestRunner)` anywhere in `src/test/`.
 
-**How VM tests are wired:**
+**How VM tests are wired.** Each test class has **one `buildVm` helper returning a destructurable `TestDependencies`** — the VM plus all four fakes, so a test can drive the fakes and assert on them without hand-rolling the wiring. The world is seeded from a shared default dataset (`standardDepartures`) and varied by parameter (`departures`, `stops`, `location`):
 
 ```kotlin
 // MainDispatcherRule sets Dispatchers.Main to UnconfinedTestDispatcher — viewModelScope uses it.
 @get:Rule val rule = MainDispatcherRule()
 
+private data class TestDependencies(
+    val vm: HomeViewModel,
+    val gtfsStaticRepository: FakeStaticGtfsSource,
+    val gtfsRealtimeRepository: FakeRealtimeSource,
+    val locationRepository: FakeLocationSource,
+    val settingsRepository: FakeSettingsSource,
+)
+
+private fun TestScope.buildVm(
+    departures: List<StopTimesRecord> = standardDepartures,
+    stops: List<GlobbedStopRecord> = listOf(stop),
+    location: LatLon = stopLoc,
+): TestDependencies { /* build fakes, TransitInfo(scope = backgroundScope), VM; return all */ }
+
 @Test
 fun test() = runTest(rule.dispatcher) {
-    val transitInfo = TransitInfo(fakes…, scope = backgroundScope)
-    val vm = HomeViewModel(transitInfo)
+    val (vm, _) = buildVm()                 // destructure only what the test needs
     // StateFlow values are immediately available; use Turbine for flow assertions:
     vm.associatedStopTimes.test {
         assertEquals(2, awaitItem().size)
@@ -124,6 +143,8 @@ fun test() = runTest(rule.dispatcher) {
     }
 }
 ```
+
+Pass the same fake instance you assert on — don't build a second one inside the helper. For a side effect, destructure the relevant fake (`val (vm, _, _, _, fakeSettingsSource) = buildVm()`) and Turbine it. `buildVm` returns a single VM, so **cross-VM tests wire `TransitInfo` inline** and construct both VMs over it (see `HomeViewModelTest`'s `enabling following re-snaps to the closest stop`).
 
 `TransitInfo` takes `scope = backgroundScope` (cancelled at test end — no resource leaks). `viewModelScope` uses `Dispatchers.Main` (set to `UnconfinedTestDispatcher` by the rule, so coroutines run eagerly without explicit advancement).
 
