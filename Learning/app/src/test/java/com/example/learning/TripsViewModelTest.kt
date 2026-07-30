@@ -7,6 +7,7 @@ import com.example.learning.repos.FakeSettingsSource
 import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.LatLon
 import com.example.learning.repos.StopTimesRecord
+import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -26,7 +27,7 @@ class TripsViewModelTest {
     private fun stop(id: String, seq: Int) = StopTimesRecord(
         tripId = "T1", departureTime = baseTime.plusMinutes(seq * 5L), arrivalTime = baseTime,
         sequence = seq, routeId = "R1", serviceId = "svc", tripHeadsign = "City",
-        routeShortName = "100", routeLongName = "Route 100", routeType = 3,
+        routeShortName = "100", routeLongName = "Route 100", routeType = TransitMode.OTHER,
         globbedStopId = id, globbedStopName = "Stop $id",
         stopId = id, stopName = "Stop $id", stopLoc = stopLoc, wheelchairBoarding = false,
     )

@@ -2,7 +2,6 @@ package com.example.learning.ui
 
 import android.annotation.SuppressLint
 import android.util.Log
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -10,8 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
@@ -66,24 +65,23 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
-import com.example.learning.TransitFilterOptions
-import com.example.learning.StopTimesRecordWithRealtime
-import androidx.lifecycle.compose.LifecycleEventEffect
-import androidx.lifecycle.Lifecycle
 import com.example.learning.Filter
 import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
 import com.example.learning.PickStop
+import com.example.learning.StopTimesRecordWithRealtime
+import com.example.learning.TransitFilterOptions
 import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
-import com.example.learning.repos.transitModeOf
 import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -371,7 +369,7 @@ fun LazyItemScope.BusCard(
                 trailingIconColor = onDynamicContainer,
                 overlineColor = onDynamicContainer
             ),
-            leadingContent = { ModeRoundel(transitModeOf(record.stopTimesRecord.routeType)) },
+            leadingContent = { ModeRoundel(record.stopTimesRecord.routeType) },
             overlineContent = {
                 Text(
                     record.stopTimesRecord.tripHeadsign.orEmpty(),

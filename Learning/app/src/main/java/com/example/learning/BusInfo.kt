@@ -2,34 +2,30 @@ package com.example.learning
 
 import android.util.Log
 import androidx.compose.runtime.Immutable
-import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.GTFS_GH_OWNER
 import com.example.learning.repos.GTFS_GH_REPO
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LocationMode
 import com.example.learning.repos.LocationSource
-import com.example.learning.repos.RealtimeTripInfo
 import com.example.learning.repos.RealtimeGtfsSource
+import com.example.learning.repos.RealtimeTripInfo
 import com.example.learning.repos.SettingsSource
 import com.example.learning.repos.StaticGtfsSource
+import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
-import com.example.learning.repos.transitModeOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.forEach
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -37,8 +33,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.LocalDate
@@ -304,7 +298,7 @@ class TransitInfo(
             // it distinguishes some trips from others — an option every trip carries (e.g. a stop served
             // by a single route, or all-bus services) filters nothing, so we drop it.
             val perTripFilters = associatedTrips.map { stopTimesRecord ->
-                val mode = transitModeOf(stopTimesRecord.routeType)
+                val mode = stopTimesRecord.routeType
                 buildSet {
                     stopTimesRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.RouteShortName(it, mode)) }
                     stopTimesRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { add(TransitFilterOptions.TripHeadsign(it)) }
@@ -343,7 +337,7 @@ class TransitInfo(
         .distinctUntilChanged()
         .transformLatest { (trips, realtimeStopTimesRecords) ->
              val stopTimesRecordWithRealtime = trips.map { staticRecord ->
-                val mode = transitModeOf(staticRecord.routeType)
+                val mode = staticRecord.routeType
                 StopTimesRecordWithRealtime(
                     stopTimesRecord = staticRecord,
                     realtimeStopTimesRecord = realtimeStopTimesRecords[staticRecord.tripId to staticRecord.stopId],

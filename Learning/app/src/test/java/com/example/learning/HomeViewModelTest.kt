@@ -35,7 +35,7 @@ class HomeViewModelTest {
     private fun dep(route: String, headsign: String, at: LocalDateTime = soon) = StopTimesRecord(
         tripId = "trip-$route", departureTime = at, arrivalTime = at, sequence = 1,
         routeId = "route-$route", serviceId = "svc", tripHeadsign = headsign,
-        routeShortName = route, routeLongName = "Route $route", routeType = 3,
+        routeShortName = route, routeLongName = "Route $route", routeType = TransitMode.BUS,
         globbedStopId = stopId, globbedStopName = "Test Stop",
         stopId = "S1", stopName = "Test Stop", stopLoc = stopLoc, wheelchairBoarding = false,
     )

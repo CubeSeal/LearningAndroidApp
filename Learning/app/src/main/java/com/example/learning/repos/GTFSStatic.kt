@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.learning.db.GtfsDatabase
-import com.example.learning.db.ServiceDateEntity
 import com.example.learning.db.StopTimeWithDetails
 import com.example.learning.db.StopWithGlobbedInfo
 import kotlinx.coroutines.Dispatchers
@@ -28,14 +27,23 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.GZIPInputStream
-import kotlin.collections.first
-import kotlin.collections.map
 
 /** GitHub repo the prebuilt GTFS DB releases are published to (see [GtfsStaticRepository.syncGtfsDatabase]). */
 const val GTFS_GH_OWNER = "CubeSeal"
 const val GTFS_GH_REPO = "LearningAndroidApp"
 
 data class LatLon(val latitude: Double, val longitude: Double)
+
+/**
+ * The transport mode a departure belongs to, derived from GTFS `route_type`. The schedule DB merges
+ * the TfNSW bus and train feeds, so this is how the app tells trains and buses apart.
+ */
+@kotlinx.serialization.Serializable
+enum class TransitMode(val label: String) {
+    BUS("Bus"),
+    TRAIN("Train"),
+    OTHER("Other"),
+}
 
 @Immutable
 // Keep these as flat parsed versions of room data structures.
@@ -51,9 +59,12 @@ data class StopTimesRecord(
     val tripHeadsign: String?,
     val routeShortName: String?,
     val routeLongName: String,
-    // GTFS route_type (2 = rail, 3 = bus, plus TfNSW extended ranges). Carries the mode so the
-    // app can distinguish trains from buses now that the schedule DB merges both feeds.
-    val routeType: Int,
+    /**
+     * Maps a GTFS `route_type` to a [TransitMode]. Handles both the standard values (2 = rail, 3 = bus)
+     * and TfNSW's extended ranges (4xx = rail, 7xx = bus); anything else (tram/light rail, ferry, …) is
+     * [TransitMode.OTHER] until those modes are modelled.
+     */
+    val routeType: TransitMode,
     val globbedStopId: String,
     val globbedStopName: String,
     val stopId: String,
@@ -74,7 +85,11 @@ fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
         tripHeadsign = this.tripHeadsign,
         routeShortName = this.routeShortName,
         routeLongName = this.routeLongName,
-        routeType = this.routeType,
+        routeType = when (this.routeType) {
+            2, in 400..499 -> TransitMode.TRAIN
+            3, in 700..799 -> TransitMode.BUS
+            else -> TransitMode.OTHER
+        },
         globbedStopId = this.globbedStopId,
         globbedStopName = this.globbedStopName,
         stopId = this.stopId,
@@ -84,27 +99,7 @@ fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
     )
 }
 
-/**
- * The transport mode a departure belongs to, derived from GTFS `route_type`. The schedule DB merges
- * the TfNSW bus and train feeds, so this is how the app tells trains and buses apart.
- */
-@kotlinx.serialization.Serializable
-enum class TransitMode(val label: String) {
-    BUS("Bus"),
-    TRAIN("Train"),
-    OTHER("Other"),
-}
 
-/**
- * Maps a GTFS `route_type` to a [TransitMode]. Handles both the standard values (2 = rail, 3 = bus)
- * and TfNSW's extended ranges (4xx = rail, 7xx = bus); anything else (tram/light rail, ferry, …) is
- * [TransitMode.OTHER] until those modes are modelled.
- */
-fun transitModeOf(routeType: Int): TransitMode = when (routeType) {
-    2, in 400..499 -> TransitMode.TRAIN
-    3, in 700..799 -> TransitMode.BUS
-    else -> TransitMode.OTHER
-}
 
 @Immutable
 data class GlobbedStopRecord(
@@ -159,9 +154,9 @@ fun parseGtfsDateTime(date: LocalDate, time: String): LocalDateTime {
         .plusSeconds(secs.toLong())
 }
 
-sealed class GtfsValidation {
-    object Ok : GtfsValidation()
-    data class Invalid(val reason: String) : GtfsValidation()
+sealed interface GtfsValidation {
+    object Ok : GtfsValidation
+    data class Invalid(val reason: String) : GtfsValidation
 }
 
 /**
