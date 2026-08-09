@@ -115,44 +115,6 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `staging seeds from committed, applyStaging commits and emits PopBack`() = runTest(rule.dispatcher) {
-        val (vm, _) = buildVm()
-        val filter100 = TransitFilterOptions.RouteShortName("100", TransitMode.BUS)
-        vm.toggleFilterForBusStops(filter100)
-
-        vm.navEvents.test {
-            vm.beginStaging()
-            assertEquals(setOf(filter100), vm.stagedFilters.value)
-
-            vm.toggleStaged(filter100)
-            assertEquals(emptySet<TransitFilterOptions>(), vm.stagedFilters.value)
-
-            vm.applyStaging()
-            assertEquals(emptySet<TransitFilterOptions>(), vm.selectedFiltersForBusStop.value)
-            assertEquals(HomeNavEvent.PopBack, awaitItem())
-
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    @Test
-    fun `beginStaging seeds the first available filter category`() = runTest(rule.dispatcher) {
-        val (vm, _) = buildVm()
-        vm.beginStaging()
-        // Both departures are bus-only, so Modes never differentiates anything and is dropped;
-        // Routes precedes Destinations in FilterCategory's broad -> specific order.
-        assertEquals(FilterCategory.Routes, vm.selectedFilterCategory.value)
-    }
-
-    @Test
-    fun `selectFilterCategory updates the selected category`() = runTest(rule.dispatcher) {
-        val (vm, _) = buildVm()
-        vm.beginStaging()
-        vm.selectFilterCategory(FilterCategory.Destinations)
-        assertEquals(FilterCategory.Destinations, vm.selectedFilterCategory.value)
-    }
-
-    @Test
     fun `scrollToTop fires when data loads`() = runTest(rule.dispatcher) {
         val (vm, _) = buildVm(listOf(dep("100", "Downtown")))
         vm.scrollToTop.test {
@@ -277,6 +239,26 @@ class HomeViewModelTest {
         savedStopsViewModel.onScreenResumed()
         savedStopsViewModel.onSavedStopSelected(stop, emptySet())
         assertEquals(emptySet<TransitFilterOptions>(), homeViewModel.selectedFiltersForBusStop.value)
+    }
+
+    // SavedStops navigates home with `resetTo(Home)`, which pops the start destination inclusively —
+    // so the Home the combo lands on is a *brand new* ViewModel, constructed after the filters were
+    // committed. Its startup must not clear them (only pull-to-refresh does).
+    @Test
+    fun `a saved-stop combo survives Home being recreated on the way back`() = runTest(rule.dispatcher) {
+        val transitInfo = TransitInfo(
+            FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = standardDepartures),
+            FakeRealtimeSource(),
+            FakeLocationSource(),
+            FakeSettingsSource(),
+            backgroundScope,
+        )
+        val savedStopsViewModel = SavedStopsViewModel(transitInfo)
+
+        savedStopsViewModel.onSavedStopSelected(stop, setOf(filter100))
+
+        val recreatedHome = HomeViewModel(transitInfo)
+        assertEquals(setOf(filter100), recreatedHome.selectedFiltersForBusStop.value)
     }
 
     @Test

@@ -23,13 +23,22 @@ class TripsViewModelTest {
     private val stopLoc = LatLon(-33.8688, 151.2093)
     private val date = LocalDate.of(2026, 7, 19)
     private val baseTime = LocalDateTime.of(2026, 7, 19, 9, 0)
-
     private fun stop(id: String, seq: Int) = StopTimesRecord(
-        tripId = "T1", departureTime = baseTime.plusMinutes(seq * 5L), arrivalTime = baseTime,
-        sequence = seq, routeId = "R1", serviceId = "svc", tripHeadsign = "City",
-        routeShortName = "100", routeLongName = "Route 100", routeType = TransitMode.OTHER,
-        globbedStopId = id, globbedStopName = "Stop $id",
-        stopId = id, stopName = "Stop $id", stopLoc = stopLoc, wheelchairBoarding = false,
+        tripId = "T1",
+        departureTime = baseTime.plusMinutes(seq * 5L),
+        arrivalTime = baseTime,
+        sequence = seq,
+        routeId = "R1",
+        serviceId = "svc",
+        tripHeadsign = "City",
+        routeShortName = "100",
+        routeLongName = "Route 100",
+        routeType = TransitMode.OTHER,
+        globbedStopId = id,
+        globbedStopName = "Stop $id",
+        stopId = id,
+        stopName = "Stop $id",
+        stopLoc = stopLoc, wheelchairBoarding = false,
     )
 
     private val tripStops = listOf(stop("S1", 1), stop("S2", 2), stop("S3", 3))

@@ -110,7 +110,6 @@ fun HOMEScreen(
                 HomeNavEvent.OpenPickStop -> navController.navigate(PickStop)
                 HomeNavEvent.OpenFilters -> navController.navigate(Filter)
                 is HomeNavEvent.OpenTrip -> navController.navigate(Trips(event.tripId, event.stopId, event.date))
-                HomeNavEvent.PopBack -> navController.popBackStack()
             }
         }
     }

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.toRoute
 import com.example.learning.repos.GlobbedStopRecord
+import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +44,10 @@ object AppViewModelProvider {
         }
         initializer {
             val app = (this[APPLICATION_KEY] as LearningApplication)
+            FilterViewModel(app.repos.transitInfo)
+        }
+        initializer {
+            val app = (this[APPLICATION_KEY] as LearningApplication)
             PickStopViewModel(app.repos.transitInfo)
         }
         initializer {
@@ -65,8 +70,11 @@ data class TripHeader(val routeShortName: String, val routeLongName: String)
 sealed interface HomeNavEvent {
     data object OpenPickStop : HomeNavEvent
     data object OpenFilters : HomeNavEvent
-    data object PopBack : HomeNavEvent
     data class OpenTrip(val tripId: String, val stopId: String, val date: String) : HomeNavEvent
+}
+
+sealed interface FilterNavEvent {
+    data object PopBack : FilterNavEvent
 }
 
 sealed interface PickStopNavEvent {
@@ -88,26 +96,19 @@ class HomeViewModel(
 
     val availableFiltersForBusStop = transitInfo.filtersForBusStop
     // If empty then we don't filter anything, but if not empty we only include what in the set.
-    private val _selectedFiltersForBusStop = MutableStateFlow(setOf<TransitFilterOptions>())
-    val selectedFiltersForBusStop = _selectedFiltersForBusStop.asStateFlow()
+    val selectedFiltersForBusStop = transitInfo.selectedFilters
 
     // The Home row shows a base slice of the available filters, plus any "pinned" extras promoted
     // from the FilterPage so they remain visible (and quickly re-toggleable) even after deselection.
     // A refresh clears the pins, resetting the row to the base slice.
-    private val _pinnedFilters = MutableStateFlow(setOf<TransitFilterOptions>())
     val rowFilters: StateFlow<List<TransitFilterOptions>> =
-        combine(availableFiltersForBusStop, _pinnedFilters) { available, pinned ->
-            // Sort the full set into hierarchy order (Modes → Stands/Platforms → Routes/Lines →
-            // Destinations, then train-before-bus, then numeric-aware alphabetical by label) first,
-            // so the row cap keeps the highest-priority tiers rather than whichever filters happened
-            // to be discovered first. Pinned extras are then folded in and re-sorted so they slot
-            // into place.
-            val order = compareBy(filterTypeRank, filterModeRank)
-                .thenBy { filterLabel(it).toIntOrNull() ?: Int.MAX_VALUE }
-                .thenBy { filterLabel(it) }
-            (available.sortedWith(order).take(ROW_FILTER_CAP) + pinned.filter { it in available })
+        combine(availableFiltersForBusStop, transitInfo.pinnedFilters) { available, pinned ->
+            // Sort before capping, so the row keeps the highest-priority tiers rather than whichever
+            // filters happened to be discovered first. Pinned extras are folded in and re-sorted so
+            // they slot into place.
+            (available.sorted().take(ROW_FILTER_CAP) + pinned.filter { it in available })
                 .distinct()
-                .sortedWith(order)
+                .sorted()
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val hasMoreFilters: StateFlow<Boolean> = availableFiltersForBusStop
@@ -158,8 +159,7 @@ class HomeViewModel(
     // landing during the slide transition while the leaving screen is still interactive, both queue
     // two intents on the channel and previously pushed the destination twice (forcing a double
     // back-press). Once we emit a nav intent the latch drops any further one until the screen is
-    // shown again ([onScreenResumed], forwarded from the composable's ON_RESUME) — reset on resume
-    // because this same ViewModel drives both Home→Filter and Filter→Home navigation.
+    // shown again ([onScreenResumed], forwarded from the composable's ON_RESUME).
     private var navigating = false
     fun onScreenResumed() { navigating = false }
     private fun navigate(event: HomeNavEvent) {
@@ -168,27 +168,14 @@ class HomeViewModel(
         _navEvents.trySend(event)
     }
 
-    // --- FilterPage staging (shared: FilterScreen uses this same back-stack-scoped ViewModel) ---
-    private val _stagedFilters = MutableStateFlow(setOf<TransitFilterOptions>())
-    val stagedFilters: StateFlow<Set<TransitFilterOptions>> = _stagedFilters.asStateFlow()
-    // Which tab is showing on the FilterPage's tab bar. Null only before beginStaging() has ever run.
-    private val _selectedFilterCategory = MutableStateFlow<FilterCategory?>(null)
-    val selectedFilterCategory: StateFlow<FilterCategory?> = _selectedFilterCategory.asStateFlow()
-
     // Whether the focused stop keeps following the user's current location. Owned by TransitInfo
     // (survives independently of which screen is on the stack); this just re-exposes it.
     val followLocation: StateFlow<Boolean> = transitInfo.followLocation
 
     init {
-        refresh()
+        load()
         // Scroll the list back to the top whenever its contents change.
         associatedStopTimes.onEach { _scrollToTop.trySend(Unit) }.launchIn(viewModelScope)
-        // A combo picked from the saved-stops list applies its filters here (empty set = the naked
-        // stop, so clear). Home is retained on the back stack while PickStop is on top, so this
-        // collector is live when the selection arrives.
-        transitInfo.filterSelection
-            .onEach { if (it.isEmpty()) clearFilters() else applyFilters(it) }
-            .launchIn(viewModelScope)
     }
 
     // Turning follow-location ON re-fetches a fresh fix (see TransitInfo.setFollowLocation), so the
@@ -208,11 +195,17 @@ class HomeViewModel(
         }
     }
 
-    fun refresh() = viewModelScope.launch {
+    // Pull-to-refresh: fresh data → reset the filter row to its base slice with nothing selected.
+    // Startup deliberately doesn't clear — the filters live in TransitInfo, which outlives this
+    // ViewModel, and a saved-stop combo commits them *before* navigating to a freshly-created Home
+    // (resetTo pops the start destination inclusively, so that Home really is a new instance).
+    fun refresh() {
+        transitInfo.clearFilters()
+        load()
+    }
+
+    private fun load() = viewModelScope.launch {
         _isRefreshing.update { true }
-        // Fresh data → reset the filter row to its base slice with nothing selected.
-        _pinnedFilters.value = emptySet()
-        _selectedFiltersForBusStop.value = emptySet()
         try {
             transitInfo.refresh()
         } finally {
@@ -222,32 +215,18 @@ class HomeViewModel(
 
     // Save the stop along with whatever filters are currently active (an empty set saves it "naked").
     fun addSavedStop(globbedBusStopRecord: GlobbedStopRecord) = viewModelScope.launch {
-        val filters = _selectedFiltersForBusStop.value
+        val filters = selectedFiltersForBusStop.value
         transitInfo.saveStop(globbedBusStopRecord, filters)
         val suffix = if (filters.isEmpty()) "" else " with filters"
         _snackbarMessages.trySend("Saved ${globbedBusStopRecord.globbedStopName}$suffix")
     }
 
-    fun toggleFilterForBusStops(busStopFilterOptions: TransitFilterOptions) {
-        if (busStopFilterOptions in selectedFiltersForBusStop.value) {
-            _selectedFiltersForBusStop.update { it - busStopFilterOptions}
-        } else {
-            _selectedFiltersForBusStop.update { it + busStopFilterOptions}
-        }
-    }
-
-    // Commit a staged selection, pinning the chosen filters so they show in the Home row.
-    fun applyFilters(selected: Set<TransitFilterOptions>) {
-        _selectedFiltersForBusStop.value = selected
-        _pinnedFilters.update { it + selected }
-    }
+    fun toggleFilterForBusStops(busStopFilterOptions: TransitFilterOptions) =
+        transitInfo.toggleFilter(busStopFilterOptions)
 
     // Reset filtering back to "show everything": clear the active selection and any pinned extras so
     // the row falls back to its base slice.
-    fun clearFilters() {
-        _selectedFiltersForBusStop.value = emptySet()
-        _pinnedFilters.value = emptySet()
-    }
+    fun clearFilters() = transitInfo.clearFilters()
 
     // --- Navigation actions (called by the composable) ---
     fun onEditStopClicked() = navigate(HomeNavEvent.OpenPickStop)
@@ -256,35 +235,103 @@ class HomeViewModel(
         val r = record.stopTimesRecord
         navigate(HomeNavEvent.OpenTrip(r.tripId, r.stopId, r.departureTime.toLocalDate().toString()))
     }
-    // The FilterPage's back button (discards the staged selection and returns).
-    fun onFilterBackClicked() = navigate(HomeNavEvent.PopBack)
-
-    // --- FilterPage staging actions ---
-    // Seed the staged selection from the committed one when the filter screen opens, and default the
-    // tab bar to the first available category (in filterTypeRank order) for this stop.
-    fun beginStaging() {
-        _stagedFilters.value = _selectedFiltersForBusStop.value
-        val available = availableFiltersForBusStop.value
-        _selectedFilterCategory.value =
-            FilterCategory.entries.firstOrNull { category -> available.any { filterCategoryOf(it) == category } }
-    }
-    fun toggleStaged(option: TransitFilterOptions) {
-        _stagedFilters.update { if (option in it) it - option else it + option }
-    }
-    fun selectFilterCategory(category: FilterCategory) { _selectedFilterCategory.value = category }
-    fun resetStaging() {
-        _stagedFilters.value = emptySet()
-    }
-    // Commit the staged selection and return to Home.
-    fun applyStaging() {
-        applyFilters(_stagedFilters.value)
-        navigate(HomeNavEvent.PopBack)
-    }
 
     companion object {
         const val ROW_FILTER_CAP = 10
     }
 }
+
+/**
+ * The FilterPage's tab categories, broad -> specific matching [TransitFilterOptions.typeRank]. Trains
+ * and buses use different terminology for the same facet (platforms vs stands, lines vs routes), so
+ * those tiers split into a train and a bus tab; destinations are mode-agnostic.
+ */
+enum class FilterTabs(val title: String) {
+    Modes("Modes"),
+    Platforms("Platforms"),
+    Stands("Stands"),
+    Lines("Lines"),
+    Routes("Routes"),
+    Destinations("Destinations"),
+}
+
+/** Which [FilterTabs] tab a filter option belongs under. */
+private fun TransitFilterOptions.toFilterTab(): FilterTabs =
+    when (this) {
+        is TransitFilterOptions.TransportMode -> FilterTabs.Modes
+        is TransitFilterOptions.StopStand ->
+            if (mode == TransitMode.TRAIN) FilterTabs.Platforms else FilterTabs.Stands
+        is TransitFilterOptions.RouteShortName ->
+            if (mode == TransitMode.TRAIN) FilterTabs.Lines else FilterTabs.Routes
+        is TransitFilterOptions.TripHeadsign -> FilterTabs.Destinations
+    }
+
+/**
+ * View Model for Filter Page
+ *
+ * Scoped to the Filter destination, so the staged selection lives exactly as long as the screen and
+ * backing out discards it. Apply commits to [TransitInfo], which is where Home reads it from.
+ */
+class FilterViewModel(
+    private val transitInfo: TransitInfo
+) : ViewModel() {
+    // Nav channel
+    private val _navEvents = Channel<FilterNavEvent>(Channel.BUFFERED)
+    val navEvents: Flow<FilterNavEvent> = _navEvents.receiveAsFlow()
+
+    // Navigation locking
+    private var navigating = false
+
+    // Seeded at construction, which is when the screen opens.
+    private val _stagedFilters = MutableStateFlow(transitInfo.selectedFilters.value)
+    val stagedFilters: StateFlow<Set<TransitFilterOptions>> = _stagedFilters.asStateFlow()
+
+    private val filterOptionsInTabs: StateFlow<Map<FilterTabs, List<TransitFilterOptions>>> =
+        transitInfo.filtersForBusStop
+            .map { available -> available.groupBy { it.toFilterTab() }.mapValues { it.value.sorted() } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    // Only the tabs this stop has options for — a single-mode stop never shows the other mode's tabs.
+    // Filtering the entries (rather than reading the group's keys) keeps them in declaration order.
+    val tabs: StateFlow<List<FilterTabs>> = filterOptionsInTabs
+        .map { options -> FilterTabs.entries.filter { it in options } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // Falls back to the first tab until the user picks one, and again if their pick stops existing
+    // (the stop changed underneath).
+    private val _tabSelection = MutableStateFlow<FilterTabs?>(null)
+    val selectedFilterTab: StateFlow<FilterTabs?> =
+        combine(_tabSelection, tabs) { selection, tabs -> selection?.takeIf { it in tabs } ?: tabs.firstOrNull() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // The selected tab's chips, in sorted() order.
+    val visibleOptions: StateFlow<List<TransitFilterOptions>> =
+        combine(filterOptionsInTabs, selectedFilterTab) { options, tab -> options[tab].orEmpty() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun onScreenResumed() { navigating = false }
+
+    private fun navigate(event: FilterNavEvent) {
+        if (navigating) return
+        navigating = true
+        _navEvents.trySend(event)
+    }
+
+    // --- FilterPage staging actions ---
+    fun selectFilterTab(tab: FilterTabs) { _tabSelection.value = tab }
+    fun toggleStaged(option: TransitFilterOptions) {
+        _stagedFilters.update { if (option in it) it - option else it + option }
+    }
+    fun resetStaging() { _stagedFilters.value = emptySet() }
+    // Commit the staged selection and return to Home.
+    fun applyStaging() {
+        transitInfo.applyFilters(_stagedFilters.value)
+        navigate(FilterNavEvent.PopBack)
+    }
+    // The FilterPage's back button (discards the staged selection and returns).
+    fun onBackClicked() = navigate(FilterNavEvent.PopBack)
+}
+
 
 class PickStopViewModel(
     private val transitInfo: TransitInfo

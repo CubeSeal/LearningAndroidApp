@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -38,88 +37,67 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
-import com.example.learning.FilterCategory
-import com.example.learning.Home
-import com.example.learning.HomeNavEvent
-import com.example.learning.HomeViewModel
+import com.example.learning.FilterNavEvent
+import com.example.learning.FilterTabs
+import com.example.learning.FilterViewModel
 import com.example.learning.TransitFilterOptions
-import com.example.learning.filterCategoryOf
-import com.example.learning.filterLabel
-import com.example.learning.transitModeRank
 
 /**
- * Route-level FilterPage. Shares the **same** [HomeViewModel] as the Home screen by scoping the
- * ViewModel to the Home back-stack entry (still on the stack while Filter is pushed on top), so
- * Apply writes straight back to the Home filter state. Holds the staged selection locally; Apply
- * commits it and returns, Back discards and returns.
+ * Route-level FilterPage, driven by its own [FilterViewModel]. The staged selection lives in that
+ * ViewModel, which is scoped to this destination, so Back simply discards it by leaving; Apply
+ * commits to [com.example.learning.TransitInfo], where Home reads it from.
  */
 @Composable
-fun FilterScreen(navController: NavController) {
-    val homeEntry = remember { navController.getBackStackEntry<Home>() }
-    val viewModel: HomeViewModel = viewModel(homeEntry, factory = AppViewModelProvider.Factory)
+fun FilterScreen(
+    navController: NavController,
+    viewModel: FilterViewModel = viewModel(factory = AppViewModelProvider.Factory)
+) {
+    val tabs by viewModel.tabs.collectAsStateWithLifecycle()
+    val selectedFilterTab by viewModel.selectedFilterTab.collectAsStateWithLifecycle()
+    val visibleOptions by viewModel.visibleOptions.collectAsStateWithLifecycle()
+    val stagedFilters by viewModel.stagedFilters.collectAsStateWithLifecycle()
 
-    val available by viewModel.availableFiltersForBusStop.collectAsStateWithLifecycle()
-    val staged by viewModel.stagedFilters.collectAsStateWithLifecycle()
-    val selectedCategory by viewModel.selectedFilterCategory.collectAsStateWithLifecycle()
-
-    // Re-arm the shared HomeViewModel's "navigate once" latch each time this screen is shown.
+    // Re-arm the "navigate once" latch each time this screen is shown.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
 
-    LaunchedEffect(Unit) { viewModel.beginStaging() }
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->
-            if (event is HomeNavEvent.PopBack) navController.popBackStack()
+            if (event is FilterNavEvent.PopBack) navController.popBackStack()
         }
     }
 
     FilterScreenContent(
-        available = available,
-        staged = staged,
-        selectedCategory = selectedCategory,
-        onSelectCategory = { viewModel.selectFilterCategory(it) },
+        tabs = tabs,
+        selectedFilterTab = selectedFilterTab,
+        options = visibleOptions,
+        staged = stagedFilters,
+        onSelectFilterTab = { viewModel.selectFilterTab(it) },
         onToggleStaged = { viewModel.toggleStaged(it) },
         onReset = { viewModel.resetStaging() },
         onApply = { viewModel.applyStaging() },
-        onBack = { viewModel.onFilterBackClicked() },
+        onBack = { viewModel.onBackClicked() },
     )
 }
 
 /**
- * Stateless content of the FilterPage: a single scrollable tab row over the categories that have any
- * options for this stop, and the selected category's chips below, plus the always-visible Apply /
- * Cancel controls. The hosting [FilterScreen] owns the staged selection, the selected tab, and the
- * navigation/ViewModel wiring; this composable just renders them and reports user intent, so it can
- * be exercised directly in tests.
+ * Stateless content of the FilterPage: a single scrollable tab row, the selected tab's chips below,
+ * and the always-visible Apply / Reset controls. [FilterViewModel] decides which tabs exist, which
+ * one is selected and which chips belong to it; this composable just renders them and reports user
+ * intent, so it can be exercised directly in tests.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FilterScreenContent(
-    available: Set<TransitFilterOptions>,
+    tabs: List<FilterTabs>,
+    selectedFilterTab: FilterTabs?,
+    options: List<TransitFilterOptions>,
     staged: Set<TransitFilterOptions>,
-    selectedCategory: FilterCategory?,
-    onSelectCategory: (FilterCategory) -> Unit,
+    onSelectFilterTab: (FilterTabs) -> Unit,
     onToggleStaged: (TransitFilterOptions) -> Unit,
     onReset: () -> Unit,
     onApply: () -> Unit,
     onBack: () -> Unit,
 ) {
-    // Group by category (Modes always sorts train -> bus -> other; every other category shares the
-    // same numeric-aware label sort), then drop empty categories — a single-mode stop only ever shows
-    // the tabs that apply to it. Map iteration follows FilterCategory's broad -> specific declaration
-    // order (mirroring the Home row's `filterTypeRank` order), since groupBy preserves encounter order
-    // and `available` itself has no other ordering guarantee.
-    val categorized: Map<FilterCategory, List<TransitFilterOptions>> = available
-        .groupBy(filterCategoryOf)
-        .mapValues { (category, options) ->
-            if (category == FilterCategory.Modes) {
-                options.sortedBy { transitModeRank((it as TransitFilterOptions.TransportMode).mode) }
-            } else {
-                options.sortedWith(byLabel(filterLabel))
-            }
-        }
-    val categories = FilterCategory.entries.filter { it in categorized }
-    val selected = selectedCategory?.takeIf { it in categorized } ?: categories.firstOrNull()
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -127,13 +105,13 @@ fun FilterScreenContent(
     ) {
         BackHeader(onBack)
 
-        if (categories.isNotEmpty()) {
-            ScrollableTabRow(selectedTabIndex = categories.indexOf(selected).coerceAtLeast(0)) {
-                categories.forEach { category ->
+        if (tabs.isNotEmpty()) {
+            ScrollableTabRow(selectedTabIndex = tabs.indexOf(selectedFilterTab).coerceAtLeast(0)) {
+                tabs.forEach { tab ->
                     Tab(
-                        selected = category == selected,
-                        onClick = { onSelectCategory(category) },
-                        text = { Text(category.title) },
+                        selected = tab == selectedFilterTab,
+                        onClick = { onSelectFilterTab(tab) },
+                        text = { Text(tab.title) },
                     )
                 }
             }
@@ -145,13 +123,11 @@ fun FilterScreenContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            selected?.let { category ->
-                FilterChipGrid(
-                    options = categorized.getValue(category),
-                    staged = staged,
-                    onToggleStaged = onToggleStaged,
-                )
-            }
+            FilterChipGrid(
+                options = options,
+                staged = staged,
+                onToggleStaged = onToggleStaged,
+            )
         }
 
         Row(
@@ -176,15 +152,8 @@ fun FilterScreenContent(
     }
 }
 
-/**
- * Numeric-aware chip ordering: bus routes read as numbers ("9" before "370" before "412"), with
- * non-numeric labels ("L90") sorted lexically after the numbers.
- */
-private fun <T> byLabel(label: (T) -> String): Comparator<T> =
-    compareBy({ label(it).toIntOrNull() ?: Int.MAX_VALUE }, { label(it) })
-
-/** The selected category's chip grid. The category's tab label already identifies it, so this renders
- *  no title of its own. */
+/** The selected tab's chip grid. The tab's own label already identifies it, so this renders no title
+ *  of its own. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun FilterChipGrid(

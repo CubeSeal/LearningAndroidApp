@@ -15,11 +15,11 @@ import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -30,9 +30,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.LocalDate
@@ -65,24 +65,59 @@ private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimes
 // @Serializable so saved-stop filter combos can be persisted (see [SavedStopEntry]); the sealed
 // hierarchy is polymorphically encoded by kotlinx.serialization.
 @Serializable
-sealed interface TransitFilterOptions {
+sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
+    // Mandatory rank params
+    val typeRank: Int
+    val modeRank: Int
+
     // Route/stand carry their [mode] so the UI can name them per transport type (train "lines" and
     // "platforms" vs bus "routes" and "stands"). The mode is part of the option's identity, so both
     // the filter-list builder and the per-trip applicable set below must stamp it consistently.
+
+    // Labels are compared numerically first so bus routes read as numbers ("9" before "370" before
+    // "412"), with non-numeric labels ("L90") falling after them.
+    override fun compareTo(other: TransitFilterOptions): Int =
+        compareValuesBy(this, other,
+            { it.typeRank },
+            { it.modeRank },
+            { it.filterLabel().toIntOrNull() ?: Int.MAX_VALUE },
+            { it.filterLabel() })
+
+    /** The user-facing text of a filter option, used as the final alphabetical sort key. */
+    fun filterLabel(): String =
+        when (this) {
+            is RouteShortName -> this.routeShortName
+            is StopStand -> this.stopStand
+            is TransportMode -> this.mode.label
+            is TripHeadsign -> this.tripHeadsign
+        }
+
     @Serializable
-    data class RouteShortName(val routeShortName: String, val mode: TransitMode): TransitFilterOptions {
-        init { require(routeShortName.isNotBlank()) }
+    data class TransportMode(val mode: TransitMode): TransitFilterOptions {
+        override val typeRank = 0
+        override val modeRank = mode.rank
     }
-    @Serializable
-    data class TripHeadsign(val tripHeadsign: String): TransitFilterOptions {
-        init { require(tripHeadsign.isNotBlank()) }
-    }
+
     @Serializable
     data class StopStand(val stopStand: String, val mode: TransitMode): TransitFilterOptions {
+        override val typeRank = 1
+        override val modeRank = mode.rank
         init { require(stopStand.isNotBlank()) }
     }
+
     @Serializable
-    data class TransportMode(val mode: TransitMode): TransitFilterOptions
+    data class RouteShortName(val routeShortName: String, val mode: TransitMode): TransitFilterOptions {
+        override val typeRank = 2
+        override val modeRank = mode.rank
+        init { require(routeShortName.isNotBlank()) }
+    }
+
+    @Serializable
+    data class TripHeadsign(val tripHeadsign: String): TransitFilterOptions {
+        override val typeRank = 3
+        override val modeRank = 0
+        init { require(tripHeadsign.isNotBlank()) }
+    }
 }
 
 /**
@@ -96,77 +131,6 @@ data class SavedStopEntry(val stopId: String, val combos: List<List<TransitFilte
 /** Hydrated saved stop for the UI: the resolved [GlobbedStopRecord] plus its saved filter combos. */
 @Immutable
 data class SavedStop(val stop: GlobbedStopRecord, val combos: List<Set<TransitFilterOptions>>)
-
-/**
- * The natural hierarchy of filter types, broad → specific: mode, then stand/platform, then route/
- * line, then destination. Used to order the Home filter row (and mirrored by the FilterPage's
- * section order) consistently, regardless of the order options were discovered in.
- */
-val filterTypeRank: (TransitFilterOptions) -> Int = { option ->
-    when (option) {
-        is TransitFilterOptions.TransportMode -> 0
-        is TransitFilterOptions.StopStand -> 1
-        is TransitFilterOptions.RouteShortName -> 2
-        is TransitFilterOptions.TripHeadsign -> 3
-    }
-}
-
-/** Within a tier, order transport modes train → bus → other so trains lead. */
-fun transitModeRank(mode: TransitMode): Int = when (mode) {
-    TransitMode.TRAIN -> 0
-    TransitMode.BUS -> 1
-    TransitMode.OTHER -> 2
-}
-
-/**
- * Secondary ordering key (after [filterTypeRank]) that keeps trains ahead of buses within a tier —
- * the mode-selector chips (train roundel before bus) as well as the route/line and stand/platform
- * tiers. Destinations are mode-agnostic, so they share a value.
- */
-val filterModeRank: (TransitFilterOptions) -> Int = { option ->
-    when (option) {
-        is TransitFilterOptions.RouteShortName -> transitModeRank(option.mode)
-        is TransitFilterOptions.StopStand -> transitModeRank(option.mode)
-        is TransitFilterOptions.TransportMode -> transitModeRank(option.mode)
-        is TransitFilterOptions.TripHeadsign -> 0
-    }
-}
-
-/** The user-facing text of a filter option, used as the final alphabetical sort key. */
-val filterLabel: (TransitFilterOptions) -> String = { option ->
-    when (option) {
-        is TransitFilterOptions.RouteShortName -> option.routeShortName
-        is TransitFilterOptions.StopStand -> option.stopStand
-        is TransitFilterOptions.TransportMode -> option.mode.label
-        is TransitFilterOptions.TripHeadsign -> option.tripHeadsign
-    }
-}
-
-/**
- * The FilterPage's tab categories, broad -> specific matching [filterTypeRank]. Trains and buses use
- * different terminology for the same facet (platforms vs stands, lines vs routes), so those tiers
- * split into a train and a bus tab; destinations are mode-agnostic.
- */
-enum class FilterCategory(val title: String) {
-    Modes("Modes"),
-    Platforms("Platforms"),
-    Stands("Stands"),
-    Lines("Lines"),
-    Routes("Routes"),
-    Destinations("Destinations"),
-}
-
-/** Which [FilterCategory] tab a filter option belongs under. */
-val filterCategoryOf: (TransitFilterOptions) -> FilterCategory = { option ->
-    when (option) {
-        is TransitFilterOptions.TransportMode -> FilterCategory.Modes
-        is TransitFilterOptions.StopStand ->
-            if (option.mode == TransitMode.TRAIN) FilterCategory.Platforms else FilterCategory.Stands
-        is TransitFilterOptions.RouteShortName ->
-            if (option.mode == TransitMode.TRAIN) FilterCategory.Lines else FilterCategory.Routes
-        is TransitFilterOptions.TripHeadsign -> FilterCategory.Destinations
-    }
-}
 
 @Immutable
 data class StopTimesRecordWithRealtime(
@@ -389,16 +353,36 @@ class TransitInfo(
             initialValue = emptyList()
         )
 
-    // One-shot filter combo chosen from the saved-stops page. SavedStops emits it (via
-    // [selectSavedStop]); Home — retained on the back stack while the saved-stops page is on top —
-    // collects it and applies the filters. An empty set means the "naked" stop (clear filters).
-    private val _filterSelection = Channel<Set<TransitFilterOptions>>(Channel.BUFFERED)
-    val filterSelection: Flow<Set<TransitFilterOptions>> = _filterSelection.receiveAsFlow()
+    // Filters applied to the focused stop. Owned here, not in HomeViewModel: staging is per-screen,
+    // but the committed set is shared with the FilterPage's own ViewModel and the saved-stops page.
+    private val _selectedFilters = MutableStateFlow(emptySet<TransitFilterOptions>())
+    val selectedFilters: StateFlow<Set<TransitFilterOptions>> = _selectedFilters.asStateFlow()
 
-    /** Focus [stop] and hand [combo] to Home to apply (empty = naked). */
+    // Promoted from the FilterPage so the Home row keeps showing them after deselection.
+    private val _pinnedFilters = MutableStateFlow(emptySet<TransitFilterOptions>())
+    val pinnedFilters: StateFlow<Set<TransitFilterOptions>> = _pinnedFilters.asStateFlow()
+
+    /** Commit a chosen selection, pinning it so the Home row keeps it visible. */
+    fun applyFilters(selected: Set<TransitFilterOptions>) {
+        _selectedFilters.value = selected
+        _pinnedFilters.update { it + selected }
+    }
+
+    /** A Home row tap. Doesn't pin — the option is already in the row. */
+    fun toggleFilter(option: TransitFilterOptions) {
+        _selectedFilters.update { if (option in it) it - option else it + option }
+    }
+
+    /** Back to "show everything", with the row falling back to its base slice. */
+    fun clearFilters() {
+        _selectedFilters.value = emptySet()
+        _pinnedFilters.value = emptySet()
+    }
+
+    /** Focus [stop] and apply the saved [combo] (empty = the naked stop, so clear). */
     suspend fun selectSavedStop(stop: GlobbedStopRecord, combo: Set<TransitFilterOptions>) {
         updateFocusedBusStop(stop)
-        _filterSelection.trySend(combo)
+        if (combo.isEmpty()) clearFilters() else applyFilters(combo)
     }
 
     // A manual stop pick (search, trip stop tap, or a saved stop via selectSavedStop above). Turns

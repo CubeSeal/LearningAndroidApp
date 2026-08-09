@@ -39,10 +39,10 @@ data class LatLon(val latitude: Double, val longitude: Double)
  * the TfNSW bus and train feeds, so this is how the app tells trains and buses apart.
  */
 @kotlinx.serialization.Serializable
-enum class TransitMode(val label: String) {
-    BUS("Bus"),
-    TRAIN("Train"),
-    OTHER("Other"),
+enum class TransitMode(val label: String, val rank: Int) {
+    TRAIN("Train", 0),
+    BUS("Bus", 1),
+    OTHER("Other", 2),
 }
 
 @Immutable
