@@ -165,6 +165,46 @@ To keep the fake honest, the conversion helpers `collateToGlobbedStopRecord` and
 - `testOptions.unitTests.isReturnDefaultValues = true` (`app/build.gradle.kts`) makes stubbed `android.*` calls (e.g. `Log`) return defaults instead of throwing in JVM tests.
 - `.gitignore` ignores `/test/` (anchored) — the top-level GTFS sample-data dir only; an unanchored `test/` would also swallow `app/src/test`.
 
+## Code style philosophy
+
+These are the author's standing preferences. They routinely override "smaller diff" and "that's how
+it was already written" — a refactor is expected to carry them through the code it touches, not just
+add to it. The `TransitFilterOptions` filter hierarchy is the worked example of all five.
+
+**Metadata and behaviour live on the type, not in an external `when`.** A free
+`(SealedType) -> X` function that switches over the variants is a dispatch table that has to be kept
+in sync with the type by hand. Prefer an abstract member overridden on each variant, so the value is
+declared next to the data it reads. `TransitFilterOptions.typeRank` / `modeRank` / `filterLabel`
+replaced four such free functions (`filterTypeRank`, `filterModeRank`, `filterLabel`,
+`filterCategoryOf`); `TransitMode` carries its own `rank` and `label` on the enum constant. Only
+break this to keep a layer clean — `toFilterTab()` is a deliberate exception, an external `when` in
+`ViewModels.kt` so a UI concept stays out of the domain file.
+
+**One protocol, trivial call sites.** Implement the standard interface once and every ad-hoc helper
+built at a call site dies. Making `TransitFilterOptions` `Comparable` collapsed
+`compareBy(filterTypeRank, filterModeRank).thenBy { … }.thenBy { … }` in `HomeViewModel` *and* a
+private `byLabel` comparator in `FilterPage.kt` to `.sorted()` in both places. When adding a key to
+such a protocol, check it fully subsumes what the call sites were doing — a partial `compareTo`
+silently drops ordering the old comparators had.
+
+**Delete the redundant mechanism.** Where two things compute the same result, one goes; don't
+relocate machinery, remove it. Filter selection moving into `TransitInfo` deleted the
+`_filterSelection` `Channel` and its collector, because `selectSavedStop` could then just call
+`applyFilters`. Two mechanisms for one piece of state is also a correctness smell: the channel was
+load-bearing by accident, its buffering masking that `HomeViewModel.init` cleared the filters a
+saved-stop combo had just applied.
+
+**Structure over prose.** Comments earn their place by saying *why*, not restating *what* the code
+now shows. Encoding the filter hierarchy as ranks made the doc blocks describing that hierarchy
+redundant, so they were deleted rather than kept in sync. Deleted comments stay deleted — don't
+reintroduce them when renaming the thing they described.
+
+**Declaration order is the source of truth for anything ordered.** Derive ordered collections by
+filtering the declaration (`FilterTabs.entries.filter { it in options }`), never from the incidental
+encounter order of a `Set` or a `groupBy`'s keys. Enum constants are ordered deliberately —
+`TransitMode` lists `TRAIN` before `BUS` — and carry an explicit `rank` rather than leaning on
+`ordinal`, so the ordering survives someone reordering the constants.
+
 ## Conventions
 
 - Domain/record data classes consumed by Compose are annotated `@Immutable`. Keep them flat — joins and filtering are done in SQL (see DAO) rather than by nesting/mutating object graphs in Kotlin.
