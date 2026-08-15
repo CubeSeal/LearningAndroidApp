@@ -171,7 +171,7 @@ fun HomeHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.End,
     ) {
         IconButton(onClick = onToggleFollowLocation) {
@@ -195,7 +195,7 @@ fun HomeHeader(
         focusedBusStop,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .padding(bottom = 16.dp),
     )
 }
