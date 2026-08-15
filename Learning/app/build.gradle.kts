@@ -71,7 +71,19 @@ android {
         unitTests.all {
             it.testLogging {
                 showStandardStreams = true
+                // Gradle prints nothing for a passing test task (the "N actionable tasks" line is a
+                // task count, not a test count), so report each test and a per-class tally instead
+                // of having to open the XML/HTML report to find out what ran.
+                events("passed", "skipped", "failed")
             }
+            it.afterSuite(KotlinClosure2<TestDescriptor, TestResult, Unit>({ desc, result ->
+                if (desc.parent == null) {
+                    println(
+                        "Tests: ${result.testCount}, passed ${result.successfulTestCount}, " +
+                            "failed ${result.failedTestCount}, skipped ${result.skippedTestCount}"
+                    )
+                }
+            }))
         }
     }
 }
