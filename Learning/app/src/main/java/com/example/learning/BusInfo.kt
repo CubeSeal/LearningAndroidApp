@@ -62,8 +62,6 @@ private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimes
     }
 }
 
-// @Serializable so saved-stop filter combos can be persisted (see [SavedStopEntry]); the sealed
-// hierarchy is polymorphically encoded by kotlinx.serialization.
 @Serializable
 sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
     // Mandatory rank params
@@ -71,16 +69,12 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
     val modeRank: Int
     val filterLabel: String
 
-    // Route/stand carry their [mode] so the UI can name them per transport type (train "lines" and
-    // "platforms" vs bus "routes" and "stands"). The mode is part of the option's identity, so both
-    // the filter-list builder and the per-trip applicable set below must stamp it consistently.
-
-    // Labels are compared numerically first so bus routes read as numbers ("9" before "370" before
-    // "412"), with non-numeric labels ("L90") falling after them.
     override fun compareTo(other: TransitFilterOptions): Int =
         compareValuesBy(this, other,
             { it.typeRank },
             { it.modeRank },
+            // Labels are compared numerically first so bus routes read as numbers ("9" before "370" before
+            // "412"), with non-numeric labels ("L90") falling after them.
             { it.filterLabel.toIntOrNull() ?: Int.MAX_VALUE },
             { it.filterLabel })
 

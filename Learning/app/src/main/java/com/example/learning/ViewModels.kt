@@ -200,7 +200,7 @@ class HomeViewModel(
     // ViewModel, and a saved-stop combo commits them *before* navigating to a freshly-created Home
     // (resetTo pops the start destination inclusively, so that Home really is a new instance).
     fun refresh() {
-        transitInfo.clearFilters()
+//        transitInfo.clearFilters()
         load()
     }
 

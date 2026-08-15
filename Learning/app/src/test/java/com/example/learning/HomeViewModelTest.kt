@@ -262,13 +262,12 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `refresh clears selected filters`() = runTest(rule.dispatcher) {
+    fun `refresh keeps selected filters`() = runTest(rule.dispatcher) {
         val (vm, _) = buildVm()
         vm.toggleFilterForBusStops(filter100)
-        assertFalse(vm.selectedFiltersForBusStop.value.isEmpty())
-
+        assertEquals(setOf(filter100), vm.selectedFiltersForBusStop.value)
         vm.refresh()
-        assertTrue(vm.selectedFiltersForBusStop.value.isEmpty())
+        assertEquals(setOf(filter100), vm.selectedFiltersForBusStop.value)
     }
 
     // --- Follow-my-location toggle ---
