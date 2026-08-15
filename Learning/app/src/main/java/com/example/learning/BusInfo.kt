@@ -69,6 +69,7 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
     // Mandatory rank params
     val typeRank: Int
     val modeRank: Int
+    val filterLabel: String
 
     // Route/stand carry their [mode] so the UI can name them per transport type (train "lines" and
     // "platforms" vs bus "routes" and "stands"). The mode is part of the option's identity, so both
@@ -80,28 +81,21 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
         compareValuesBy(this, other,
             { it.typeRank },
             { it.modeRank },
-            { it.filterLabel().toIntOrNull() ?: Int.MAX_VALUE },
-            { it.filterLabel() })
-
-    /** The user-facing text of a filter option, used as the final alphabetical sort key. */
-    fun filterLabel(): String =
-        when (this) {
-            is RouteShortName -> this.routeShortName
-            is StopStand -> this.stopStand
-            is TransportMode -> this.mode.label
-            is TripHeadsign -> this.tripHeadsign
-        }
+            { it.filterLabel.toIntOrNull() ?: Int.MAX_VALUE },
+            { it.filterLabel })
 
     @Serializable
     data class TransportMode(val mode: TransitMode): TransitFilterOptions {
         override val typeRank = 0
         override val modeRank = mode.rank
+        override val filterLabel = this.mode.label
     }
 
     @Serializable
     data class StopStand(val stopStand: String, val mode: TransitMode): TransitFilterOptions {
         override val typeRank = 1
         override val modeRank = mode.rank
+        override val filterLabel = this.stopStand
         init { require(stopStand.isNotBlank()) }
     }
 
@@ -109,6 +103,7 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
     data class RouteShortName(val routeShortName: String, val mode: TransitMode): TransitFilterOptions {
         override val typeRank = 2
         override val modeRank = mode.rank
+        override val filterLabel = this.routeShortName
         init { require(routeShortName.isNotBlank()) }
     }
 
@@ -116,6 +111,7 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
     data class TripHeadsign(val tripHeadsign: String): TransitFilterOptions {
         override val typeRank = 3
         override val modeRank = 0
+        override val filterLabel = this.tripHeadsign
         init { require(tripHeadsign.isNotBlank()) }
     }
 }

@@ -33,7 +33,7 @@ class TransitFilterOptionsTest {
 
         assertEquals(
             listOf("9", "100", "370", "L90"),
-            routes.sorted().map { it.filterLabel() },
+            routes.sorted().map { it.filterLabel },
         )
     }
 }
