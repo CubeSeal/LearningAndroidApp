@@ -10,6 +10,7 @@ import com.example.learning.repos.LatLon
 import com.example.learning.repos.StopRecord
 import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
+import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -441,5 +442,20 @@ class HomeViewModelTest {
 
         savedStopsViewModel.onSavedStopSelected(stop2, emptySet())
         assertFalse(homeViewModel.followLocation.value)
+    }
+
+    @Test
+    fun `transitInfo only ever holds less than 100 stoptimes`() = runTest(rule.dispatcher) {
+        val fuckTonOfStopTimes: List<StopTimesRecord> = (1..1000)
+            .map {
+                dep(
+                    route = "610x",
+                    headsign ="Excellent 610x.",
+                    at = LocalDateTime.now().plusSeconds(it.toLong())
+                )
+            }
+        val (vm, _) = buildVm(departures = fuckTonOfStopTimes)
+
+        assertTrue(vm.associatedStopTimes.value.count() <= 100)
     }
 }
