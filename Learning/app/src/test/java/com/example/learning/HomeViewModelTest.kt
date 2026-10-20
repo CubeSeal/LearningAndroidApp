@@ -8,6 +8,7 @@ import com.example.learning.repos.FakeSettingsSource
 import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LatLon
+import com.example.learning.repos.RealtimeStopUpdate
 import com.example.learning.repos.RealtimeTripInfo
 import com.example.learning.repos.ScheduledStopTime
 import com.example.learning.repos.ServiceCalendar
@@ -558,7 +559,7 @@ class HomeViewModelTest {
             id = "entity-1",
             tripId = "trip-100",
             updatedAt = LocalDateTime.now(),
-            stopTimeDelays = listOf("S1" to 60),
+            stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = 60)),
             vehicleLicencePlate = "ABC123",
         )
         val (vm, _) = buildVm(
@@ -579,7 +580,7 @@ class HomeViewModelTest {
             id = "entity-1",
             tripId = "trip-100",
             updatedAt = LocalDateTime.now(),
-            stopTimeDelays = listOf("S1" to 60),
+            stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = 60)),
             vehicleLicencePlate = "ABC123",
         )
         val (vm, _, fakeRealtimeSource, _, _, fakeClockSource) = buildVm(
@@ -589,7 +590,7 @@ class HomeViewModelTest {
         val delay = { vm.associatedStopTimes.value.single().second.realtimeStopTimesRecord?.stopTimeDelay }
         assertEquals(Duration.ofSeconds(60), delay())
 
-        fakeRealtimeSource.changeData(listOf(realtime.copy(stopTimeDelays = listOf("S1" to 300))))
+        fakeRealtimeSource.changeData(listOf(realtime.copy(stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = 300)))))
         fakeClockSource.advanceMinutes()
         assertEquals(Duration.ofSeconds(300), delay())
     }
@@ -623,7 +624,7 @@ class HomeViewModelTest {
                     id = "entity-1",
                     tripId = "trip-100",
                     updatedAt = LocalDateTime.now(),
-                    stopTimeDelays = listOf("S1" to 120),
+                    stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = 120)),
                     vehicleLicencePlate = "ABC123",
                 )
             ),
@@ -642,12 +643,34 @@ class HomeViewModelTest {
                     id = "entity-1",
                     tripId = "trip-100",
                     updatedAt = LocalDateTime.now(),
-                    stopTimeDelays = listOf("S1" to 30),
+                    stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = 30)),
                     vehicleLicencePlate = "ABC123",
                 )
             ),
         )
 
         assertEquals(DepartureTimeDisplay.OnTime, vm.associatedStopTimes.value.single().second.timeDisplay)
+    }
+
+    // Sydney Trains' replacement trips give an absolute time with a placeholder delay of 0; the time is
+    // what the train will actually do.
+    @Test
+    fun `an absolute realtime time wins over a placeholder delay`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            realtime = listOf(
+                RealtimeTripInfo(
+                    id = "entity-1",
+                    tripId = "trip-100",
+                    updatedAt = LocalDateTime.now(),
+                    stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = 0, departure = soon.plusMinutes(5))),
+                    vehicleLicencePlate = "ABC123",
+                )
+            ),
+        )
+
+        val departure = vm.associatedStopTimes.value.single().second
+        assertEquals(Duration.ofMinutes(5), departure.realtimeStopTimesRecord?.stopTimeDelay)
+        assertEquals(DepartureTimeDisplay.Moved, departure.timeDisplay)
     }
 }

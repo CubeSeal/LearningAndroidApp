@@ -1,5 +1,6 @@
 package com.example.learning
 
+import com.example.learning.repos.RealtimeStopUpdate
 import com.example.learning.repos.toRealtimeTripInfo
 import com.google.transit.realtime.GtfsRealtime.FeedEntity
 import com.google.transit.realtime.GtfsRealtime.TripDescriptor
@@ -8,6 +9,9 @@ import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeEvent
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 class RealtimeDecodingTest {
     private fun entity(vararg stops: StopTimeUpdate) = FeedEntity.newBuilder()
@@ -29,7 +33,7 @@ class RealtimeDecodingTest {
         val decoded = entity(stop).toRealtimeTripInfo()
 
         assertEquals("trip-1", decoded.tripId)
-        assertEquals(listOf("S1" to 90), decoded.stopTimeDelays)
+        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = 90)), decoded.stopUpdates)
     }
 
     // NO_DATA means the feed knows nothing about this stop — the departure should read as timetable
@@ -45,6 +49,48 @@ class RealtimeDecodingTest {
             .setDeparture(StopTimeEvent.newBuilder().setDelay(30))
             .build()
 
-        assertEquals(listOf("S2" to 30), entity(noData, scheduled).toRealtimeTripInfo().stopTimeDelays)
+        assertEquals(
+            listOf(RealtimeStopUpdate("S2", delaySeconds = 30)),
+            entity(noData, scheduled).toRealtimeTripInfo().stopUpdates,
+        )
+    }
+
+    @Test
+    fun `an absolute departure time is kept`() {
+        val epoch = 1_792_501_381L
+        val stop = StopTimeUpdate.newBuilder()
+            .setStopId("S1")
+            .setDeparture(StopTimeEvent.newBuilder().setTime(epoch))
+            .build()
+
+        assertEquals(
+            listOf(
+                RealtimeStopUpdate(
+                    "S1",
+                    delaySeconds = null,
+                    departure = LocalDateTime.ofInstant(Instant.ofEpochSecond(epoch), ZoneId.systemDefault()),
+                )
+            ),
+            entity(stop).toRealtimeTripInfo().stopUpdates,
+        )
+    }
+
+    // Protobuf reads an unset delay as 0; "no delay given" must not become "exactly on time".
+    @Test
+    fun `a stop with neither delay nor time has no delay rather than zero`() {
+        val stop = StopTimeUpdate.newBuilder().setStopId("S1").build()
+
+        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = null)), entity(stop).toRealtimeTripInfo().stopUpdates)
+    }
+
+    // The last stop of a trip only has an arrival.
+    @Test
+    fun `a stop with only an arrival uses it`() {
+        val stop = StopTimeUpdate.newBuilder()
+            .setStopId("S1")
+            .setArrival(StopTimeEvent.newBuilder().setDelay(45))
+            .build()
+
+        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = 45)), entity(stop).toRealtimeTripInfo().stopUpdates)
     }
 }

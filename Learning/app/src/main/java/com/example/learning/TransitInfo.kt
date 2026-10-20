@@ -50,20 +50,27 @@ data class RealtimeStopTimesRecord(
     val stopId: String,
     val updatedAt: LocalDateTime,
     val stopTimeDelay: Duration?,
-    val vehicleLicencePlate: String
+    val vehicleLicencePlate: String,
+    // When the feed gives one, it overrides stopTimeDelay once joined to a run (see withRealtime).
+    val predictedDeparture: LocalDateTime? = null,
 )
 
 private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimesRecord> {
-    return this.stopTimeDelays.map { stopTimeDelayPair ->
+    return this.stopUpdates.map { stopUpdate ->
         RealtimeStopTimesRecord(
             tripId = this.tripId,
-            stopId = stopTimeDelayPair.first,
+            stopId = stopUpdate.stopId,
             updatedAt = this.updatedAt,
-            stopTimeDelay = stopTimeDelayPair.second?.let { Duration.ofSeconds(it.toLong())},
-            vehicleLicencePlate = this.vehicleLicencePlate
+            stopTimeDelay = stopUpdate.delaySeconds?.let { Duration.ofSeconds(it.toLong()) },
+            vehicleLicencePlate = this.vehicleLicencePlate,
+            predictedDeparture = stopUpdate.departure,
         )
     }
 }
+
+// An absolute predicted time only becomes a delay against a particular run's scheduled departure.
+private fun RealtimeStopTimesRecord.resolvedAgainst(record: StopTimesRecord): RealtimeStopTimesRecord =
+    predictedDeparture?.let { copy(stopTimeDelay = Duration.between(record.departureTime, it)) } ?: this
 
 @Serializable
 sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
@@ -161,7 +168,8 @@ fun Sequence<StopTimesRecord>.withRealtime(
     val claimed = mutableSetOf<Pair<String, String>>()
     for (record in this@withRealtime) {
         val key = record.tripId to record.stopId
-        yield(StopTimesRecordWithRealtime(record, realtime[key]?.takeIf { claimed.add(key) }))
+        val joined = realtime[key]?.takeIf { claimed.add(key) }?.resolvedAgainst(record)
+        yield(StopTimesRecordWithRealtime(record, joined))
     }
 }
 

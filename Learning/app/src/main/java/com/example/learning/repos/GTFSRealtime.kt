@@ -16,12 +16,23 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 
+/**
+ * One stop of a realtime trip update. The feed gives a delay, an absolute [departure], or both; the
+ * absolute time wins when present, since a replacement trip's delay is only a placeholder 0.
+ */
+@Immutable
+data class RealtimeStopUpdate(
+    val stopId: String,
+    val delaySeconds: Int?,
+    val departure: LocalDateTime? = null,
+)
+
 @Immutable
 data class RealtimeTripInfo(
     val id: String,
     val tripId: String,
     val updatedAt: LocalDateTime,
-    val stopTimeDelays: List<Pair<String, Int?>>,
+    val stopUpdates: List<RealtimeStopUpdate>,
     val vehicleLicencePlate: String,
 )
 
@@ -35,7 +46,7 @@ fun RealtimeTripInfo.withIdPrefix(idPrefix: String): RealtimeTripInfo =
     if (idPrefix.isEmpty()) this
     else copy(
         tripId = idPrefix + tripId,
-        stopTimeDelays = stopTimeDelays.map { (stopId, delay) -> (idPrefix + stopId) to delay },
+        stopUpdates = stopUpdates.map { it.copy(stopId = idPrefix + it.stopId) },
     )
 
 /**
@@ -116,13 +127,21 @@ fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
         ZoneId.systemDefault()
     ),
     // NO_DATA stops are dropped, so their departures join no realtime and read as timetable-only.
-    stopTimeDelays = tripUpdate.stopTimeUpdateList
+    stopUpdates = tripUpdate.stopTimeUpdateList
         .filter { it.scheduleRelationship != ScheduleRelationship.NO_DATA }
         .map {
+            // A trip's last stop only has an arrival. Unset fields read as 0 in protobuf, hence the has* checks.
+            val event = if (it.hasDeparture()) it.departure else it.arrival
             if (it.scheduleRelationship == ScheduleRelationship.SCHEDULED) {
-                it.stopId to it.departure.delay
+                RealtimeStopUpdate(
+                    it.stopId,
+                    delaySeconds = if (event.hasDelay()) event.delay else null,
+                    departure = if (event.hasTime()) {
+                        LocalDateTime.ofInstant(Instant.ofEpochSecond(event.time), ZoneId.systemDefault())
+                    } else null,
+                )
             } else {
-                it.stopId to null
+                RealtimeStopUpdate(it.stopId, delaySeconds = null)
             }
         },
     vehicleLicencePlate = tripUpdate.vehicle.licensePlate
