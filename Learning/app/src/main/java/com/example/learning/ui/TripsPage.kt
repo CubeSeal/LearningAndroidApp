@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.BackHeader
+import com.example.learning.EmptyScreen
 import com.example.learning.LoadingScreen
 import com.example.learning.ScrollTarget
 import com.example.learning.TripHeader
@@ -108,7 +109,7 @@ private fun TripRouteHeader(header: TripHeader) {
 
 @Composable
 private fun TripsList(
-    stopTimesByTrip: List<StopTimesRecord>,
+    stopTimesByTrip: List<StopTimesRecord>?,
     stopId: String,
     scrollTarget: ScrollTarget?,
     onStopClick: (String) -> Unit,
@@ -118,8 +119,10 @@ private fun TripsList(
         scrollTarget?.let { listState.scrollToItem(it.index, it.offset) }
     }
 
-    if (stopTimesByTrip.isEmpty()) {
+    if (stopTimesByTrip == null) {
         LoadingScreen("Loading trip information...")
+    } else if (stopTimesByTrip.isEmpty()) {
+        EmptyScreen("No stops found for this trip")
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

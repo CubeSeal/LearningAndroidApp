@@ -7,6 +7,7 @@ import com.example.learning.repos.FakeSettingsSource
 import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.LatLon
 import com.example.learning.repos.ScheduledStopTime
+import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -51,7 +52,7 @@ class TripsViewModelTest {
     @Test
     fun `stopTimesRecord loads all stops for the trip`() = runTest(rule.dispatcher) {
         val vm = buildVm()
-        assertEquals(3, vm.stopTimesRecord.value.size)
+        assertEquals(3, vm.stopTimesRecord.value?.size)
     }
 
     // The static header's route text is derived in the ViewModel (not the composable) so it's
@@ -66,6 +67,13 @@ class TripsViewModelTest {
     fun `tripHeader is null when the trip has no stops`() = runTest(rule.dispatcher) {
         val vm = TripsViewModel("T1", "S2", date, buildTransitInfo())
         assertNull(vm.tripHeader.value)
+    }
+
+    @Test
+    fun `a trip with no stops finishes loading with an empty list`() = runTest(rule.dispatcher) {
+        val vm = TripsViewModel("T1", "S2", date, buildTransitInfo())
+
+        assertEquals(emptyList<StopTimesRecord>(), vm.stopTimesRecord.value)
     }
 
     @Test

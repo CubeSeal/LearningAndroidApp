@@ -444,6 +444,23 @@ class HomeViewModelTest {
         )
     }
 
+    // No location fix yet, so there's no stop to load departures for.
+    @Test
+    fun `departures are loading until there's a stop to load them for`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(stops = emptyList())
+
+        assertTrue(vm.loadingDepartures.value)
+    }
+
+    // A stop whose timetable has run out is loaded, just empty — not a spinner forever.
+    @Test
+    fun `a stop with no departures finishes loading with an empty list`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = emptyList())
+
+        assertFalse(vm.loadingDepartures.value)
+        assertTrue(vm.associatedStopTimes.value.isEmpty())
+    }
+
     @Test
     fun `the departure list starts at one page`() = runTest(rule.dispatcher) {
         val (vm, _) = buildVm(departures = busyStop)

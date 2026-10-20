@@ -293,6 +293,24 @@ fun LoadingScreen(loadingTxt: String) {
     }
 }
 
+/** Loaded, but nothing to show — the counterpart to [LoadingScreen], without the spinner. */
+@Composable
+fun EmptyScreen(emptyTxt: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = emptyTxt,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+
 fun printTime(timeToFormat: LocalDateTime, currentTime: LocalDate = LocalDate.now()): String {
     val timeStr = timeToFormat.format(DateTimeFormatter.ofPattern("h:mm a"))
 

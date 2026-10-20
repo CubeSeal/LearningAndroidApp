@@ -88,10 +88,15 @@ class HomeViewModel(
         selectedFiltersForBusStop,
     ) { schedule, filterIndex, selectedFilters ->
         val rows =
-            if (selectedFilters.isEmpty()) schedule.stopTimes
+            if (selectedFilters.isEmpty()) schedule?.stopTimes
             else selectedFilters.flatMap { filterIndex[it].orEmpty() }.distinct()
-        schedule.copy(stopTimes = rows)
+        rows?.let { schedule?.copy(stopTimes = it) }
     }
+
+    // Distinct from an empty list: a loaded stop can have no departures left.
+    val loadingDepartures: StateFlow<Boolean> = transitInfo.schedule
+        .map { it == null }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     // Eagerly, not WhileSubscribed: onScrolledTo reads the current page off .value.
     val associatedStopTimes = combine(
@@ -100,6 +105,7 @@ class HomeViewModel(
         transitInfo.realtimeStopTimes,
         pageSize,
     ) { schedule, currentMinute, realtime, pageSize ->
+        if (schedule == null) return@combine emptyList()
         val pastBuffer = Duration.ofMinutes(2)
         // Stitch from further back than is shown, so a departure running late past its scheduled
         // time is still picked up by its realtime-adjusted time.

@@ -74,6 +74,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
 import com.example.learning.DepartureTimeDisplay
+import com.example.learning.EmptyScreen
 import com.example.learning.Filter
 import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
@@ -98,6 +99,7 @@ fun HOMEScreen(
     val focusedBusStop by viewModel.focusedBusStop.collectAsStateWithLifecycle()
     val followLocation by viewModel.followLocation.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
+    val loadingDepartures by viewModel.loadingDepartures.collectAsStateWithLifecycle()
     val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -154,6 +156,7 @@ fun HOMEScreen(
                 MasterLazyColumn(
                     listState,
                     associatedBusStopTimes,
+                    loadingDepartures,
                     { viewModel.onDepartureClicked(it) },
                 )
             }
@@ -214,6 +217,7 @@ fun HomeHeader(
 fun MasterLazyColumn(
     listState: LazyListState,
     associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
+    loading: Boolean,
     onDepartureClicked: (StopTimesRecordWithRealtime) -> Unit,
 ) {
     LazyColumn(
@@ -222,9 +226,10 @@ fun MasterLazyColumn(
         modifier = Modifier
             .fillMaxSize()
     ) {
-        if (associatedBusStopTimes.isEmpty()) {
-            Log.d("Home-Page", "associatedBusStopTimes is empty: $associatedBusStopTimes.")
+        if (loading) {
             item() { LoadingScreen("Loading trips...") }
+        } else if (associatedBusStopTimes.isEmpty()) {
+            item() { EmptyScreen("No upcoming departures") }
         } else {
             items(
                 items = associatedBusStopTimes,

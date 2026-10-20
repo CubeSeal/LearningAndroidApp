@@ -138,8 +138,8 @@ data class StopTimesRecordWithRealtime(
 /** The focused stop's timetable, undated, plus the calendar that places it onto days. */
 @Immutable
 data class StopSchedule(
-    val stopTimes: List<ScheduledStopTime> = emptyList(),
-    val calendar: ServiceCalendar = ServiceCalendar(emptyMap()),
+    val stopTimes: List<ScheduledStopTime>,
+    val calendar: ServiceCalendar,
 )
 
 // Set of filters that apply to this departure.
@@ -256,26 +256,27 @@ class TransitInfo(
             initialValue = emptyMap()
         )
 
-    // flatMapLatest cancels the previous stop's in-flight query on switch; emitting empty first
-    // clears the old stop's departures immediately (rather than leaving them stale while the new
-    // query runs).
-    val schedule: StateFlow<StopSchedule> = focusedBusStop
+    // Null while loading: until there's a stop, and again on each switch. flatMapLatest cancels the
+    // previous stop's in-flight query, and the null clears its departures immediately rather than
+    // leaving them stale while the new query runs.
+    val schedule: StateFlow<StopSchedule?> = focusedBusStop
         .filterNotNull()
         .flatMapLatest { stop ->
             flow {
-                emit(StopSchedule())
+                emit(null)
                 emit(StopSchedule(gtfsStaticRepository.getScheduledStopTimesByStop(stop), gtfsStaticRepository.getServiceCalendar()))
             }
         }
         .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = StopSchedule()
+            initialValue = null
         )
 
     // Built from the whole timetable rather than any page of departures, so every route the stop
     // serves is offered however far out its next run is.
     val filtersForBusStop = schedule
+        .filterNotNull()
         .map { it.stopTimes }
         .filter { it.isNotEmpty() }
         .mapLatest { associatedTrips ->
@@ -317,7 +318,7 @@ class TransitInfo(
     val filterIndex: StateFlow<Map<TransitFilterOptions, List<ScheduledStopTime>>> =
         schedule.map { schedule ->
             buildMap<TransitFilterOptions, MutableList<ScheduledStopTime>> {
-                for (row in schedule.stopTimes)
+                for (row in schedule?.stopTimes.orEmpty())
                     for (f in row.applicableFilters)
                         getOrPut(f) { mutableListOf() }.add(row)
             }

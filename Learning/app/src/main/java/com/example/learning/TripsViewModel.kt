@@ -3,6 +3,7 @@ package com.example.learning
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.learning.repos.StopTimesRecord
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,15 +33,16 @@ class TripsViewModel(
     val date: LocalDate,
     private val transitInfo: TransitInfo,
 ) : ViewModel() {
-    val stopTimesRecord = flow {
+    // Null until the trip loads, so a trip with no stops reads as empty rather than still loading.
+    val stopTimesRecord: StateFlow<List<StopTimesRecord>?> = flow {
         val result = transitInfo.getByTrip(tripId, date)
         emit(result)
         Log.d("VM", result.toString())
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     // The static header (route names), taken off the trip's first stop. Null until the trip loads.
     val tripHeader: StateFlow<TripHeader?> = stopTimesRecord
-        .map { list -> list.firstOrNull()?.let { TripHeader(it.routeShortName.orEmpty(), it.routeLongName) } }
+        .map { list -> list?.firstOrNull()?.let { TripHeader(it.routeShortName.orEmpty(), it.routeLongName) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     // Where to scroll so the focused stop's row is in view (nudged down 24px so it isn't flush at the
@@ -48,8 +50,8 @@ class TripsViewModel(
     // its position in the trip. Null until the trip loads / when the focused stop isn't in this trip.
     val scrollTarget: StateFlow<ScrollTarget?> = stopTimesRecord
         .map { list ->
-            val idx = list.indexOfFirst { it.stopId == stopId }
-            if (idx >= 0 && list.isNotEmpty()) ScrollTarget(idx, -24) else null
+            val idx = list.orEmpty().indexOfFirst { it.stopId == stopId }
+            if (idx >= 0) ScrollTarget(idx, -24) else null
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
