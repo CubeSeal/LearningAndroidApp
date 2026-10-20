@@ -53,7 +53,7 @@ TFNSW_API_KEY=<key> gradle run    # downloads GTFS, builds gtfs.db.gz locally
 Repositories (repos/, db/)  →  TransitInfo  →  ViewModels  →  Compose screens (ui/)
 ```
 
-- **`ApplicationRepos`** (`ViewModels.kt`) is the manually-wired DI container, held by `LearningApplication`. There is no DI framework — dependencies are constructed by hand and passed down. `MainActivity` requests location permission first, then calls `repos.initAll()`; the UI shows `LoadingScreen` until `repos.loaded` flips true.
+- **`ApplicationRepos`** (`Application.kt`) is the manually-wired DI container, held by `LearningApplication`. There is no DI framework — dependencies are constructed by hand and passed down. `MainActivity` requests location permission first, then calls `repos.initAll()`; the UI shows `LoadingScreen` until `repos.loaded` flips true.
 - **`TransitInfo`** (`BusInfo.kt`) is the domain layer that merges static schedule + realtime + location + settings into `StateFlow`s that ViewModels consume. It owns the reactive pipeline: `currentMinute` ticks each minute; `closestBusStops`, `focusedBusStop`, `associatedTrips`, `associatedStopTimes`, and `filtersForBusStop` are all derived flows. The realtime overlay is keyed by `(tripId, stopId)` and joined onto static records as a nullable field (`StopTimesRecordWithRealtime`) — null means "no realtime info yet."
 - **ViewModels** (`HomeViewModel`, `PickStopViewModel`, `TripsViewModel`) are thin; they mostly re-expose `TransitInfo` flows and hold UI-local state (filter selection, search query). They're created via `AppViewModelProvider.Factory`.
 
@@ -178,7 +178,7 @@ declared next to the data it reads. `TransitFilterOptions.typeRank` / `modeRank`
 replaced four such free functions (`filterTypeRank`, `filterModeRank`, `filterLabel`,
 `filterCategoryOf`); `TransitMode` carries its own `rank` and `label` on the enum constant. Only
 break this to keep a layer clean — `toFilterTab()` is a deliberate exception, an external `when` in
-`ViewModels.kt` so a UI concept stays out of the domain file.
+`FilterViewModel.kt` so a UI concept stays out of the domain file.
 
 **One protocol, trivial call sites.** Implement the standard interface once and every ad-hoc helper
 built at a call site dies. Making `TransitFilterOptions` `Comparable` collapsed
