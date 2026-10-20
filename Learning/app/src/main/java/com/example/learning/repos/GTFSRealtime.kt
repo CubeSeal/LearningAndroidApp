@@ -123,7 +123,7 @@ class GtfsRealtimeRepository(
             if (fieldNumber == 2) {
                 val length = cis.readRawVarint32()
                 val oldLimit = cis.pushLimit(length)
-                tripInfos.add(FeedEntity.parseFrom(cis).toRealtimeTripInfo())
+                FeedEntity.parseFrom(cis).toRealtimeTripInfo()?.let { tripInfos.add(it) }
                 cis.popLimit(oldLimit)
             } else {
                 cis.skipField(tag)
@@ -133,8 +133,17 @@ class GtfsRealtimeRepository(
     }
 }
 
-/** Top-level, not a repository method, so tests can decode hand-built entities at this API. */
-fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
+// Sydney Trains' "Out Of Service" (RTTA_DEF) and "Non Revenue" (RTTA_REV) routes: empty trains, which
+// the converter prunes from the timetable too.
+private val nonPassengerRoutes = setOf("RTTA_DEF", "RTTA_REV")
+
+/**
+ * Null for anything that isn't a passenger trip update: vehicle positions, alerts, empty trains.
+ * Top-level, not a repository method, so tests can decode hand-built entities at this API.
+ */
+fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo? =
+    if (!hasTripUpdate() || tripUpdate.trip.routeId in nonPassengerRoutes) null
+    else RealtimeTripInfo(
     id = id,
     tripId = tripUpdate.trip.tripId,
     updatedAt = LocalDateTime.ofInstant(

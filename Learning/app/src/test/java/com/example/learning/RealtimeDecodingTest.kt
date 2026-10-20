@@ -9,6 +9,7 @@ import com.google.transit.realtime.GtfsRealtime.TripUpdate
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeEvent
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeUpdate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDateTime
@@ -33,8 +34,8 @@ class RealtimeDecodingTest {
 
         val decoded = entity(stop).toRealtimeTripInfo()
 
-        assertEquals("trip-1", decoded.tripId)
-        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = 90)), decoded.stopUpdates)
+        assertEquals("trip-1", decoded?.tripId)
+        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = 90)), decoded?.stopUpdates)
     }
 
     // NO_DATA means the feed knows nothing about this stop — the departure should read as timetable
@@ -52,7 +53,7 @@ class RealtimeDecodingTest {
 
         assertEquals(
             listOf(RealtimeStopUpdate("S2", delaySeconds = 30)),
-            entity(noData, scheduled).toRealtimeTripInfo().stopUpdates,
+            entity(noData, scheduled).toRealtimeTripInfo()?.stopUpdates,
         )
     }
 
@@ -72,7 +73,7 @@ class RealtimeDecodingTest {
                     departure = LocalDateTime.ofInstant(Instant.ofEpochSecond(epoch), ZoneId.systemDefault()),
                 )
             ),
-            entity(stop).toRealtimeTripInfo().stopUpdates,
+            entity(stop).toRealtimeTripInfo()?.stopUpdates,
         )
     }
 
@@ -81,7 +82,7 @@ class RealtimeDecodingTest {
     fun `a stop with neither delay nor time has no delay rather than zero`() {
         val stop = StopTimeUpdate.newBuilder().setStopId("S1").build()
 
-        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = null)), entity(stop).toRealtimeTripInfo().stopUpdates)
+        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = null)), entity(stop).toRealtimeTripInfo()?.stopUpdates)
     }
 
     @Test
@@ -93,7 +94,7 @@ class RealtimeDecodingTest {
 
         assertEquals(
             listOf(RealtimeStopUpdate("S1", delaySeconds = null, skipped = true)),
-            entity(skipped).toRealtimeTripInfo().stopUpdates,
+            entity(skipped).toRealtimeTripInfo()?.stopUpdates,
         )
     }
 
@@ -110,8 +111,30 @@ class RealtimeDecodingTest {
             )
             .build()
 
-        assertEquals(RealtimeTripStatus.Cancelled, cancelled.toRealtimeTripInfo().status)
-        assertEquals(RealtimeTripStatus.Scheduled, entity().toRealtimeTripInfo().status)
+        assertEquals(RealtimeTripStatus.Cancelled, cancelled.toRealtimeTripInfo()?.status)
+        assertEquals(RealtimeTripStatus.Scheduled, entity().toRealtimeTripInfo()?.status)
+    }
+
+    // Sydney Trains' "Out Of Service" and "Non Revenue" routes: empty trains nobody can board. The
+    // converter drops them from the timetable, so they'd only ever fail to match.
+    @Test
+    fun `an empty train decodes to nothing`() {
+        for (route in listOf("RTTA_DEF", "RTTA_REV")) {
+            val emptyTrain = FeedEntity.newBuilder()
+                .setId("entity-1")
+                .setTripUpdate(
+                    TripUpdate.newBuilder().setTrip(TripDescriptor.newBuilder().setTripId("1--A.1318").setRouteId(route))
+                )
+                .build()
+
+            assertNull(route, emptyTrain.toRealtimeTripInfo())
+        }
+    }
+
+    // A feed entity can be a vehicle position or alert instead of a trip update.
+    @Test
+    fun `an entity with no trip update decodes to nothing`() {
+        assertNull(FeedEntity.newBuilder().setId("entity-1").build().toRealtimeTripInfo())
     }
 
     // The last stop of a trip only has an arrival.
@@ -122,6 +145,6 @@ class RealtimeDecodingTest {
             .setArrival(StopTimeEvent.newBuilder().setDelay(45))
             .build()
 
-        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = 45)), entity(stop).toRealtimeTripInfo().stopUpdates)
+        assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = 45)), entity(stop).toRealtimeTripInfo()?.stopUpdates)
     }
 }
