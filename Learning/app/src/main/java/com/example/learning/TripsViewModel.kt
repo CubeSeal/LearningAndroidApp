@@ -45,14 +45,17 @@ class TripsViewModel(
         .map { list -> list?.firstOrNull()?.let { TripHeader(it.routeShortName.orEmpty(), it.routeLongName) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    // The focused stop's position in the trip: the row that's highlighted and scrolled to. Null until
+    // the trip loads / when the focused stop isn't in this trip.
+    val focusedIndex: StateFlow<Int?> = stopTimesRecord
+        .map { list -> list.orEmpty().indexOfFirst { it.stopId == stopId }.takeIf { it >= 0 } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     // Where to scroll so the focused stop's row is in view (nudged down 24px so it isn't flush at the
     // top). The route header is a static element outside the list, so the row's list index is just
-    // its position in the trip. Null until the trip loads / when the focused stop isn't in this trip.
-    val scrollTarget: StateFlow<ScrollTarget?> = stopTimesRecord
-        .map { list ->
-            val idx = list.orEmpty().indexOfFirst { it.stopId == stopId }
-            if (idx >= 0) ScrollTarget(idx, -24) else null
-        }
+    // its position in the trip.
+    val scrollTarget: StateFlow<ScrollTarget?> = focusedIndex
+        .map { index -> index?.let { ScrollTarget(it, -24) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _navEvents = Channel<TripsNavEvent>(Channel.BUFFERED)

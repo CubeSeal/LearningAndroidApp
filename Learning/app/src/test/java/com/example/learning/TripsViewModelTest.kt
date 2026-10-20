@@ -90,6 +90,17 @@ class TripsViewModelTest {
         assertNull(vm.scrollTarget.value)
     }
 
+    // The row highlighted is the row scrolled to: both come from one focusedIndex.
+    @Test
+    fun `focusedIndex is the focused stop's position in the trip`() = runTest(rule.dispatcher) {
+        assertEquals(1, buildVm(focusedStopId = "S2").focusedIndex.value)
+    }
+
+    @Test
+    fun `focusedIndex is null when the focused stop is not in this trip`() = runTest(rule.dispatcher) {
+        assertNull(buildVm(focusedStopId = "S99").focusedIndex.value)
+    }
+
     @Test
     fun `onBackClicked emits PopBack`() = runTest(rule.dispatcher) {
         val vm = buildVm()

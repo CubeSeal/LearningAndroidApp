@@ -61,6 +61,7 @@ fun TripsScreen(
 ) {
     val stopTimesByTrip by viewModel.stopTimesRecord.collectAsStateWithLifecycle()
     val scrollTarget by viewModel.scrollTarget.collectAsStateWithLifecycle()
+    val focusedIndex by viewModel.focusedIndex.collectAsStateWithLifecycle()
     val tripHeader by viewModel.tripHeader.collectAsStateWithLifecycle()
 
     // Re-arm the ViewModel's "navigate once" latch each time this screen is shown.
@@ -79,7 +80,7 @@ fun TripsScreen(
 
         TripsList(
             stopTimesByTrip = stopTimesByTrip,
-            stopId = viewModel.stopId,
+            focusedIndex = focusedIndex,
             scrollTarget = scrollTarget,
             onStopClick = { viewModel.onStopClicked(it) },
         )
@@ -110,7 +111,7 @@ private fun TripRouteHeader(header: TripHeader) {
 @Composable
 private fun TripsList(
     stopTimesByTrip: List<StopTimesRecord>?,
-    stopId: String,
+    focusedIndex: Int?,
     scrollTarget: ScrollTarget?,
     onStopClick: (String) -> Unit,
 ) {
@@ -133,7 +134,7 @@ private fun TripsList(
                 items = stopTimesByTrip,
                 key = { _, item -> item.sequence }
             ) { index, item ->
-                val isFocused = item.stopId == stopId
+                val isFocused = index == focusedIndex
                 val (container, onContainer) = if (isFocused) {
                     MaterialTheme.colorScheme.secondaryContainer to
                             MaterialTheme.colorScheme.onSecondaryContainer
