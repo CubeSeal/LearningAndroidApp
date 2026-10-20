@@ -49,6 +49,8 @@ enum class DepartureTimeDisplay {
     Moved,
     /** Realtime cancelled the trip: the timetabled time, marked as not running. */
     Cancelled,
+    /** The trip runs, but realtime says it won't stop here: the timetabled time, marked as skipped. */
+    Skipped,
 }
 
 val StopTimesRecordWithRealtime.timeDisplay: DepartureTimeDisplay
@@ -56,6 +58,7 @@ val StopTimesRecordWithRealtime.timeDisplay: DepartureTimeDisplay
         val delay = realtimeStopTimesRecord?.stopTimeDelay
         return when {
             cancelled -> DepartureTimeDisplay.Cancelled
+            realtimeStopTimesRecord?.skipped == true -> DepartureTimeDisplay.Skipped
             realtimeStopTimesRecord == null -> DepartureTimeDisplay.TimetableOnly
             delay != null && delay.toMinutes() != 0L -> DepartureTimeDisplay.Moved
             else -> DepartureTimeDisplay.OnTime

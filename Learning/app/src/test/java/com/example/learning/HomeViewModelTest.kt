@@ -698,4 +698,22 @@ class HomeViewModelTest {
             vm.associatedStopTimes.value.map { it.second.timeDisplay },
         )
     }
+
+    @Test
+    fun `a run that skips this stop shows as skipped`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            realtime = listOf(
+                RealtimeTripInfo(
+                    id = "entity-1",
+                    tripId = "trip-100",
+                    updatedAt = LocalDateTime.now(),
+                    stopUpdates = listOf(RealtimeStopUpdate("S1", delaySeconds = null, skipped = true)),
+                    vehicleLicencePlate = "ABC123",
+                )
+            ),
+        )
+
+        assertEquals(DepartureTimeDisplay.Skipped, vm.associatedStopTimes.value.single().second.timeDisplay)
+    }
 }

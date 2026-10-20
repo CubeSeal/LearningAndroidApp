@@ -401,9 +401,9 @@ fun LazyItemScope.BusCard(
                             Text(text = "", style = MaterialTheme.typography.titleMedium)
                             ScheduledTimeText(printTime(scheduledDeparture, today), onDynamicContainer, superseded = false)
                         }
-                        DepartureTimeDisplay.Cancelled -> {
+                        DepartureTimeDisplay.Cancelled, DepartureTimeDisplay.Skipped -> {
                             Text(
-                                text = "Cancelled",
+                                text = if (timeDisplay == DepartureTimeDisplay.Cancelled) "Cancelled" else "Skips stop",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.error,
                             )

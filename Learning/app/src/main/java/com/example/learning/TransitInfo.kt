@@ -53,6 +53,7 @@ data class RealtimeStopTimesRecord(
     val vehicleLicencePlate: String,
     // When the feed gives one, it overrides stopTimeDelay once joined to a run (see withRealtime).
     val predictedDeparture: LocalDateTime? = null,
+    val skipped: Boolean = false,
 )
 
 private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimesRecord> {
@@ -64,6 +65,7 @@ private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimes
             stopTimeDelay = stopUpdate.delaySeconds?.let { Duration.ofSeconds(it.toLong()) },
             vehicleLicencePlate = this.vehicleLicencePlate,
             predictedDeparture = stopUpdate.departure,
+            skipped = stopUpdate.skipped,
         )
     }
 }

@@ -26,6 +26,7 @@ data class RealtimeStopUpdate(
     val stopId: String,
     val delaySeconds: Int?,
     val departure: LocalDateTime? = null,
+    val skipped: Boolean = false,
 )
 
 @Immutable
@@ -143,7 +144,11 @@ fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
                     } else null,
                 )
             } else {
-                RealtimeStopUpdate(it.stopId, delaySeconds = null)
+                RealtimeStopUpdate(
+                    it.stopId,
+                    delaySeconds = null,
+                    skipped = it.scheduleRelationship == ScheduleRelationship.SKIPPED,
+                )
             }
         },
     vehicleLicencePlate = tripUpdate.vehicle.licensePlate,

@@ -86,6 +86,19 @@ class RealtimeDecodingTest {
     }
 
     @Test
+    fun `a SKIPPED stop is decoded as skipped`() {
+        val skipped = StopTimeUpdate.newBuilder()
+            .setStopId("S1")
+            .setScheduleRelationship(StopTimeUpdate.ScheduleRelationship.SKIPPED)
+            .build()
+
+        assertEquals(
+            listOf(RealtimeStopUpdate("S1", delaySeconds = null, skipped = true)),
+            entity(skipped).toRealtimeTripInfo().stopUpdates,
+        )
+    }
+
+    @Test
     fun `a cancelled trip is decoded as cancelled`() {
         val cancelled = FeedEntity.newBuilder()
             .setId("entity-1")
