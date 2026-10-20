@@ -83,12 +83,12 @@ import com.example.learning.PickStop
 import com.example.learning.StopTimesRecordWithRealtime
 import com.example.learning.TransitFilterOptions
 import com.example.learning.Trips
+import com.example.learning.effectiveDepartureTime
 import com.example.learning.printTime
 import com.example.learning.timeDisplay
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.flow.distinctUntilChanged
-import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -337,11 +337,7 @@ fun LazyItemScope.BusCard(
 ) {
     val (isFirst, record) = item
     val realtime = record.realtimeStopTimesRecord
-    val delay = realtime?.stopTimeDelay
-    val scheduledDeparture = item.second.stopTimesRecord.departureTime
-    // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
-    // Only make the choice to treat it as zero when re-calculating departureTimes.
-    val departureTime = scheduledDeparture + (delay ?: Duration.ZERO)
+    val scheduledDeparture = record.stopTimesRecord.departureTime
     val timeDisplay = record.timeDisplay
     // Timetable only: the whole row is italicised and the trailing spot shows the scheduled time in
     // the same italic style.
@@ -411,7 +407,7 @@ fun LazyItemScope.BusCard(
                         ScheduledTimeText(printTime(scheduledDeparture), onDynamicContainer, superseded = false)
                     } else {
                         Text(
-                            text = printTime(departureTime),
+                            text = printTime(record.effectiveDepartureTime),
                             style = MaterialTheme.typography.titleMedium,
                             color = onDynamicContainer
                         )
