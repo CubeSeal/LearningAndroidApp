@@ -89,6 +89,7 @@ import com.example.learning.timeDisplay
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.flow.distinctUntilChanged
+import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,6 +101,7 @@ fun HOMEScreen(
     val followLocation by viewModel.followLocation.collectAsStateWithLifecycle()
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val loadingDepartures by viewModel.loadingDepartures.collectAsStateWithLifecycle()
+    val today by viewModel.today.collectAsStateWithLifecycle()
     val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -157,6 +159,7 @@ fun HOMEScreen(
                     listState,
                     associatedBusStopTimes,
                     loadingDepartures,
+                    today,
                     { viewModel.onDepartureClicked(it) },
                 )
             }
@@ -218,6 +221,7 @@ fun MasterLazyColumn(
     listState: LazyListState,
     associatedBusStopTimes: List<Pair<Boolean, StopTimesRecordWithRealtime>>,
     loading: Boolean,
+    today: LocalDate,
     onDepartureClicked: (StopTimesRecordWithRealtime) -> Unit,
 ) {
     LazyColumn(
@@ -235,7 +239,7 @@ fun MasterLazyColumn(
                 items = associatedBusStopTimes,
                 key = { item -> item.second.stopTimesRecord.let { Triple(it.stopId,it.tripId, it.departureTime) } }
             ) { item ->
-                BusCard(onClick = { onDepartureClicked(item.second) }, item = item)
+                BusCard(onClick = { onDepartureClicked(item.second) }, item = item, today = today)
             }
         }
 
@@ -333,7 +337,8 @@ fun ModeFilterChips(
 @Composable
 fun LazyItemScope.BusCard(
     onClick: () -> Unit,
-    item: Pair<Boolean, StopTimesRecordWithRealtime>
+    item: Pair<Boolean, StopTimesRecordWithRealtime>,
+    today: LocalDate,
 ) {
     val (isFirst, record) = item
     val realtime = record.realtimeStopTimesRecord
@@ -404,17 +409,17 @@ fun LazyItemScope.BusCard(
                         // lands in the same vertical spot as the realtime row's second line, rather
                         // than centring higher.
                         Text(text = "", style = MaterialTheme.typography.titleMedium)
-                        ScheduledTimeText(printTime(scheduledDeparture), onDynamicContainer, superseded = false)
+                        ScheduledTimeText(printTime(scheduledDeparture, today), onDynamicContainer, superseded = false)
                     } else {
                         Text(
-                            text = printTime(record.effectiveDepartureTime),
+                            text = printTime(record.effectiveDepartureTime, today),
                             style = MaterialTheme.typography.titleMedium,
                             color = onDynamicContainer
                         )
                         // Always reserve the scheduled-time line (empty when on time) so the
                         // predicted time aligns with the off-schedule and untracked rows.
                         ScheduledTimeText(
-                            if (timeDisplay == DepartureTimeDisplay.Moved) printTime(scheduledDeparture) else "",
+                            if (timeDisplay == DepartureTimeDisplay.Moved) printTime(scheduledDeparture, today) else "",
                             onDynamicContainer,
                             superseded = true,
                         )

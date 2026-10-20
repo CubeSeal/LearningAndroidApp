@@ -40,6 +40,8 @@ class TripsViewModel(
         Log.d("VM", result.toString())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    val today: StateFlow<LocalDate> = transitInfo.today
+
     // The static header (route names), taken off the trip's first stop. Null until the trip loads.
     val tripHeader: StateFlow<TripHeader?> = stopTimesRecord
         .map { list -> list?.firstOrNull()?.let { TripHeader(it.routeShortName.orEmpty(), it.routeLongName) } }

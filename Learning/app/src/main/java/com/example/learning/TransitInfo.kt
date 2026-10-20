@@ -183,6 +183,11 @@ class TransitInfo(
     val currentMinute: StateFlow<LocalDateTime> = clock.currentMinute
         .stateIn(scope, SharingStarted.Eagerly, LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
 
+    // The day times are labelled against ("Tomorrow 1:30 AM"); moves on at midnight with the clock.
+    val today: StateFlow<LocalDate> = currentMinute
+        .map { it.toLocalDate() }
+        .stateIn(scope, SharingStarted.Eagerly, currentMinute.value.toLocalDate())
+
     val focusedBusStop = settingsRepo
         .homeStopId
         .filterNotNull()

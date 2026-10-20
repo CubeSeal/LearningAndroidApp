@@ -1,6 +1,7 @@
 package com.example.learning
 
 import app.cash.turbine.test
+import com.example.learning.repos.FakeClockSource
 import com.example.learning.repos.FakeLocationSource
 import com.example.learning.repos.FakeRealtimeSource
 import com.example.learning.repos.FakeSettingsSource
@@ -17,6 +18,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 class TripsViewModelTest {
     @get:Rule val rule = MainDispatcherRule()
@@ -74,6 +76,16 @@ class TripsViewModelTest {
         val vm = TripsViewModel("T1", "S2", date, buildTransitInfo())
 
         assertEquals(emptyList<StopTimesRecord>(), vm.stopTimesRecord.value)
+    }
+
+    @Test
+    fun `today moves on when the clock passes midnight`() = runTest(rule.dispatcher) {
+        val clock = FakeClockSource(LocalDateTime.of(2026, 7, 19, 23, 59))
+        val vm = TripsViewModel("T1", "S2", date, buildTransitInfo(clock = clock))
+        assertEquals(LocalDate.of(2026, 7, 19), vm.today.value)
+
+        clock.advanceMinutes()
+        assertEquals(LocalDate.of(2026, 7, 20), vm.today.value)
     }
 
     @Test

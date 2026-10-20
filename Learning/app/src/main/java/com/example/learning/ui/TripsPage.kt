@@ -53,6 +53,7 @@ import com.example.learning.TripsNavEvent
 import com.example.learning.TripsViewModel
 import com.example.learning.printTime
 import com.example.learning.repos.StopTimesRecord
+import java.time.LocalDate
 
 @Composable
 fun TripsScreen(
@@ -62,6 +63,7 @@ fun TripsScreen(
     val stopTimesByTrip by viewModel.stopTimesRecord.collectAsStateWithLifecycle()
     val scrollTarget by viewModel.scrollTarget.collectAsStateWithLifecycle()
     val focusedIndex by viewModel.focusedIndex.collectAsStateWithLifecycle()
+    val today by viewModel.today.collectAsStateWithLifecycle()
     val tripHeader by viewModel.tripHeader.collectAsStateWithLifecycle()
 
     // Re-arm the ViewModel's "navigate once" latch each time this screen is shown.
@@ -81,6 +83,7 @@ fun TripsScreen(
         TripsList(
             stopTimesByTrip = stopTimesByTrip,
             focusedIndex = focusedIndex,
+            today = today,
             scrollTarget = scrollTarget,
             onStopClick = { viewModel.onStopClicked(it) },
         )
@@ -112,6 +115,7 @@ private fun TripRouteHeader(header: TripHeader) {
 private fun TripsList(
     stopTimesByTrip: List<StopTimesRecord>?,
     focusedIndex: Int?,
+    today: LocalDate,
     scrollTarget: ScrollTarget?,
     onStopClick: (String) -> Unit,
 ) {
@@ -145,7 +149,7 @@ private fun TripsList(
 
                 StopRow(
                     busStopRecord = item,
-                    departureTime = printTime(item.departureTime),
+                    departureTime = printTime(item.departureTime, today),
                     isFirst = index == 0,
                     isLast = index == stopTimesByTrip.lastIndex,
                     isFocused = isFocused,

@@ -311,7 +311,7 @@ fun EmptyScreen(emptyTxt: String) {
     }
 }
 
-fun printTime(timeToFormat: LocalDateTime, currentTime: LocalDate = LocalDate.now()): String {
+fun printTime(timeToFormat: LocalDateTime, currentTime: LocalDate): String {
     val timeStr = timeToFormat.format(DateTimeFormatter.ofPattern("h:mm a"))
 
     return when {

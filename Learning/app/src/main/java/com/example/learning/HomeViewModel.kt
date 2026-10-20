@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Duration
+import java.time.LocalDate
 
 /** One-shot navigation intents emitted by [HomeViewModel]. The composable collects these and drives
  *  the NavController, so the *decision* to navigate lives (and is tested) in the ViewModel. */
@@ -150,6 +151,8 @@ class HomeViewModel(
     // Whether the focused stop keeps following the user's current location. Owned by TransitInfo
     // (survives independently of which screen is on the stack); this just re-exposes it.
     val followLocation: StateFlow<Boolean> = transitInfo.followLocation
+
+    val today: StateFlow<LocalDate> = transitInfo.today
 
     init {
         load()

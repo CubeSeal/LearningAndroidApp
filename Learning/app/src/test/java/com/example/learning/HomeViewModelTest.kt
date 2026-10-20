@@ -561,6 +561,17 @@ class HomeViewModelTest {
         assertEquals(Duration.ofSeconds(300), delay())
     }
 
+    // "Tomorrow 1:30 AM" must become "1:30 AM" once midnight passes, so the day times are formatted
+    // against comes from the clock seam rather than the wall clock.
+    @Test
+    fun `today moves on when the clock passes midnight`() = runTest(rule.dispatcher) {
+        val (vm, _, _, _, _, fakeClockSource) = buildVm()
+        assertEquals(today, vm.today.value)
+
+        fakeClockSource.advanceMinutes(24 * 60)
+        assertEquals(today.plusDays(1), vm.today.value)
+    }
+
     // --- How each departure's time reads ---
 
     @Test
