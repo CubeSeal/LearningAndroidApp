@@ -65,6 +65,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -402,7 +403,7 @@ fun LazyItemScope.BusCard(
                         // lands in the same vertical spot as the realtime row's second line, rather
                         // than centring higher.
                         Text(text = "", style = MaterialTheme.typography.titleMedium)
-                        ScheduledTimeText(printTime(scheduledDeparture), onDynamicContainer)
+                        ScheduledTimeText(printTime(scheduledDeparture), onDynamicContainer, superseded = false)
                     } else {
                         Text(
                             text = printTime(departureTime),
@@ -413,7 +414,8 @@ fun LazyItemScope.BusCard(
                         // predicted time aligns with the off-schedule and untracked rows.
                         ScheduledTimeText(
                             if (isOffSchedule) printTime(scheduledDeparture) else "",
-                            onDynamicContainer
+                            onDynamicContainer,
+                            superseded = true,
                         )
                     }
                 }
@@ -422,13 +424,16 @@ fun LazyItemScope.BusCard(
     }
 }
 
-/** The scheduled departure time, rendered in the small italic style shared by the off-schedule and
- * untracked rows. */
+/** The scheduled departure time in small type: italic when it's the only time there is (untracked),
+ * struck through when a realtime prediction has [superseded] it. */
 @Composable
-private fun ScheduledTimeText(text: String, color: Color) {
+private fun ScheduledTimeText(text: String, color: Color, superseded: Boolean) {
     Text(
         text = text,
-        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+        style = MaterialTheme.typography.bodySmall.copy(
+            fontStyle = if (superseded) null else FontStyle.Italic,
+            textDecoration = if (superseded) TextDecoration.LineThrough else null,
+        ),
         color = color,
     )
 }
