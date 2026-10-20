@@ -3,6 +3,7 @@ package com.example.learning
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.learning.repos.GlobbedStopRecord
+import com.example.learning.repos.departuresFrom
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -53,38 +56,50 @@ class HomeViewModel(
         .map { it.size > ROW_FILTER_CAP }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    val associatedStopTimes = combine(
-        transitInfo.associatedStopTimes,   // already time-sorted at the domain layer
-        transitInfo.filterIndex,
-        transitInfo.currentMinute,
-        selectedFiltersForBusStop
-    ) { sorted, filterIndex, currentMinute, selectedFilters ->
-        val pastBuffer = Duration.ofMinutes(2)
-        // No filter selected: use the pre-sorted full list as-is (no sort). With filters selected:
-        // pull only the matching departures from the inverted index (a departure can match more than
-        // one selected filter, so dedup), then sort just that smaller subset. Either way the full
-        // list is never re-sorted on a filter toggle.
-        val candidates =
-            if (selectedFilters.isEmpty()) sorted
-            else selectedFilters.flatMap { filterIndex[it].orEmpty() }
-                .distinct()
-                .sortedBy { it.effectiveDepartureTime }
+    // How many departures the list shows; grows a page at a time as the user scrolls (onScrolledTo).
+    private val pageSize = MutableStateFlow(PAGE_SIZE)
 
-        candidates
-            .mapNotNull {
-                val newTime = it.effectiveDepartureTime
-                if (newTime > currentMinute - pastBuffer) (newTime >= currentMinute) to it else null
-            }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(500), emptyList())
+    // The timetable rows the list is stitched from. No filter selected: the whole stop. With filters
+    // selected: only the matching rows, pulled from the inverted index (a row can match more than one
+    // selected filter, so dedup) — so a rare route's departures days out cost no more than the next few.
+    private val candidateRows = combine(
+        transitInfo.schedule,
+        transitInfo.filterIndex,
+        selectedFiltersForBusStop,
+    ) { schedule, filterIndex, selectedFilters ->
+        val rows =
+            if (selectedFilters.isEmpty()) schedule.stopTimes
+            else selectedFilters.flatMap { filterIndex[it].orEmpty() }.distinct()
+        schedule.copy(stopTimes = rows)
+    }
+
+    // Eagerly, not WhileSubscribed: onScrolledTo reads the current page off .value.
+    val associatedStopTimes = combine(
+        candidateRows,
+        transitInfo.currentMinute,
+        transitInfo.realtimeStopTimes,
+        pageSize,
+    ) { schedule, currentMinute, realtime, pageSize ->
+        val pastBuffer = Duration.ofMinutes(2)
+        // Stitch from further back than is shown, so a departure running late past its scheduled
+        // time is still picked up by its realtime-adjusted time.
+        schedule.stopTimes.departuresFrom(currentMinute - REALTIME_LOOKBACK, schedule.calendar)
+            .withRealtime(realtime)
+            .filter { it.effectiveDepartureTime > currentMinute - pastBuffer }
+            .take(pageSize)
+            .sortedBy { it.effectiveDepartureTime }
+            .map { (it.effectiveDepartureTime >= currentMinute) to it }
+            .toList()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
 
     val isUpToDate = transitInfo.gtfsStaticRepository.isUpToDate
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing = _isRefreshing.asStateFlow()
 
-    // One-shot effects. The list resets to the top whenever its contents change (new stop / refresh
-    // / minute tick), and saving a stop surfaces a snackbar — both emitted here so the composable is
-    // a dumb collector.
+    // One-shot effects. The list resets to the top when it becomes a different list (new stop or
+    // filter selection), and saving a stop surfaces a snackbar — both emitted here so the composable
+    // is a dumb collector.
     private val _scrollToTop = Channel<Unit>(Channel.CONFLATED)
     val scrollToTop: Flow<Unit> = _scrollToTop.receiveAsFlow()
     private val _snackbarMessages = Channel<String>(Channel.BUFFERED)
@@ -112,8 +127,17 @@ class HomeViewModel(
 
     init {
         load()
-        // Scroll the list back to the top whenever its contents change.
-        associatedStopTimes.onEach { _scrollToTop.trySend(Unit) }.launchIn(viewModelScope)
+        // A new stop or filter selection starts over: one page, from the top. Loading more pages and
+        // the minute tick only extend or trim the current list, so they leave the scroll alone.
+        combine(focusedBusStop.filterNotNull(), selectedFiltersForBusStop) { stop, filters ->
+            stop.globbedStopId to filters
+        }
+            .distinctUntilChanged()
+            .onEach {
+                pageSize.value = PAGE_SIZE
+                _scrollToTop.trySend(Unit)
+            }
+            .launchIn(viewModelScope)
     }
 
     // Turning follow-location ON re-fetches a fresh fix (see TransitInfo.setFollowLocation), so the
@@ -174,7 +198,17 @@ class HomeViewModel(
         navigate(HomeNavEvent.OpenTrip(r.tripId, r.stopId, r.departureTime.toLocalDate().toString()))
     }
 
+    // Forwarded from the list's scroll position. Only a full page grows: a shorter list has already
+    // run out of timetable.
+    fun onScrolledTo(lastVisibleIndex: Int) {
+        val shown = associatedStopTimes.value.size
+        if (shown == pageSize.value && lastVisibleIndex >= shown - PAGE_PREFETCH) pageSize.update { it + PAGE_SIZE }
+    }
+
     companion object {
         const val ROW_FILTER_CAP = 10
+        const val PAGE_SIZE = 50
+        private const val PAGE_PREFETCH = 10
+        private val REALTIME_LOOKBACK: Duration = Duration.ofHours(1)
     }
 }

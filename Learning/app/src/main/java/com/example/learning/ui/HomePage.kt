@@ -56,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -82,6 +83,7 @@ import com.example.learning.Trips
 import com.example.learning.printTime
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +105,11 @@ fun HOMEScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
 
     LaunchedEffect(Unit) { viewModel.scrollToTop.collect { listState.scrollToItem(0) } }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .distinctUntilChanged()
+            .collect { viewModel.onScrolledTo(it) }
+    }
     LaunchedEffect(Unit) { viewModel.snackbarMessages.collect { snackbarHostState.showSnackbar(it) } }
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->

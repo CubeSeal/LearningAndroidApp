@@ -9,6 +9,8 @@ import com.example.learning.repos.LocationMode
 import com.example.learning.repos.LocationSource
 import com.example.learning.repos.RealtimeGtfsSource
 import com.example.learning.repos.RealtimeTripInfo
+import com.example.learning.repos.ScheduledStopTime
+import com.example.learning.repos.ServiceCalendar
 import com.example.learning.repos.SettingsSource
 import com.example.learning.repos.StaticGtfsSource
 import com.example.learning.repos.StopTimesRecord
@@ -130,9 +132,37 @@ data class StopTimesRecordWithRealtime(
     // Normally I'd make this flat instead of nesting it like this, but making this nullable this is a convenient way
     // to mark something as not having realtime info.
     val realtimeStopTimesRecord: RealtimeStopTimesRecord?,
-    // Set of filters that apply to this busStop
-    val applicableFilters: Set<TransitFilterOptions>
 )
+
+/** The focused stop's timetable, undated, plus the calendar that places it onto days. */
+@Immutable
+data class StopSchedule(
+    val stopTimes: List<ScheduledStopTime> = emptyList(),
+    val calendar: ServiceCalendar = ServiceCalendar(emptyMap()),
+)
+
+// Set of filters that apply to this departure.
+val ScheduledStopTime.applicableFilters: Set<TransitFilterOptions>
+    get() = setOfNotNull(
+        routeShortName?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.RouteShortName(it, routeType) },
+        tripHeadsign?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.TripHeadsign(it) },
+        stopName.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.StopStand(it, routeType) },
+        TransitFilterOptions.TransportMode(routeType),
+    )
+
+/**
+ * Joins realtime onto stitched departures. The feed only describes a trip's current run, but the same
+ * trip id recurs on every day its service runs — so it attaches to the first (nearest) run only.
+ */
+fun Sequence<StopTimesRecord>.withRealtime(
+    realtime: Map<Pair<String, String>, RealtimeStopTimesRecord>,
+): Sequence<StopTimesRecordWithRealtime> = sequence {
+    val claimed = mutableSetOf<Pair<String, String>>()
+    for (record in this@withRealtime) {
+        val key = record.tripId to record.stopId
+        yield(StopTimesRecordWithRealtime(record, realtime[key]?.takeIf { claimed.add(key) }))
+    }
+}
 
 // Departure time adjusted by realtime delay. Null delay means "no realtime info yet" everywhere else,
 // but for ordering/time-filtering we settle it to zero.
@@ -217,7 +247,7 @@ class TransitInfo(
             .launchIn(scope)
     }
 
-    private val realtimeStopTimesRecord: StateFlow<Map<Pair<String, String>, RealtimeStopTimesRecord>> =
+    val realtimeStopTimes: StateFlow<Map<Pair<String, String>, RealtimeStopTimesRecord>> =
         locationRepo.currentLocation.map { _ ->
             gtfsRealtimeRepository.getRealtimeData()
                 .flatMap { it.toRealtimeStopTimesRecord() }
@@ -231,21 +261,24 @@ class TransitInfo(
     // flatMapLatest cancels the previous stop's in-flight query on switch; emitting empty first
     // clears the old stop's departures immediately (rather than leaving them stale while the new
     // query runs).
-    val associatedTrips = focusedBusStop
+    val schedule: StateFlow<StopSchedule> = focusedBusStop
         .filterNotNull()
         .flatMapLatest { stop ->
             flow {
-                emit(emptyList())
-                emit(gtfsStaticRepository.getStopTimesByStop(stop))
+                emit(StopSchedule())
+                emit(StopSchedule(gtfsStaticRepository.getScheduledStopTimesByStop(stop), gtfsStaticRepository.getServiceCalendar()))
             }
         }
         .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = emptyList()
+            initialValue = StopSchedule()
         )
 
-    val filtersForBusStop = associatedTrips
+    // Built from the whole timetable rather than any page of departures, so every route the stop
+    // serves is offered however far out its next run is.
+    val filtersForBusStop = schedule
+        .map { it.stopTimes }
         .filter { it.isNotEmpty() }
         .mapLatest { associatedTrips ->
             // Each trip contributes the set of filter options that apply to it. A filter only helps if
@@ -280,48 +313,15 @@ class TransitInfo(
             initialValue = emptySet()
         )
 
-    // Note: not gated on non-empty — an empty result must propagate so switching to a stop with no
-    // upcoming departures clears the previous stop's list instead of leaving it stale.
-    val associatedStopTimes = combine(
-        associatedTrips,
-        realtimeStopTimesRecord,
-    ) { associatedTrips, realTimeInfo ->
-        associatedTrips to realTimeInfo
-    }
-        .distinctUntilChanged()
-        .transformLatest { (trips, realtimeStopTimesRecords) ->
-             val stopTimesRecordWithRealtime = trips.map { staticRecord ->
-                val mode = staticRecord.routeType
-                StopTimesRecordWithRealtime(
-                    stopTimesRecord = staticRecord,
-                    realtimeStopTimesRecord = realtimeStopTimesRecords[staticRecord.tripId to staticRecord.stopId],
-                    applicableFilters = setOfNotNull(
-                        staticRecord.routeShortName?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.RouteShortName(it, mode) },
-                        staticRecord.tripHeadsign?.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.TripHeadsign(it) },
-                        staticRecord.stopName.takeIf { it.isNotBlank() }?.let { TransitFilterOptions.StopStand(it, mode) },
-                        TransitFilterOptions.TransportMode(mode),
-                    )
-                )
-            }
-            // Sort once here, at the domain layer: order depends only on the record + realtime delay
-            // (both settled by this point), not on the UI's currentMinute or selected filters. Sorting
-            // upstream keeps filter toggles from re-sorting the (potentially huge) list on every tap.
-            emit(stopTimesRecordWithRealtime.sortedBy { it.effectiveDepartureTime })
-        }.stateIn(
-            scope,
-            SharingStarted.Eagerly,
-            emptyList()
-        )
-
-    // Inverted index: filter option -> its matching departures, in the same time-sorted order as
-    // associatedStopTimes. Built once per stop (O(4n)) so a selected filter can pull just its
-    // departures instead of scanning the full list. Consumed by HomeViewModel's filtering.
-    val filterIndex: StateFlow<Map<TransitFilterOptions, List<StopTimesRecordWithRealtime>>> =
-        associatedStopTimes.map { sorted ->
-            buildMap<TransitFilterOptions, MutableList<StopTimesRecordWithRealtime>> {
-                for (dep in sorted)
-                    for (f in dep.applicableFilters)
-                        getOrPut(f) { mutableListOf() }.add(dep)
+    // Inverted index: filter option -> its matching timetable rows. Built once per stop (O(4n)) so a
+    // selected filter can stitch just its rows instead of the whole timetable. Consumed by
+    // HomeViewModel's filtering.
+    val filterIndex: StateFlow<Map<TransitFilterOptions, List<ScheduledStopTime>>> =
+        schedule.map { schedule ->
+            buildMap<TransitFilterOptions, MutableList<ScheduledStopTime>> {
+                for (row in schedule.stopTimes)
+                    for (f in row.applicableFilters)
+                        getOrPut(f) { mutableListOf() }.add(row)
             }
         }.stateIn(
             scope,

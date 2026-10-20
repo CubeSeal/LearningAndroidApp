@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.time.Duration
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
@@ -73,12 +74,88 @@ data class StopTimesRecord(
     val wheelchairBoarding: Boolean
 )
 
+/**
+ * A stop-time as the timetable stores it: one row per trip, timed as an offset into whichever service
+ * day it runs on (offsets can pass 24h — "25:30:00" is 1:30am the next morning). [on] places it on a
+ * date; [departuresFrom] places a whole stop's timetable onto the calendar.
+ */
+@Immutable
+data class ScheduledStopTime(
+    val tripId: String,
+    val departureOffset: Duration,
+    val arrivalOffset: Duration,
+    val sequence: Int,
+    val routeId: String,
+    val serviceId: String,
+    val tripHeadsign: String?,
+    val routeShortName: String?,
+    val routeLongName: String,
+    val routeType: TransitMode,
+    val globbedStopId: String,
+    val globbedStopName: String,
+    val stopId: String,
+    val stopName: String,
+    val stopLoc: LatLon,
+    val wheelchairBoarding: Boolean
+)
+
+fun ScheduledStopTime.on(serviceDay: LocalDate): StopTimesRecord = StopTimesRecord(
+    tripId = tripId,
+    departureTime = serviceDay.atStartOfDay() + departureOffset,
+    arrivalTime = serviceDay.atStartOfDay() + arrivalOffset,
+    sequence = sequence,
+    routeId = routeId,
+    serviceId = serviceId,
+    tripHeadsign = tripHeadsign,
+    routeShortName = routeShortName,
+    routeLongName = routeLongName,
+    routeType = routeType,
+    globbedStopId = globbedStopId,
+    globbedStopName = globbedStopName,
+    stopId = stopId,
+    stopName = stopName,
+    stopLoc = stopLoc,
+    wheelchairBoarding = wheelchairBoarding,
+)
+
+/** Which services run on each date, as materialised by the converter into `service_dates`. */
+@Immutable
+data class ServiceCalendar(private val servicesByDate: Map<LocalDate, Set<String>>) {
+    fun servicesOn(date: LocalDate): Set<String> = servicesByDate[date].orEmpty()
+    val lastDate: LocalDate? = servicesByDate.keys.maxOrNull()
+}
+
+/**
+ * Every departure in this timetable from [from] onwards, in time order: each row placed on every day
+ * [calendar] runs its service. Lazy — a calendar day is only stitched once the sequence reaches it,
+ * so a caller taking a page only pays for the days that page spans.
+ */
+fun List<ScheduledStopTime>.departuresFrom(from: LocalDateTime, calendar: ServiceCalendar): Sequence<StopTimesRecord> {
+    val lastDate = calendar.lastDate ?: return emptySequence()
+    // An offset past 24:00 lands a row on a later calendar day than its service day, so a calendar
+    // day's departures are its own services' early rows plus the previous days' late ones.
+    val rowsByDaysLate = groupBy { it.departureOffset.toDays() }
+    val maxDaysLate = rowsByDaysLate.keys.maxOrNull() ?: return emptySequence()
+    return generateSequence(from.toLocalDate()) { it.plusDays(1) }
+        .takeWhile { it <= lastDate.plusDays(maxDaysLate) }
+        .flatMap { day ->
+            (0..maxDaysLate).flatMap { daysLate ->
+                val serviceDay = day.minusDays(daysLate)
+                val running = calendar.servicesOn(serviceDay)
+                rowsByDaysLate[daysLate].orEmpty()
+                    .filter { it.serviceId in running }
+                    .map { it.on(serviceDay) }
+            }.sortedBy { it.departureTime }
+        }
+        .dropWhile { it.departureTime < from }
+}
+
 // Helper method for conversion
-fun StopTimeWithDetails.toStopTimesRecord(date: LocalDate): StopTimesRecord {
-    return StopTimesRecord(
+fun StopTimeWithDetails.toScheduledStopTime(): ScheduledStopTime {
+    return ScheduledStopTime(
         tripId = this.tripId,
-        departureTime = parseGtfsDateTime(date, this.departureTime),
-        arrivalTime = parseGtfsDateTime(date, this.arrivalTime),
+        departureOffset = parseGtfsOffset(this.departureTime),
+        arrivalOffset = parseGtfsOffset(this.arrivalTime),
         sequence = this.stopSequence,
         routeId = this.routeId,
         serviceId = this.serviceId,
@@ -143,15 +220,9 @@ data class StopRecord(
     val wheelchairBoarding: Boolean
 )
 
-fun parseGtfsDateTime(date: LocalDate, time: String): LocalDateTime {
-    val parts = time.trim().split(":")
-    val hours = parts[0].toInt()
-    val mins = parts[1].toInt()
-    val secs = parts[2].toInt()
-    return date.atStartOfDay()
-        .plusHours(hours.toLong())
-        .plusMinutes(mins.toLong())
-        .plusSeconds(secs.toLong())
+fun parseGtfsOffset(time: String): Duration {
+    val (hours, mins, secs) = time.trim().split(":").map { it.toLong() }
+    return Duration.ofHours(hours).plusMinutes(mins).plusSeconds(secs)
 }
 
 sealed interface GtfsValidation {
@@ -215,7 +286,8 @@ interface StaticGtfsSource {
     suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord?
     suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedStopRecord>
     suspend fun getNClosestStops(location: LatLon, length: Int): List<GlobbedStopRecord>
-    suspend fun getStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<StopTimesRecord>
+    suspend fun getScheduledStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<ScheduledStopTime>
+    suspend fun getServiceCalendar(): ServiceCalendar
     suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord>
     suspend fun syncGtfsDatabase(
         ghOwner: String,
@@ -232,15 +304,16 @@ class GtfsStaticRepository(
 ) : StaticGtfsSource {
     private val db get() = GtfsDatabase.getInstance(context)
     private val gtfsDao get() = db.gtfsDao()
-    private var _serviceDates: Map<String, List<LocalDate>>? = null
+    private var _serviceCalendar: ServiceCalendar? = null
     override val isUpToDate = MutableStateFlow(false)
 
-    private suspend fun serviceDates(): Map<String, List<LocalDate>> =
-        _serviceDates ?: run {
+    override suspend fun getServiceCalendar(): ServiceCalendar =
+        _serviceCalendar ?: run {
             val fmt = DateTimeFormatter.ofPattern("yyyyMMdd")
             gtfsDao.getAllServiceDates()
-                .groupBy({ it.serviceId }, { LocalDate.parse(it.date, fmt) })
-                .also { _serviceDates = it }
+                .groupBy({ LocalDate.parse(it.date, fmt) }, { it.serviceId })
+                .let { byDate -> ServiceCalendar(byDate.mapValues { it.value.toSet() }) }
+                .also { _serviceCalendar = it }
         }
 
 
@@ -262,28 +335,22 @@ class GtfsStaticRepository(
             .collateToGlobbedStopRecord()
     }
 
-    override suspend fun getStopTimesByStop(
+    override suspend fun getScheduledStopTimesByStop(
         globbedStopRecord: GlobbedStopRecord,
-    ): List<StopTimesRecord> = withContext(Dispatchers.Default) {
-        val dates = serviceDates()
-        // Fetch the raw stop-times once — one row per service, NOT per date. Query the glob's stops
-        // concurrently: a globbed stop can span many physical stops (all a station's platforms, or
-        // identical-name duplicates), and Room runs suspend reads on its own executor.
-        val rows = coroutineScope {
+    ): List<ScheduledStopTime> = withContext(Dispatchers.Default) {
+        // One row per trip, not per date — dates are stitched on later (see departuresFrom). Query the
+        // glob's stops concurrently: a globbed stop can span many physical stops (all a station's
+        // platforms, or identical-name duplicates), and Room runs suspend reads on its own executor.
+        coroutineScope {
             globbedStopRecord.stopRecords
                 .map { async { gtfsDao.getStopTimesWithDetailsByStop(it.stopId) } }
                 .awaitAll()
                 .flatten()
-        }
-        // Expand every service date the converter materialised for each service — show everything.
-        // The list is bounded by the materialised horizon, so this stays finite.
-        rows.flatMap { row ->
-            dates[row.serviceId].orEmpty().map { date -> row.toStopTimesRecord(date) }
-        }
+        }.map { it.toScheduledStopTime() }
     }
 
     override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord> {
-        return gtfsDao.getStopTimesWithDetailsByTrip(tripId).map { it.toStopTimesRecord(date) }
+        return gtfsDao.getStopTimesWithDetailsByTrip(tripId).map { it.toScheduledStopTime().on(date) }
     }
 
     /**
@@ -401,7 +468,7 @@ class GtfsStaticRepository(
             GtfsDatabase.replaceWith(context, dbFile)
             fileRepository.deleteFile(tempDbName)
 
-            _serviceDates = null
+            _serviceCalendar = null
 
             // ── Write timestamp only after everything succeeded ──────
             fileRepository.writeFile(timestampFile, remoteTimestamp.toString())
@@ -418,7 +485,8 @@ class GtfsStaticRepository(
 
 class FakeStaticGtfsSource(
     private val globbedStops: List<GlobbedStopRecord> = emptyList(),
-    private val stopTimesRecords: List<StopTimesRecord> = emptyList()
+    private val scheduledStopTimes: List<ScheduledStopTime> = emptyList(),
+    private val calendar: ServiceCalendar = ServiceCalendar(emptyMap()),
 ) : StaticGtfsSource {
     override val isUpToDate = MutableStateFlow(false)
 
@@ -455,11 +523,13 @@ class FakeStaticGtfsSource(
             }
     }
 
-    override suspend fun getStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<StopTimesRecord> =
-        stopTimesRecords.filter { it.globbedStopId == globbedStopRecord.globbedStopId }
+    override suspend fun getScheduledStopTimesByStop(globbedStopRecord: GlobbedStopRecord): List<ScheduledStopTime> =
+        scheduledStopTimes.filter { it.globbedStopId == globbedStopRecord.globbedStopId }
+
+    override suspend fun getServiceCalendar(): ServiceCalendar = calendar
 
     override suspend fun getStopTimesByTripId(tripId: String, date: LocalDate): List<StopTimesRecord> =
-        stopTimesRecords.filter { it.tripId == tripId }
+        scheduledStopTimes.filter { it.tripId == tripId }.map { it.on(date) }
 
     override suspend fun syncGtfsDatabase(
         ghOwner: String,
