@@ -150,7 +150,7 @@ Pass the same fake instance you assert on — don't build a second one inside th
 
 **Fakes live in `src/main`, not `src/test`.** `Fake*Source` classes are colocated in `repos/*.kt` alongside their real counterparts. They ship in the release APK; `src/debug` is the escape hatch if that ever matters. `FakeAppContainer` stays in `Application.kt` for the `AppContainer` seam (still selectable for any manual UI smoke testing).
 
-The four repo seams are plain `interface`s — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource`. Use plain interfaces, not `sealed interface`, so fakes can implement them.
+The repo seams are plain `interface`s — `StaticGtfsSource`, `RealtimeGtfsSource`, `LocationSource`, `SettingsSource`, and `ClockSource` (the minute tick; `FakeClockSource.advanceMinutes` moves time forward in tests). Use plain interfaces, not `sealed interface`, so fakes can implement them.
 
 **Fakes model behaviour over a dataset — they are NOT canned-response lookup tables.** A fake is seeded with a small *world* (`FakeStaticGtfsSource(globbedStops, scheduledStopTimes, calendar)` — a list of real stops, a list of real undated stop-times, and the calendar of days their services run) and each method **computes** its answer from that world exactly as production would: `getGlobbedStopById` filters by id, `getGlobbedStopsByName` does a name-substring match, `getNClosestStops` sorts by real Euclidean distance to the passed `LatLon`, `getScheduledStopTimesByStop` and `getStopTimesByTripId` filter the stop-times list (the latter placing them on the asked-for date). This is a deliberate move for strict TDD:
 

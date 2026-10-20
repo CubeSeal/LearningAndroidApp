@@ -1,5 +1,6 @@
 package com.example.learning
 
+import com.example.learning.repos.FakeClockSource
 import com.example.learning.repos.FakeLocationSource
 import com.example.learning.repos.FakeRealtimeSource
 import com.example.learning.repos.FakeSettingsSource
@@ -13,10 +14,12 @@ fun TestScope.buildTransitInfo(
     gtfsRealtimeRepository: FakeRealtimeSource = FakeRealtimeSource(),
     locationRepo: FakeLocationSource = FakeLocationSource(),
     settingsRepo: FakeSettingsSource = FakeSettingsSource(),
+    clock: FakeClockSource = FakeClockSource(),
 ) = TransitInfo(
     gtfsStaticRepository,
     gtfsRealtimeRepository,
     locationRepo,
     settingsRepo,
+    clock,
     backgroundScope,
 )

@@ -2,6 +2,7 @@ package com.example.learning
 
 import android.util.Log
 import androidx.compose.runtime.Immutable
+import com.example.learning.repos.ClockSource
 import com.example.learning.repos.GTFS_GH_OWNER
 import com.example.learning.repos.GTFS_GH_REPO
 import com.example.learning.repos.GlobbedStopRecord
@@ -17,7 +18,6 @@ import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -176,16 +176,11 @@ class TransitInfo(
     private val gtfsRealtimeRepository: RealtimeGtfsSource,
     private val locationRepo: LocationSource,
     private val settingsRepo: SettingsSource,
+    private val clock: ClockSource,
     private val scope: CoroutineScope,
 ) {
-    val currentMinute: StateFlow<LocalDateTime> = flow {
-        while (true) {
-            val now = LocalDateTime.now()
-            emit(now.truncatedTo(ChronoUnit.MINUTES))
-            val nextMinute = now.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1)
-            delay(ChronoUnit.MILLIS.between(now, nextMinute))
-        }
-    }.stateIn(scope, SharingStarted.Eagerly, LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
+    val currentMinute: StateFlow<LocalDateTime> = clock.currentMinute
+        .stateIn(scope, SharingStarted.Eagerly, LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))
 
     val focusedBusStop = settingsRepo
         .homeStopId

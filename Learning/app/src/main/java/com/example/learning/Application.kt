@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import com.example.learning.db.GtfsDatabase
+import com.example.learning.repos.ClockSource
 import com.example.learning.repos.FakeFileRepository
 import com.example.learning.repos.FakeLocationSource
 import com.example.learning.repos.FakeRealtimeSource
@@ -24,6 +25,7 @@ import com.example.learning.repos.RealtimeGtfsSource
 import com.example.learning.repos.SettingsRepository
 import com.example.learning.repos.SettingsSource
 import com.example.learning.repos.StaticGtfsSource
+import com.example.learning.repos.SystemClockSource
 import com.example.learning.repos.bootstrapGtfs
 import com.example.learning.repos.validateGtfsDb
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +44,7 @@ interface AppContainer {
     val settingsRepo: SettingsSource
     val gtfsRealtimeRepository: RealtimeGtfsSource
     val gtfsStaticRepository: StaticGtfsSource
+    val clock: ClockSource
     val transitInfo: TransitInfo
     val loaded: StateFlow<Boolean>
     val loadError: StateFlow<String?>
@@ -57,6 +60,7 @@ class ApplicationRepos(private val applicationContext: Context) : AppContainer {
     override val settingsRepo = SettingsRepository(applicationContext)
     override val gtfsRealtimeRepository = GtfsRealtimeRepository(httpClient = httpClient)
     override val gtfsStaticRepository =  GtfsStaticRepository(applicationContext, fileRepository, httpClient)
+    override val clock = SystemClockSource()
 
     override val loaded = MutableStateFlow(false)
     override val loadError = MutableStateFlow<String?>(null)
@@ -68,6 +72,7 @@ class ApplicationRepos(private val applicationContext: Context) : AppContainer {
             gtfsRealtimeRepository = gtfsRealtimeRepository,
             locationRepo = locationRepo,
             settingsRepo = settingsRepo,
+            clock = clock,
             scope = applicationScope
         )
     }
@@ -117,6 +122,8 @@ class FakeAppContainer(
     override val gtfsRealtimeRepository: RealtimeGtfsSource = FakeRealtimeSource(),
     override val settingsRepo: SettingsSource = FakeSettingsSource(),
     override val fileRepository: FileSource = FakeFileRepository(emptyMap(), "fileDirectory"),
+    // Real time even here: a smoke-tested UI should still tick over.
+    override val clock: ClockSource = SystemClockSource(),
     val loadBehaviour: LoadState = LoadState.StartLoaded
 ) : AppContainer {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -129,6 +136,7 @@ class FakeAppContainer(
             gtfsRealtimeRepository,
             locationRepo,
             settingsRepo,
+            clock,
             applicationScope
         )
     }
