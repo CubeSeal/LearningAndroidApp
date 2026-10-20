@@ -51,7 +51,9 @@ enum class TransitMode(val label: String, val rank: Int) {
 // Dealing with joins and filters in the SQL is a lot easier than trying to mangle it with nested structures here.
 data class StopTimesRecord(
     val tripId: String,
-    // In seconds since beginning of day (for ordering and to handle after 24:00 time).
+    // The day whose service this run belongs to — the day before departureTime's date for a
+    // past-24:00 departure.
+    val serviceDate: LocalDate,
     val departureTime: LocalDateTime,
     val arrivalTime: LocalDateTime,
     val sequence: Int,
@@ -101,6 +103,7 @@ data class ScheduledStopTime(
 
 fun ScheduledStopTime.on(serviceDay: LocalDate): StopTimesRecord = StopTimesRecord(
     tripId = tripId,
+    serviceDate = serviceDay,
     departureTime = serviceDay.atStartOfDay() + departureOffset,
     arrivalTime = serviceDay.atStartOfDay() + arrivalOffset,
     sequence = sequence,

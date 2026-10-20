@@ -195,7 +195,7 @@ class HomeViewModel(
     fun onOpenFilters() = navigate(HomeNavEvent.OpenFilters)
     fun onDepartureClicked(record: StopTimesRecordWithRealtime) {
         val r = record.stopTimesRecord
-        navigate(HomeNavEvent.OpenTrip(r.tripId, r.stopId, r.departureTime.toLocalDate().toString()))
+        navigate(HomeNavEvent.OpenTrip(r.tripId, r.stopId, r.serviceDate.toString()))
     }
 
     // Forwarded from the list's scroll position. Only a full page grows: a shorter list has already

@@ -172,6 +172,19 @@ class HomeViewModelTest {
         }
     }
 
+    // A 25:30 departure leaves at 1:30am tomorrow but belongs to today's service: the trip must open
+    // on today, or the Trips screen would place the whole trip a day late.
+    @Test
+    fun `onDepartureClicked opens an after-midnight departure on its service day`() = runTest(rule.dispatcher) {
+        val afterMidnight = today.atStartOfDay().plusHours(25).plusMinutes(30)
+        val (vm, _) = buildVm(listOf(dep("100", "Downtown", at = afterMidnight)))
+        vm.navEvents.test {
+            vm.onDepartureClicked(vm.associatedStopTimes.value.single().second)
+            assertEquals(today.toString(), (awaitItem() as HomeNavEvent.OpenTrip).date)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     // A single gesture that delivers two intents (fast double-tap, or a tap landing during the slide
     // transition) must push one destination; the latch re-arms once the screen is shown again.
     @Test
