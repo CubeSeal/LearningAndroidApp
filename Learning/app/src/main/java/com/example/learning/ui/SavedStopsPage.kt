@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Save
@@ -141,6 +140,15 @@ private fun SavedStopRow(
         modifier = Modifier.clickable { onSelect(stop, emptySet()) },
         headlineContent = { Text(stop.globbedStopName) },
         leadingContent = {
+            IconButton(onClick = { onClearAll(stop) }) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Remove ${stop.globbedStopName}",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        trailingContent = {
             if (saved.combos.isNotEmpty()) {
                 IconButton(onClick = { onToggleExpanded(stop.globbedStopId) }) {
                     Icon(
@@ -149,21 +157,6 @@ private fun SavedStopRow(
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-            } else {
-                Icon(
-                    Icons.Default.DirectionsBus,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-        },
-        trailingContent = {
-            IconButton(onClick = { onClearAll(stop) }) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Remove ${stop.globbedStopName}",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         },
     )
@@ -192,9 +185,16 @@ private fun SavedComboRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onSelect(stop, combo) }
-            .padding(start = 48.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 48.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(onClick = { onRemoveCombo(stop.globbedStopId, combo) }) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Remove filter",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         FlowRow(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -210,13 +210,6 @@ private fun SavedComboRow(
                     ),
                 )
             }
-        }
-        IconButton(onClick = { onRemoveCombo(stop.globbedStopId, combo) }) {
-            Icon(
-                Icons.Default.Close,
-                contentDescription = "Remove filter",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
