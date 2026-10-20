@@ -97,7 +97,7 @@ class GtfsRealtimeRepository(
             if (fieldNumber == 2) {
                 val length = cis.readRawVarint32()
                 val oldLimit = cis.pushLimit(length)
-                tripInfos.add(convertToBusInfo(FeedEntity.parseFrom(cis)))
+                tripInfos.add(FeedEntity.parseFrom(cis).toRealtimeTripInfo())
                 cis.popLimit(oldLimit)
             } else {
                 cis.skipField(tag)
@@ -105,28 +105,25 @@ class GtfsRealtimeRepository(
         }
         return tripInfos
     }
-
-    private fun convertToBusInfo(entity: FeedEntity): RealtimeTripInfo {
-        val tripUpdate = entity.tripUpdate
-
-        return RealtimeTripInfo(
-            id = entity.id,
-            tripId = tripUpdate.trip.tripId,
-            updatedAt = LocalDateTime.ofInstant(
-               Instant.ofEpochSecond(tripUpdate.timestamp),
-               ZoneId.systemDefault()
-            ),
-            stopTimeDelays = tripUpdate.stopTimeUpdateList.map {
-                if (it.scheduleRelationship == ScheduleRelationship.SCHEDULED) {
-                    it.stopId to it.departure.delay
-                } else {
-                    it.stopId to null
-                }
-            },
-            vehicleLicencePlate = tripUpdate.vehicle.licensePlate
-        )
-    }
 }
+
+/** Top-level, not a repository method, so tests can decode hand-built entities at this API. */
+fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
+    id = id,
+    tripId = tripUpdate.trip.tripId,
+    updatedAt = LocalDateTime.ofInstant(
+        Instant.ofEpochSecond(tripUpdate.timestamp),
+        ZoneId.systemDefault()
+    ),
+    stopTimeDelays = tripUpdate.stopTimeUpdateList.map {
+        if (it.scheduleRelationship == ScheduleRelationship.SCHEDULED) {
+            it.stopId to it.departure.delay
+        } else {
+            it.stopId to null
+        }
+    },
+    vehicleLicencePlate = tripUpdate.vehicle.licensePlate
+)
 
 class FakeRealtimeSource(
     private var busData: List<RealtimeTripInfo> = emptyList(),
