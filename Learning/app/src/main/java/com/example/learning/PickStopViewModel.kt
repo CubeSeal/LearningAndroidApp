@@ -43,7 +43,19 @@ class PickStopViewModel(
     fun onQueryChange(q: String) { _query.value = q }
     fun onSearchExpandedChange(expanded: Boolean) { _searchExpanded.value = expanded }
 
+    // The keyboard's search key: take the top result for the current query, if there is one. Searches
+    // afresh rather than reading filteredBusStops, which only runs while the screen collects it.
+    fun onSearchSubmitted() {
+        _searchExpanded.value = false
+        val query = _query.value
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            transitInfo.searchStops(query).firstOrNull()?.let { onStopSelected(it) }
+        }
+    }
+
     fun onStopSelected(stop: GlobbedStopRecord) {
+        _searchExpanded.value = false
         if (navigating) return
         navigating = true
         viewModelScope.launch {

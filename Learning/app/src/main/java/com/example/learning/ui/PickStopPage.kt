@@ -77,6 +77,7 @@ fun PickStopScreen(
                 onQueryChange = { viewModel.onQueryChange(it) },
                 searchExpanded = searchExpanded,
                 onSearchExpandedChange = { viewModel.onSearchExpandedChange(it) },
+                onSearchSubmitted = { viewModel.onSearchSubmitted() },
                 onStopSelected = { viewModel.onStopSelected(it) },
             )
         }
@@ -92,6 +93,7 @@ fun BoxScope.StopSearchBar(
     onQueryChange: (String) -> Unit,
     searchExpanded: Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
+    onSearchSubmitted: () -> Unit,
     onStopSelected: (GlobbedStopRecord) -> Unit,
 ) {
     SearchBar(
@@ -106,10 +108,7 @@ fun BoxScope.StopSearchBar(
             SearchBarDefaults.InputField(
                 query = query,
                 onQueryChange = { onQueryChange(it) },
-                onSearch = {
-                    filteredStops.firstOrNull()?.let { onStopSelected(it) }
-                    onSearchExpandedChange(false)
-                },
+                onSearch = { onSearchSubmitted() },
                 expanded = searchExpanded,
                 onExpandedChange = { onSearchExpandedChange(it) },
                 placeholder = { Text("Search") },
@@ -124,10 +123,7 @@ fun BoxScope.StopSearchBar(
             items(items = filteredStops, key = { it.globbedStopId }) { busStop ->
                 ListItem(
                     headlineContent = { Text(busStop.globbedStopName) },
-                    modifier = Modifier.clickable {
-                        onStopSelected(busStop)
-                        onSearchExpandedChange(false)
-                    },
+                    modifier = Modifier.clickable { onStopSelected(busStop) },
                 )
             }
         }
@@ -137,10 +133,7 @@ fun BoxScope.StopSearchBar(
         items(items = closestStops, key = { it.globbedStopId }) { busStop ->
             ListItem(
                 headlineContent = { Text(busStop.globbedStopName) },
-                modifier = Modifier.clickable {
-                    onStopSelected(busStop)
-                    onSearchExpandedChange(false)
-                },
+                modifier = Modifier.clickable { onStopSelected(busStop) },
             )
         }
     }
