@@ -9,7 +9,9 @@ import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LocationMode
 import com.example.learning.repos.LocationSource
 import com.example.learning.repos.RealtimeGtfsSource
+import com.example.learning.repos.RealtimeStopUpdate
 import com.example.learning.repos.RealtimeTripInfo
+import com.example.learning.repos.RealtimeTripStatus
 import com.example.learning.repos.ScheduledStopTime
 import com.example.learning.repos.ServiceCalendar
 import com.example.learning.repos.SettingsSource
@@ -42,8 +44,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
-// Required since the info record isn't at stopTimes level, only at trip level, but has stop level information (and so
-// can't be just broadcast across.
+// What one departure got from realtime: its trip's update at this stop, resolved against this run.
 @Immutable
 data class RealtimeStopTimesRecord(
     val tripId: String,
@@ -51,28 +52,19 @@ data class RealtimeStopTimesRecord(
     val updatedAt: LocalDateTime,
     val stopTimeDelay: Duration?,
     val vehicleLicencePlate: String,
-    // When the feed gives one, it overrides stopTimeDelay once joined to a run (see withRealtime).
-    val predictedDeparture: LocalDateTime? = null,
     val skipped: Boolean = false,
 )
 
-private fun RealtimeTripInfo.toRealtimeStopTimesRecord(): List<RealtimeStopTimesRecord> {
-    return this.stopUpdates.map { stopUpdate ->
-        RealtimeStopTimesRecord(
-            tripId = this.tripId,
-            stopId = stopUpdate.stopId,
-            updatedAt = this.updatedAt,
-            stopTimeDelay = stopUpdate.delaySeconds?.let { Duration.ofSeconds(it.toLong()) },
-            vehicleLicencePlate = this.vehicleLicencePlate,
-            predictedDeparture = stopUpdate.departure,
-            skipped = stopUpdate.skipped,
-        )
-    }
-}
-
 // An absolute predicted time only becomes a delay against a particular run's scheduled departure.
-private fun RealtimeStopTimesRecord.resolvedAgainst(record: StopTimesRecord): RealtimeStopTimesRecord =
-    predictedDeparture?.let { copy(stopTimeDelay = Duration.between(record.departureTime, it)) } ?: this
+private fun RealtimeTripInfo.at(stop: RealtimeStopUpdate, run: StopTimesRecord) = RealtimeStopTimesRecord(
+    tripId = tripId,
+    stopId = stop.stopId,
+    updatedAt = updatedAt,
+    stopTimeDelay = stop.departure?.let { Duration.between(run.departureTime, it) }
+        ?: stop.delaySeconds?.let { Duration.ofSeconds(it.toLong()) },
+    vehicleLicencePlate = vehicleLicencePlate,
+    skipped = stop.skipped,
+)
 
 @Serializable
 sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
@@ -145,14 +137,6 @@ data class StopTimesRecordWithRealtime(
     val cancelled: Boolean = false,
 )
 
-/** The latest realtime feed, in the shape the departure list joins: per stop, and per cancelled trip. */
-@Immutable
-data class RealtimeSnapshot(
-    val stops: Map<Pair<String, String>, RealtimeStopTimesRecord> = emptyMap(),
-    // By trip, not stop: a cancellation usually comes with no stop updates at all.
-    val cancelledTripIds: Set<String> = emptySet(),
-)
-
 /** The focused stop's timetable, undated, plus the calendar that places it onto days. */
 @Immutable
 data class StopSchedule(
@@ -170,23 +154,25 @@ val ScheduledStopTime.applicableFilters: Set<TransitFilterOptions>
     )
 
 /**
- * Joins realtime onto stitched departures. The feed only describes a trip's current run, but the same
- * trip id recurs on every day its service runs — so delays and cancellations attach to the first
- * (nearest) run only.
+ * The one place realtime meets the timetable: each stitched departure picks up what the feed says about
+ * its trip — a delay or absolute time at this stop, a skipped stop, a cancellation. The feed only
+ * describes a trip's current run, but the same trip id recurs on every day its service runs — so it
+ * applies to the first (nearest) run only.
  */
-fun Sequence<StopTimesRecord>.withRealtime(
-    realtime: RealtimeSnapshot,
+fun Sequence<StopTimesRecord>.mergeRealtime(
+    realtimeTrips: Map<String, RealtimeTripInfo>,
 ): Sequence<StopTimesRecordWithRealtime> = sequence {
     val claimed = mutableSetOf<Pair<String, String>>()
-    for (record in this@withRealtime) {
-        val key = record.tripId to record.stopId
-        val stop = realtime.stops[key]
-        val cancelled = record.tripId in realtime.cancelledTripIds
-        val isNextRun = (stop != null || cancelled) && claimed.add(key)
+    for (record in this@mergeRealtime) {
+        val trip = realtimeTrips[record.tripId]
+        val stop = trip?.stopUpdates?.firstOrNull { it.stopId == record.stopId }
+        // Matched by trip, not stop: a cancellation usually comes with no stop updates at all.
+        val cancelled = trip?.status == RealtimeTripStatus.Cancelled
+        val isNextRun = (stop != null || cancelled) && claimed.add(record.tripId to record.stopId)
         yield(
             StopTimesRecordWithRealtime(
                 record,
-                stop?.takeIf { isNextRun }?.resolvedAgainst(record),
+                stop?.takeIf { isNextRun }?.let { trip.at(it, record) },
                 cancelled = cancelled && isNextRun,
             )
         )
@@ -278,17 +264,14 @@ class TransitInfo(
 
     // Polled every minute so delays stay current while the phone sits still. A location update still
     // refetches too: pull-to-refresh requests a fresh fix, and that's what makes it refresh realtime.
-    val realtime: StateFlow<RealtimeSnapshot> =
+    // The latest feed's trips by trip id, as mergeRealtime looks them up.
+    val realtime: StateFlow<Map<String, RealtimeTripInfo>> =
         merge(currentMinute, locationRepo.currentLocation).mapLatest {
-            val trips = gtfsRealtimeRepository.getRealtimeData()
-            RealtimeSnapshot(
-                stops = trips.flatMap { it.toRealtimeStopTimesRecord() }.associateBy { it.tripId to it.stopId },
-                cancelledTripIds = trips.filter { it.cancelled }.map { it.tripId }.toSet(),
-            )
+            gtfsRealtimeRepository.getRealtimeData().associateBy { it.tripId }
         }.stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = RealtimeSnapshot()
+            initialValue = emptyMap()
         )
 
     // Null while loading: until there's a stop, and again on each switch. flatMapLatest cancels the

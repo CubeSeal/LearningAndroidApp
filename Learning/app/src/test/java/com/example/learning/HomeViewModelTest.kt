@@ -10,6 +10,7 @@ import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LatLon
 import com.example.learning.repos.RealtimeStopUpdate
 import com.example.learning.repos.RealtimeTripInfo
+import com.example.learning.repos.RealtimeTripStatus
 import com.example.learning.repos.ScheduledStopTime
 import com.example.learning.repos.ServiceCalendar
 import com.example.learning.repos.StopRecord
@@ -688,7 +689,7 @@ class HomeViewModelTest {
                     updatedAt = LocalDateTime.now(),
                     stopUpdates = emptyList(),
                     vehicleLicencePlate = "",
-                    cancelled = true,
+                    status = RealtimeTripStatus.Cancelled,
                 )
             ),
         )

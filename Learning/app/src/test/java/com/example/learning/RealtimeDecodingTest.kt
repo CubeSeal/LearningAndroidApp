@@ -1,6 +1,7 @@
 package com.example.learning
 
 import com.example.learning.repos.RealtimeStopUpdate
+import com.example.learning.repos.RealtimeTripStatus
 import com.example.learning.repos.toRealtimeTripInfo
 import com.google.transit.realtime.GtfsRealtime.FeedEntity
 import com.google.transit.realtime.GtfsRealtime.TripDescriptor
@@ -8,8 +9,6 @@ import com.google.transit.realtime.GtfsRealtime.TripUpdate
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeEvent
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeUpdate
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDateTime
@@ -111,8 +110,8 @@ class RealtimeDecodingTest {
             )
             .build()
 
-        assertTrue(cancelled.toRealtimeTripInfo().cancelled)
-        assertFalse(entity().toRealtimeTripInfo().cancelled)
+        assertEquals(RealtimeTripStatus.Cancelled, cancelled.toRealtimeTripInfo().status)
+        assertEquals(RealtimeTripStatus.Scheduled, entity().toRealtimeTripInfo().status)
     }
 
     // The last stop of a trip only has an arrival.

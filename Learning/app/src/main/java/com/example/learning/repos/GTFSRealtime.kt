@@ -29,6 +29,18 @@ data class RealtimeStopUpdate(
     val skipped: Boolean = false,
 )
 
+/** What the feed says about a trip as a whole, from its `TripDescriptor.schedule_relationship`. */
+enum class RealtimeTripStatus {
+    /** Runs as timetabled (its stop updates may still move or skip stops). */
+    Scheduled,
+    /** Doesn't run. */
+    Cancelled,
+    /** A new version of a timetabled run: its stop updates replace the timetable's for that trip id. */
+    Replacement,
+    /** Not in the timetable at all (`ADDED`, `UNSCHEDULED`, `DUPLICATED`). */
+    Added,
+}
+
 @Immutable
 data class RealtimeTripInfo(
     val id: String,
@@ -36,7 +48,7 @@ data class RealtimeTripInfo(
     val updatedAt: LocalDateTime,
     val stopUpdates: List<RealtimeStopUpdate>,
     val vehicleLicencePlate: String,
-    val cancelled: Boolean = false,
+    val status: RealtimeTripStatus = RealtimeTripStatus.Scheduled,
 )
 
 /**
@@ -152,7 +164,14 @@ fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
             }
         },
     vehicleLicencePlate = tripUpdate.vehicle.licensePlate,
-    cancelled = tripUpdate.trip.scheduleRelationship == TripDescriptor.ScheduleRelationship.CANCELED,
+    status = when (tripUpdate.trip.scheduleRelationship) {
+        TripDescriptor.ScheduleRelationship.CANCELED -> RealtimeTripStatus.Cancelled
+        TripDescriptor.ScheduleRelationship.REPLACEMENT -> RealtimeTripStatus.Replacement
+        TripDescriptor.ScheduleRelationship.ADDED,
+        TripDescriptor.ScheduleRelationship.UNSCHEDULED,
+        TripDescriptor.ScheduleRelationship.DUPLICATED -> RealtimeTripStatus.Added
+        TripDescriptor.ScheduleRelationship.SCHEDULED, null -> RealtimeTripStatus.Scheduled
+    },
 )
 
 class FakeRealtimeSource(

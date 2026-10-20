@@ -135,7 +135,7 @@ class HomeViewModel(
         // Stitch from further back than is shown, so a departure running late past its scheduled
         // time is still picked up by its realtime-adjusted time.
         schedule.stopTimes.departuresFrom(currentMinute - REALTIME_LOOKBACK, schedule.calendar)
-            .withRealtime(realtime)
+            .mergeRealtime(realtime)
             .filter { it.effectiveDepartureTime > currentMinute - pastBuffer }
             .take(pageSize)
             .sortedBy { it.effectiveDepartureTime }
