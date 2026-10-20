@@ -154,6 +154,39 @@ class HomeViewModelTest {
         }
     }
 
+    // --- The filter row's pinned button ---
+
+    // One departure means every filter applies to every trip, so none distinguish anything.
+    @Test
+    fun `no filter button when there are no filters to offer`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = listOf(dep("100", "Downtown")))
+
+        assertNull(vm.filterRowButton.value)
+    }
+
+    @Test
+    fun `with nothing selected the filter button opens the filter page`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm()
+        assertEquals(FilterRowButton.OpenFilters, vm.filterRowButton.value)
+
+        vm.navEvents.test {
+            vm.onFilterRowButtonClicked()
+            assertEquals(HomeNavEvent.OpenFilters, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `with a filter selected the filter button resets the selection`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm()
+        vm.toggleFilterForBusStops(filter100)
+        assertEquals(FilterRowButton.ResetFilters, vm.filterRowButton.value)
+
+        vm.onFilterRowButtonClicked()
+        assertEquals(emptySet<TransitFilterOptions>(), vm.selectedFiltersForBusStop.value)
+        assertEquals(FilterRowButton.OpenFilters, vm.filterRowButton.value)
+    }
+
     @Test
     fun `onDepartureClicked emits OpenTrip with correct ids`() = runTest(rule.dispatcher) {
         val (vm, _) = buildVm(listOf(dep("100", "Downtown")))

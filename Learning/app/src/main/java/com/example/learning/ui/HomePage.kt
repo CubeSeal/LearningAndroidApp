@@ -76,6 +76,7 @@ import com.example.learning.AppViewModelProvider
 import com.example.learning.DepartureTimeDisplay
 import com.example.learning.EmptyScreen
 import com.example.learning.Filter
+import com.example.learning.FilterRowButton
 import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
 import com.example.learning.LoadingScreen
@@ -102,6 +103,7 @@ fun HOMEScreen(
     val associatedBusStopTimes by viewModel.associatedStopTimes.collectAsStateWithLifecycle()
     val loadingDepartures by viewModel.loadingDepartures.collectAsStateWithLifecycle()
     val today by viewModel.today.collectAsStateWithLifecycle()
+    val filterRowButton by viewModel.filterRowButton.collectAsStateWithLifecycle()
     val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -146,8 +148,8 @@ fun HOMEScreen(
                 rowFilters,
                 selectedFiltersForBusStop,
                 { viewModel.toggleFilterForBusStops(it) },
-                { viewModel.onOpenFilters() },
-                { viewModel.clearFilters() },
+                filterRowButton,
+                { viewModel.onFilterRowButtonClicked() },
             )
 
             PullToRefreshBox(
@@ -284,33 +286,22 @@ fun ModeFilterChips(
     rowFilters: List<TransitFilterOptions>,
     selectedTransitFilterOptions: Set<TransitFilterOptions>,
     onToggleMode: (TransitFilterOptions) -> Unit,
-    onOpenFilters: () -> Unit,
-    onResetFilters: () -> Unit,
+    button: FilterRowButton?,
+    onButtonClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // The pinned-left button toggles with the filter state: with nothing selected it's a filter
-    // button that opens the full FilterPage; once something is selected it becomes a reset button
-    // that clears the selection (bringing the filter button back).
     Row(
         modifier = modifier.padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (rowFilters.isNotEmpty()) {
-            if (selectedTransitFilterOptions.isEmpty()) {
-                IconButton(onClick = onOpenFilters) {
-                    Icon(
-                        imageVector = Icons.Filled.FilterList,
-                        contentDescription = "More filters",
-                    )
-                }
-            } else {
-                IconButton(onClick = onResetFilters) {
-                    Icon(
-                        imageVector = Icons.Filled.RestartAlt,
-                        contentDescription = "Reset filters",
-                    )
-                }
+        if (button != null) {
+            val (icon, description) = when (button) {
+                FilterRowButton.OpenFilters -> Icons.Filled.FilterList to "More filters"
+                FilterRowButton.ResetFilters -> Icons.Filled.RestartAlt to "Reset filters"
+            }
+            IconButton(onClick = onButtonClick) {
+                Icon(imageVector = icon, contentDescription = description)
             }
         }
         Row(

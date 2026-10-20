@@ -31,6 +31,14 @@ sealed interface HomeNavEvent {
     data class OpenTrip(val tripId: String, val stopId: String, val date: String) : HomeNavEvent
 }
 
+/** What the button pinned left of the filter row does. */
+enum class FilterRowButton {
+    /** Nothing selected: open the full FilterPage. */
+    OpenFilters,
+    /** Something selected: clear it, which brings OpenFilters back. */
+    ResetFilters,
+}
+
 /** How a departure's time reads on its card. */
 enum class DepartureTimeDisplay {
     /** No realtime yet: the timetabled time is all there is. */
@@ -76,6 +84,16 @@ class HomeViewModel(
     val hasMoreFilters: StateFlow<Boolean> = availableFiltersForBusStop
         .map { it.size > ROW_FILTER_CAP }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // Null when there's no filter row to pin it to.
+    val filterRowButton: StateFlow<FilterRowButton?> =
+        combine(rowFilters, selectedFiltersForBusStop) { row, selected ->
+            when {
+                row.isEmpty() -> null
+                selected.isEmpty() -> FilterRowButton.OpenFilters
+                else -> FilterRowButton.ResetFilters
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     // How many departures the list shows; grows a page at a time as the user scrolls (onScrolledTo).
     private val pageSize = MutableStateFlow(PAGE_SIZE)
@@ -218,6 +236,12 @@ class HomeViewModel(
     // Reset filtering back to "show everything": clear the active selection and any pinned extras so
     // the row falls back to its base slice.
     fun clearFilters() = transitInfo.clearFilters()
+
+    fun onFilterRowButtonClicked() = when (filterRowButton.value) {
+        FilterRowButton.OpenFilters -> onOpenFilters()
+        FilterRowButton.ResetFilters -> clearFilters()
+        null -> Unit
+    }
 
     // --- Navigation actions (called by the composable) ---
     fun onEditStopClicked() = navigate(HomeNavEvent.OpenPickStop)
