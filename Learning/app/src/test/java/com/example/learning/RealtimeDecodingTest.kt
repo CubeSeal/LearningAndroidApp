@@ -31,4 +31,20 @@ class RealtimeDecodingTest {
         assertEquals("trip-1", decoded.tripId)
         assertEquals(listOf("S1" to 90), decoded.stopTimeDelays)
     }
+
+    // NO_DATA means the feed knows nothing about this stop — the departure should read as timetable
+    // only, not as tracked with no delay. (About 1 in 9 bus stop updates.)
+    @Test
+    fun `a NO_DATA stop is left out, as if there were no realtime for it`() {
+        val noData = StopTimeUpdate.newBuilder()
+            .setStopId("S1")
+            .setScheduleRelationship(StopTimeUpdate.ScheduleRelationship.NO_DATA)
+            .build()
+        val scheduled = StopTimeUpdate.newBuilder()
+            .setStopId("S2")
+            .setDeparture(StopTimeEvent.newBuilder().setDelay(30))
+            .build()
+
+        assertEquals(listOf("S2" to 30), entity(noData, scheduled).toRealtimeTripInfo().stopTimeDelays)
+    }
 }

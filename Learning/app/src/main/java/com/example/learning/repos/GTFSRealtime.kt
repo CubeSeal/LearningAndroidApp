@@ -115,13 +115,16 @@ fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
         Instant.ofEpochSecond(tripUpdate.timestamp),
         ZoneId.systemDefault()
     ),
-    stopTimeDelays = tripUpdate.stopTimeUpdateList.map {
-        if (it.scheduleRelationship == ScheduleRelationship.SCHEDULED) {
-            it.stopId to it.departure.delay
-        } else {
-            it.stopId to null
-        }
-    },
+    // NO_DATA stops are dropped, so their departures join no realtime and read as timetable-only.
+    stopTimeDelays = tripUpdate.stopTimeUpdateList
+        .filter { it.scheduleRelationship != ScheduleRelationship.NO_DATA }
+        .map {
+            if (it.scheduleRelationship == ScheduleRelationship.SCHEDULED) {
+                it.stopId to it.departure.delay
+            } else {
+                it.stopId to null
+            }
+        },
     vehicleLicencePlate = tripUpdate.vehicle.licensePlate
 )
 
