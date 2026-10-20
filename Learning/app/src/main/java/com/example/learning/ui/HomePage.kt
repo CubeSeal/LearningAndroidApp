@@ -1,7 +1,6 @@
 package com.example.learning.ui
 
 import android.annotation.SuppressLint
-import android.util.Log
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -363,7 +362,6 @@ fun LazyItemScope.BusCard(
                 placementSpec = spring(stiffness = Spring.StiffnessMediumLow)
             )
     ) {
-        Log.d("Home-Page", "Item is $item")
         ListItem(
             modifier = Modifier.clickable { onClick() },
             colors = ListItemDefaults.colors(
