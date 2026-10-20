@@ -179,7 +179,9 @@ data class StopTimeWithDetails(
     val stopName: String,
     val stopLat: Double,
     val stopLon: Double,
-    val wheelchairBoarding: Int
+    val wheelchairBoarding: Int,
+    val pickupType: Int? = null,
+    val dropOffType: Int? = null,
 )
 
 // ═════════════════════════════════════════════════════════════════════
@@ -310,7 +312,9 @@ interface GtfsDao {
         s.stop_name AS stopName,
         s.stop_lat AS stopLat,
         s.stop_lon AS stopLon,
-        s.wheelchair_boarding AS wheelchairBoarding
+        s.wheelchair_boarding AS wheelchairBoarding,
+        st.pickup_type    AS pickupType,
+        st.drop_off_type  AS dropOffType
     FROM stop_times st
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
@@ -340,7 +344,9 @@ interface GtfsDao {
         s.stop_name AS stopName,
         s.stop_lat AS stopLat,
         s.stop_lon AS stopLon,
-        s.wheelchair_boarding AS wheelchairBoarding
+        s.wheelchair_boarding AS wheelchairBoarding,
+        st.pickup_type    AS pickupType,
+        st.drop_off_type  AS dropOffType
     FROM stop_times st
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id

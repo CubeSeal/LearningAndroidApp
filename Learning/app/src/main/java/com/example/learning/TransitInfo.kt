@@ -277,12 +277,17 @@ class TransitInfo(
     // Null while loading: until there's a stop, and again on each switch. flatMapLatest cancels the
     // previous stop's in-flight query, and the null clears its departures immediately rather than
     // leaving them stale while the new query runs.
+    //
+    // Only rows you can board count as this stop's departures — not a train running straight through
+    // (every CCN at Pennant Hills), nor one that only sets down here. Filters are built from this too,
+    // so neither offers a chip.
     val schedule: StateFlow<StopSchedule?> = focusedBusStop
         .filterNotNull()
         .flatMapLatest { stop ->
             flow {
                 emit(null)
-                emit(StopSchedule(gtfsStaticRepository.getScheduledStopTimesByStop(stop), gtfsStaticRepository.getServiceCalendar()))
+                val boardable = gtfsStaticRepository.getScheduledStopTimesByStop(stop).filter { it.pickupAllowed }
+                emit(StopSchedule(boardable, gtfsStaticRepository.getServiceCalendar()))
             }
         }
         .stateIn(
@@ -418,8 +423,11 @@ class TransitInfo(
 
     val getGlobbedStopById = gtfsStaticRepository::getGlobbedStopById
 
+    // The stops a trip actually makes: a station it runs straight through (no pickup, no drop-off)
+    // isn't one of them.
     suspend fun getByTrip(tripId: String, date: LocalDate): List<StopTimesRecord> {
         return gtfsStaticRepository.getStopTimesByTripId(tripId, date)
+            .filter { it.pickupAllowed || it.dropOffAllowed }
     }
 
     /** Save [stop]; if [filters] is non-empty, also save it as a filter combo under that stop. */

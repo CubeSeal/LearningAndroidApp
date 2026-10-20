@@ -487,6 +487,28 @@ class HomeViewModelTest {
         assertTrue(vm.loadingDepartures.value)
     }
 
+    // --- Only departures you can board ---
+
+    // Sydney Trains lists stations an express runs straight through (every CCN at Pennant Hills) as
+    // stops with no pickup and no drop-off. They're not departures, and don't offer a filter either.
+    @Test
+    fun `a train that only passes through isn't a departure here`() = runTest(rule.dispatcher) {
+        val express = dep("CCN", "Newcastle", soon.plusMinutes(5)).copy(pickupAllowed = false, dropOffAllowed = false)
+        val (vm, _) = buildVm(departures = standardDepartures + express)
+
+        assertEquals(listOf("trip-100", "trip-200"), vm.associatedStopTimes.value.map { it.second.stopTimesRecord.tripId })
+        assertFalse(TransitFilterOptions.RouteShortName("CCN", TransitMode.BUS) in vm.availableFiltersForBusStop.value)
+    }
+
+    // A set-down-only stop: passengers get off, but nobody can get on, so it's not a departure either.
+    @Test
+    fun `a train that only sets down here isn't a departure here`() = runTest(rule.dispatcher) {
+        val setDownOnly = dep("CCN", "Central", soon.plusMinutes(5)).copy(pickupAllowed = false)
+        val (vm, _) = buildVm(departures = standardDepartures + setDownOnly)
+
+        assertEquals(listOf("trip-100", "trip-200"), vm.associatedStopTimes.value.map { it.second.stopTimesRecord.tripId })
+    }
+
     // A stop whose timetable has run out is loaded, just empty — not a spinner forever.
     @Test
     fun `a stop with no departures finishes loading with an empty list`() = runTest(rule.dispatcher) {

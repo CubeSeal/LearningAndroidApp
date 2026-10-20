@@ -73,7 +73,9 @@ data class StopTimesRecord(
     val stopId: String,
     val stopName: String,
     val stopLoc: LatLon,
-    val wheelchairBoarding: Boolean
+    val wheelchairBoarding: Boolean,
+    val pickupAllowed: Boolean = true,
+    val dropOffAllowed: Boolean = true,
 )
 
 /**
@@ -98,7 +100,11 @@ data class ScheduledStopTime(
     val stopId: String,
     val stopName: String,
     val stopLoc: LatLon,
-    val wheelchairBoarding: Boolean
+    val wheelchairBoarding: Boolean,
+    // False where the timetable has no pickup / no drop-off: a train running straight through a
+    // station is listed with neither.
+    val pickupAllowed: Boolean = true,
+    val dropOffAllowed: Boolean = true,
 )
 
 fun ScheduledStopTime.on(serviceDay: LocalDate): StopTimesRecord = StopTimesRecord(
@@ -119,6 +125,8 @@ fun ScheduledStopTime.on(serviceDay: LocalDate): StopTimesRecord = StopTimesReco
     stopName = stopName,
     stopLoc = stopLoc,
     wheelchairBoarding = wheelchairBoarding,
+    pickupAllowed = pickupAllowed,
+    dropOffAllowed = dropOffAllowed,
 )
 
 /** Which services run on each date, as materialised by the converter into `service_dates`. */
@@ -175,7 +183,11 @@ fun StopTimeWithDetails.toScheduledStopTime(): ScheduledStopTime {
         stopId = this.stopId,
         stopName = this.stopName,
         stopLoc = LatLon(this.stopLat, this.stopLon),
-        wheelchairBoarding = this.wheelchairBoarding == 1
+        wheelchairBoarding = this.wheelchairBoarding == 1,
+        // GTFS pickup/drop-off type 1 is "none"; empty is regular, and 2/3 (phone ahead, ask the
+        // driver) still let you on or off.
+        pickupAllowed = this.pickupType != 1,
+        dropOffAllowed = this.dropOffType != 1,
     )
 }
 

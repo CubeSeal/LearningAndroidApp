@@ -57,6 +57,19 @@ class TripsViewModelTest {
         assertEquals(3, vm.stopTimesRecord.value?.size)
     }
 
+    // A station the train runs straight through isn't one of its stops; one it only sets down at is.
+    @Test
+    fun `a trip lists the stops it stops at, not the ones it passes through`() = runTest(rule.dispatcher) {
+        val stops = listOf(
+            stop("S1", 1),
+            stop("S2", 2).copy(pickupAllowed = false, dropOffAllowed = false),
+            stop("S3", 3).copy(pickupAllowed = false),
+        )
+        val vm = TripsViewModel("T1", "S1", date, buildTransitInfo(FakeStaticGtfsSource(scheduledStopTimes = stops)))
+
+        assertEquals(listOf("S1", "S3"), vm.stopTimesRecord.value?.map { it.stopId })
+    }
+
     // The static header's route text is derived in the ViewModel (not the composable) so it's
     // testable: it comes off the trip's first stop-time.
     @Test
