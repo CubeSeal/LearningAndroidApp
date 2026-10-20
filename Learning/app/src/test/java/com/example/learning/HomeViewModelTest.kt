@@ -543,4 +543,50 @@ class HomeViewModelTest {
         fakeClockSource.advanceMinutes()
         assertEquals(Duration.ofSeconds(300), delay())
     }
+
+    // --- How each departure's time reads ---
+
+    @Test
+    fun `a departure with no realtime shows only its timetabled time`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = listOf(dep("100", "Downtown")))
+
+        assertEquals(DepartureTimeDisplay.TimetableOnly, vm.associatedStopTimes.value.single().second.timeDisplay)
+    }
+
+    @Test
+    fun `realtime moving a departure by a minute or more shows it as moved`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            realtime = listOf(
+                RealtimeTripInfo(
+                    id = "entity-1",
+                    tripId = "trip-100",
+                    updatedAt = LocalDateTime.now(),
+                    stopTimeDelays = listOf("S1" to 120),
+                    vehicleLicencePlate = "ABC123",
+                )
+            ),
+        )
+
+        assertEquals(DepartureTimeDisplay.Moved, vm.associatedStopTimes.value.single().second.timeDisplay)
+    }
+
+    // Under a minute renders as the same clock time, so there's nothing to strike through.
+    @Test
+    fun `realtime within the same minute shows the departure as on time`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            realtime = listOf(
+                RealtimeTripInfo(
+                    id = "entity-1",
+                    tripId = "trip-100",
+                    updatedAt = LocalDateTime.now(),
+                    stopTimeDelays = listOf("S1" to 30),
+                    vehicleLicencePlate = "ABC123",
+                )
+            ),
+        )
+
+        assertEquals(DepartureTimeDisplay.OnTime, vm.associatedStopTimes.value.single().second.timeDisplay)
+    }
 }

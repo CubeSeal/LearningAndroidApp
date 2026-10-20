@@ -73,6 +73,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.learning.AppViewModelProvider
+import com.example.learning.DepartureTimeDisplay
 import com.example.learning.Filter
 import com.example.learning.HomeNavEvent
 import com.example.learning.HomeViewModel
@@ -82,6 +83,7 @@ import com.example.learning.StopTimesRecordWithRealtime
 import com.example.learning.TransitFilterOptions
 import com.example.learning.Trips
 import com.example.learning.printTime
+import com.example.learning.timeDisplay
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -335,12 +337,10 @@ fun LazyItemScope.BusCard(
     // Have to carry null delay's all the way through, since that's a valid state when the data just isn't there.
     // Only make the choice to treat it as zero when re-calculating departureTimes.
     val departureTime = scheduledDeparture + (delay ?: Duration.ZERO)
-    // No realtime at all: the whole row is italicised and the trailing spot shows the scheduled
-    // time in the same italic style, signalling "timetable only".
-    val untracked = realtime == null
-    // The trip is off-schedule (and worth showing both times) only when realtime shifts it by at
-    // least a displayed minute; sub-minute deltas render as the same clock time.
-    val isOffSchedule = delay != null && delay.toMinutes() != 0L
+    val timeDisplay = record.timeDisplay
+    // Timetable only: the whole row is italicised and the trailing spot shows the scheduled time in
+    // the same italic style.
+    val untracked = timeDisplay == DepartureTimeDisplay.TimetableOnly
 
     val (dynamicContainer, onDynamicContainer) = when {
         isFirst && realtime != null ->
@@ -413,7 +413,7 @@ fun LazyItemScope.BusCard(
                         // Always reserve the scheduled-time line (empty when on time) so the
                         // predicted time aligns with the off-schedule and untracked rows.
                         ScheduledTimeText(
-                            if (isOffSchedule) printTime(scheduledDeparture) else "",
+                            if (timeDisplay == DepartureTimeDisplay.Moved) printTime(scheduledDeparture) else "",
                             onDynamicContainer,
                             superseded = true,
                         )

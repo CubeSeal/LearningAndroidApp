@@ -30,6 +30,26 @@ sealed interface HomeNavEvent {
     data class OpenTrip(val tripId: String, val stopId: String, val date: String) : HomeNavEvent
 }
 
+/** How a departure's time reads on its card. */
+enum class DepartureTimeDisplay {
+    /** No realtime yet: the timetabled time is all there is. */
+    TimetableOnly,
+    /** Realtime agrees with the timetable to the displayed minute: just the predicted time. */
+    OnTime,
+    /** Realtime moved it by at least a displayed minute: the prediction, with the timetabled time it replaces. */
+    Moved,
+}
+
+val StopTimesRecordWithRealtime.timeDisplay: DepartureTimeDisplay
+    get() {
+        val delay = realtimeStopTimesRecord?.stopTimeDelay
+        return when {
+            realtimeStopTimesRecord == null -> DepartureTimeDisplay.TimetableOnly
+            delay != null && delay.toMinutes() != 0L -> DepartureTimeDisplay.Moved
+            else -> DepartureTimeDisplay.OnTime
+        }
+    }
+
 class HomeViewModel(
     private val transitInfo: TransitInfo
 ) : ViewModel() {
