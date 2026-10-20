@@ -8,6 +8,8 @@ import com.google.transit.realtime.GtfsRealtime.TripUpdate
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeEvent
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeUpdate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDateTime
@@ -81,6 +83,23 @@ class RealtimeDecodingTest {
         val stop = StopTimeUpdate.newBuilder().setStopId("S1").build()
 
         assertEquals(listOf(RealtimeStopUpdate("S1", delaySeconds = null)), entity(stop).toRealtimeTripInfo().stopUpdates)
+    }
+
+    @Test
+    fun `a cancelled trip is decoded as cancelled`() {
+        val cancelled = FeedEntity.newBuilder()
+            .setId("entity-1")
+            .setTripUpdate(
+                TripUpdate.newBuilder().setTrip(
+                    TripDescriptor.newBuilder()
+                        .setTripId("trip-1")
+                        .setScheduleRelationship(TripDescriptor.ScheduleRelationship.CANCELED)
+                )
+            )
+            .build()
+
+        assertTrue(cancelled.toRealtimeTripInfo().cancelled)
+        assertFalse(entity().toRealtimeTripInfo().cancelled)
     }
 
     // The last stop of a trip only has an arrival.

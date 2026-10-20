@@ -393,25 +393,36 @@ fun LazyItemScope.BusCard(
             },
             trailingContent = {
                 Column(horizontalAlignment = Alignment.End) {
-                    if (untracked) {
-                        // Reserve the (invisible) predicted-time line so the italic scheduled time
-                        // lands in the same vertical spot as the realtime row's second line, rather
-                        // than centring higher.
-                        Text(text = "", style = MaterialTheme.typography.titleMedium)
-                        ScheduledTimeText(printTime(scheduledDeparture, today), onDynamicContainer, superseded = false)
-                    } else {
-                        Text(
-                            text = printTime(record.effectiveDepartureTime, today),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = onDynamicContainer
-                        )
-                        // Always reserve the scheduled-time line (empty when on time) so the
-                        // predicted time aligns with the off-schedule and untracked rows.
-                        ScheduledTimeText(
-                            if (timeDisplay == DepartureTimeDisplay.Moved) printTime(scheduledDeparture, today) else "",
-                            onDynamicContainer,
-                            superseded = true,
-                        )
+                    when (timeDisplay) {
+                        DepartureTimeDisplay.TimetableOnly -> {
+                            // Reserve the (invisible) predicted-time line so the italic scheduled time
+                            // lands in the same vertical spot as the realtime row's second line, rather
+                            // than centring higher.
+                            Text(text = "", style = MaterialTheme.typography.titleMedium)
+                            ScheduledTimeText(printTime(scheduledDeparture, today), onDynamicContainer, superseded = false)
+                        }
+                        DepartureTimeDisplay.Cancelled -> {
+                            Text(
+                                text = "Cancelled",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            ScheduledTimeText(printTime(scheduledDeparture, today), onDynamicContainer, superseded = true)
+                        }
+                        DepartureTimeDisplay.OnTime, DepartureTimeDisplay.Moved -> {
+                            Text(
+                                text = printTime(record.effectiveDepartureTime, today),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = onDynamicContainer
+                            )
+                            // Always reserve the scheduled-time line (empty when on time) so the
+                            // predicted time aligns with the off-schedule and untracked rows.
+                            ScheduledTimeText(
+                                if (timeDisplay == DepartureTimeDisplay.Moved) printTime(scheduledDeparture, today) else "",
+                                onDynamicContainer,
+                                superseded = true,
+                            )
+                        }
                     }
                 }
             }

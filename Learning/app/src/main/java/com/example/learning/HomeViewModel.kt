@@ -47,12 +47,15 @@ enum class DepartureTimeDisplay {
     OnTime,
     /** Realtime moved it by at least a displayed minute: the prediction, with the timetabled time it replaces. */
     Moved,
+    /** Realtime cancelled the trip: the timetabled time, marked as not running. */
+    Cancelled,
 }
 
 val StopTimesRecordWithRealtime.timeDisplay: DepartureTimeDisplay
     get() {
         val delay = realtimeStopTimesRecord?.stopTimeDelay
         return when {
+            cancelled -> DepartureTimeDisplay.Cancelled
             realtimeStopTimesRecord == null -> DepartureTimeDisplay.TimetableOnly
             delay != null && delay.toMinutes() != 0L -> DepartureTimeDisplay.Moved
             else -> DepartureTimeDisplay.OnTime
@@ -121,7 +124,7 @@ class HomeViewModel(
     val associatedStopTimes = combine(
         candidateRows,
         transitInfo.currentMinute,
-        transitInfo.realtimeStopTimes,
+        transitInfo.realtime,
         pageSize,
     ) { schedule, currentMinute, realtime, pageSize ->
         if (schedule == null) return@combine emptyList()

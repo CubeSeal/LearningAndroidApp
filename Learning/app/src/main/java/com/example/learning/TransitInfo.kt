@@ -140,6 +140,15 @@ data class StopTimesRecordWithRealtime(
     // Normally I'd make this flat instead of nesting it like this, but making this nullable this is a convenient way
     // to mark something as not having realtime info.
     val realtimeStopTimesRecord: RealtimeStopTimesRecord?,
+    val cancelled: Boolean = false,
+)
+
+/** The latest realtime feed, in the shape the departure list joins: per stop, and per cancelled trip. */
+@Immutable
+data class RealtimeSnapshot(
+    val stops: Map<Pair<String, String>, RealtimeStopTimesRecord> = emptyMap(),
+    // By trip, not stop: a cancellation usually comes with no stop updates at all.
+    val cancelledTripIds: Set<String> = emptySet(),
 )
 
 /** The focused stop's timetable, undated, plus the calendar that places it onto days. */
@@ -160,16 +169,25 @@ val ScheduledStopTime.applicableFilters: Set<TransitFilterOptions>
 
 /**
  * Joins realtime onto stitched departures. The feed only describes a trip's current run, but the same
- * trip id recurs on every day its service runs — so it attaches to the first (nearest) run only.
+ * trip id recurs on every day its service runs — so delays and cancellations attach to the first
+ * (nearest) run only.
  */
 fun Sequence<StopTimesRecord>.withRealtime(
-    realtime: Map<Pair<String, String>, RealtimeStopTimesRecord>,
+    realtime: RealtimeSnapshot,
 ): Sequence<StopTimesRecordWithRealtime> = sequence {
     val claimed = mutableSetOf<Pair<String, String>>()
     for (record in this@withRealtime) {
         val key = record.tripId to record.stopId
-        val joined = realtime[key]?.takeIf { claimed.add(key) }?.resolvedAgainst(record)
-        yield(StopTimesRecordWithRealtime(record, joined))
+        val stop = realtime.stops[key]
+        val cancelled = record.tripId in realtime.cancelledTripIds
+        val isNextRun = (stop != null || cancelled) && claimed.add(key)
+        yield(
+            StopTimesRecordWithRealtime(
+                record,
+                stop?.takeIf { isNextRun }?.resolvedAgainst(record),
+                cancelled = cancelled && isNextRun,
+            )
+        )
     }
 }
 
@@ -258,15 +276,17 @@ class TransitInfo(
 
     // Polled every minute so delays stay current while the phone sits still. A location update still
     // refetches too: pull-to-refresh requests a fresh fix, and that's what makes it refresh realtime.
-    val realtimeStopTimes: StateFlow<Map<Pair<String, String>, RealtimeStopTimesRecord>> =
+    val realtime: StateFlow<RealtimeSnapshot> =
         merge(currentMinute, locationRepo.currentLocation).mapLatest {
-            gtfsRealtimeRepository.getRealtimeData()
-                .flatMap { it.toRealtimeStopTimesRecord() }
-                .associateBy { it.tripId to it.stopId }
+            val trips = gtfsRealtimeRepository.getRealtimeData()
+            RealtimeSnapshot(
+                stops = trips.flatMap { it.toRealtimeStopTimesRecord() }.associateBy { it.tripId to it.stopId },
+                cancelledTripIds = trips.filter { it.cancelled }.map { it.tripId }.toSet(),
+            )
         }.stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = emptyMap()
+            initialValue = RealtimeSnapshot()
         )
 
     // Null while loading: until there's a stop, and again on each switch. flatMapLatest cancels the

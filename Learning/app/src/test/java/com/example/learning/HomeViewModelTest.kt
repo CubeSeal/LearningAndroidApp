@@ -673,4 +673,29 @@ class HomeViewModelTest {
         assertEquals(Duration.ofMinutes(5), departure.realtimeStopTimesRecord?.stopTimeDelay)
         assertEquals(DepartureTimeDisplay.Moved, departure.timeDisplay)
     }
+
+    // Cancellations usually come with no stop updates at all, so they're matched by trip, not stop.
+    // Like delays, they describe the trip's current run, not the same trip id on later days.
+    @Test
+    fun `a cancelled trip's next run shows as cancelled`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            serviceCalendar = todayAndTomorrow,
+            realtime = listOf(
+                RealtimeTripInfo(
+                    id = "entity-1",
+                    tripId = "trip-100",
+                    updatedAt = LocalDateTime.now(),
+                    stopUpdates = emptyList(),
+                    vehicleLicencePlate = "",
+                    cancelled = true,
+                )
+            ),
+        )
+
+        assertEquals(
+            listOf(DepartureTimeDisplay.Cancelled, DepartureTimeDisplay.TimetableOnly),
+            vm.associatedStopTimes.value.map { it.second.timeDisplay },
+        )
+    }
 }

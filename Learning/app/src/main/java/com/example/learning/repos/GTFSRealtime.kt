@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import com.example.learning.BuildConfig
 import com.google.protobuf.CodedInputStream
 import com.google.transit.realtime.GtfsRealtime.FeedEntity
+import com.google.transit.realtime.GtfsRealtime.TripDescriptor
 import com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,6 +35,7 @@ data class RealtimeTripInfo(
     val updatedAt: LocalDateTime,
     val stopUpdates: List<RealtimeStopUpdate>,
     val vehicleLicencePlate: String,
+    val cancelled: Boolean = false,
 )
 
 /**
@@ -144,7 +146,8 @@ fun FeedEntity.toRealtimeTripInfo(): RealtimeTripInfo = RealtimeTripInfo(
                 RealtimeStopUpdate(it.stopId, delaySeconds = null)
             }
         },
-    vehicleLicencePlate = tripUpdate.vehicle.licensePlate
+    vehicleLicencePlate = tripUpdate.vehicle.licensePlate,
+    cancelled = tripUpdate.trip.scheduleRelationship == TripDescriptor.ScheduleRelationship.CANCELED,
 )
 
 class FakeRealtimeSource(
