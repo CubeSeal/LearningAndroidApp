@@ -1,6 +1,7 @@
 package com.example.learning
 
 import app.cash.turbine.test
+import com.example.learning.repos.FakeClockSource
 import com.example.learning.repos.FakeLocationSource
 import com.example.learning.repos.FakeRealtimeSource
 import com.example.learning.repos.FakeSettingsSource
@@ -75,6 +76,7 @@ class HomeViewModelTest {
         val gtfsRealtimeRepository: FakeRealtimeSource,
         val locationRepository: FakeLocationSource,
         val settingsRepository: FakeSettingsSource,
+        val clock: FakeClockSource,
     )
 
     private fun TestScope.buildVm(
@@ -89,8 +91,9 @@ class HomeViewModelTest {
         val gtfsRealtimeRepository = FakeRealtimeSource(realtime)
         val locationRepo = FakeLocationSource(location)
         val settingsRepo = FakeSettingsSource()
+        val clock = FakeClockSource()
 
-        val transitInfo = buildTransitInfo(gtfsStaticRepository, gtfsRealtimeRepository, locationRepo, settingsRepo)
+        val transitInfo = buildTransitInfo(gtfsStaticRepository, gtfsRealtimeRepository, locationRepo, settingsRepo, clock)
 
         return TestDependencies(
             HomeViewModel(transitInfo),
@@ -98,6 +101,7 @@ class HomeViewModelTest {
             gtfsRealtimeRepository,
             locationRepo,
             settingsRepo,
+            clock,
         )
     }
 
@@ -516,5 +520,27 @@ class HomeViewModelTest {
         val (todays, tomorrows) = vm.associatedStopTimes.value.map { it.second }
         assertNotNull(todays.realtimeStopTimesRecord)
         assertNull(tomorrows.realtimeStopTimesRecord)
+    }
+
+    // The phone stays put (no location update), so only the minute tick can pick up the new delay.
+    @Test
+    fun `realtime refreshes on the minute tick`() = runTest(rule.dispatcher) {
+        val realtime = RealtimeTripInfo(
+            id = "entity-1",
+            tripId = "trip-100",
+            updatedAt = LocalDateTime.now(),
+            stopTimeDelays = listOf("S1" to 60),
+            vehicleLicencePlate = "ABC123",
+        )
+        val (vm, _, fakeRealtimeSource, _, _, fakeClockSource) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            realtime = listOf(realtime),
+        )
+        val delay = { vm.associatedStopTimes.value.single().second.realtimeStopTimesRecord?.stopTimeDelay }
+        assertEquals(Duration.ofSeconds(60), delay())
+
+        fakeRealtimeSource.changeData(listOf(realtime.copy(stopTimeDelays = listOf("S1" to 300))))
+        fakeClockSource.advanceMinutes()
+        assertEquals(Duration.ofSeconds(300), delay())
     }
 }

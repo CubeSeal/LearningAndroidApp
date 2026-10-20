@@ -129,7 +129,10 @@ class GtfsRealtimeRepository(
 }
 
 class FakeRealtimeSource(
-    private val busData: List<RealtimeTripInfo> = emptyList(),
+    private var busData: List<RealtimeTripInfo> = emptyList(),
 ) : RealtimeGtfsSource {
+    // The feed moving on between polls, e.g. a delay growing.
+    fun changeData(data: List<RealtimeTripInfo>) { busData = data }
+
     override suspend fun getRealtimeData(): List<RealtimeTripInfo> = busData
 }

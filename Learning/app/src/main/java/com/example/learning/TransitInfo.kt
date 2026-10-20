@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -242,8 +243,10 @@ class TransitInfo(
             .launchIn(scope)
     }
 
+    // Polled every minute so delays stay current while the phone sits still. A location update still
+    // refetches too: pull-to-refresh requests a fresh fix, and that's what makes it refresh realtime.
     val realtimeStopTimes: StateFlow<Map<Pair<String, String>, RealtimeStopTimesRecord>> =
-        locationRepo.currentLocation.map { _ ->
+        merge(currentMinute, locationRepo.currentLocation).mapLatest {
             gtfsRealtimeRepository.getRealtimeData()
                 .flatMap { it.toRealtimeStopTimesRecord() }
                 .associateBy { it.tripId to it.stopId }
