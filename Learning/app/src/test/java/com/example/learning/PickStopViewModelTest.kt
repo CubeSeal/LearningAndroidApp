@@ -38,7 +38,7 @@ class PickStopViewModelTest {
 
     private fun TestScope.buildVm(): TestDependencies {
         val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = emptyList())
+            FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = emptyList())
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource()
         val settingsRepo = FakeSettingsSource()

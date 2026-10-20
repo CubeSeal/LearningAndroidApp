@@ -6,7 +6,7 @@ import com.example.learning.repos.FakeRealtimeSource
 import com.example.learning.repos.FakeSettingsSource
 import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.LatLon
-import com.example.learning.repos.StopTimesRecord
+import com.example.learning.repos.ScheduledStopTime
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -14,19 +14,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
+import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 class TripsViewModelTest {
     @get:Rule val rule = MainDispatcherRule()
 
     private val stopLoc = LatLon(-33.8688, 151.2093)
     private val date = LocalDate.of(2026, 7, 19)
-    private val baseTime = LocalDateTime.of(2026, 7, 19, 9, 0)
-    private fun stop(id: String, seq: Int) = StopTimesRecord(
+    private val baseOffset = Duration.ofHours(9)
+    private fun stop(id: String, seq: Int) = ScheduledStopTime(
         tripId = "T1",
-        departureTime = baseTime.plusMinutes(seq * 5L),
-        arrivalTime = baseTime,
+        departureOffset = baseOffset.plusMinutes(seq * 5L),
+        arrivalOffset = baseOffset,
         sequence = seq,
         routeId = "R1",
         serviceId = "svc",
@@ -46,7 +46,7 @@ class TripsViewModelTest {
     private fun TestScope.buildVm(focusedStopId: String = "S2"): TripsViewModel {
         val transitInfo = TransitInfo(
             gtfsStaticRepository = FakeStaticGtfsSource(
-                stopTimesRecords = tripStops,
+                scheduledStopTimes = tripStops,
             ),
             gtfsRealtimeRepository = FakeRealtimeSource(),
             locationRepo = FakeLocationSource(),
@@ -73,7 +73,7 @@ class TripsViewModelTest {
     @Test
     fun `tripHeader is null when the trip has no stops`() = runTest(rule.dispatcher) {
         val transitInfo = TransitInfo(
-            gtfsStaticRepository = FakeStaticGtfsSource(stopTimesRecords = emptyList()),
+            gtfsStaticRepository = FakeStaticGtfsSource(scheduledStopTimes = emptyList()),
             gtfsRealtimeRepository = FakeRealtimeSource(),
             locationRepo = FakeLocationSource(),
             settingsRepo = FakeSettingsSource(),

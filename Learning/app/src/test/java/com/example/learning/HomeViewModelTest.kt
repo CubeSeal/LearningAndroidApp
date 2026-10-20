@@ -7,18 +7,23 @@ import com.example.learning.repos.FakeSettingsSource
 import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LatLon
+import com.example.learning.repos.RealtimeTripInfo
+import com.example.learning.repos.ScheduledStopTime
+import com.example.learning.repos.ServiceCalendar
 import com.example.learning.repos.StopRecord
-import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
-import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 class HomeViewModelTest {
@@ -26,6 +31,10 @@ class HomeViewModelTest {
 
     private val stopLoc = LatLon(-33.8688, 151.2093)
     private val soon = LocalDateTime.now().plusHours(1)
+    private val today = LocalDate.now()
+    // The schedule world: every departure below belongs to service "svc", which runs today.
+    private val calendar = ServiceCalendar(mapOf(today to setOf("svc")))
+    private val todayAndTomorrow = ServiceCalendar(mapOf(today to setOf("svc"), today.plusDays(1) to setOf("svc")))
     private val stopId = "G1"
     private val stop = GlobbedStopRecord(
         globbedStopId = stopId,
@@ -38,10 +47,10 @@ class HomeViewModelTest {
         headsign: String,
         at: LocalDateTime = soon
     ) =
-        StopTimesRecord(
+        ScheduledStopTime(
             tripId = "trip-$route",
-            departureTime = at,
-            arrivalTime = at,
+            departureOffset = Duration.between(today.atStartOfDay(), at),
+            arrivalOffset = Duration.between(today.atStartOfDay(), at),
             sequence = 1,
             routeId = "route-$route",
             serviceId = "svc",
@@ -69,12 +78,18 @@ class HomeViewModelTest {
     )
 
     private fun TestScope.buildVm(
-        departures: List<StopTimesRecord> = standardDepartures,
+        departures: List<ScheduledStopTime> = standardDepartures,
         stops: List<GlobbedStopRecord> = listOf(stop),
-        location: LatLon = stopLoc
+        location: LatLon = stopLoc,
+        serviceCalendar: ServiceCalendar = calendar,
+        realtime: List<RealtimeTripInfo> = emptyList(),
     ): TestDependencies {
-        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = stops, stopTimesRecords = departures)
-        val gtfsRealtimeRepository = FakeRealtimeSource()
+        val gtfsStaticRepository = FakeStaticGtfsSource(
+            globbedStops = stops,
+            scheduledStopTimes = departures,
+            calendar = serviceCalendar,
+        )
+        val gtfsRealtimeRepository = FakeRealtimeSource(realtime)
         val locationRepo = FakeLocationSource(location)
         val settingsRepo = FakeSettingsSource()
 
@@ -219,7 +234,7 @@ class HomeViewModelTest {
 
     @Test
     fun `a saved-stop combo selection is applied to the home filters`() = runTest(rule.dispatcher) {
-        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = standardDepartures)
+        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = standardDepartures, calendar = calendar)
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource()
         val settingsRepo = FakeSettingsSource()
@@ -248,7 +263,7 @@ class HomeViewModelTest {
     @Test
     fun `a saved-stop combo survives Home being recreated on the way back`() = runTest(rule.dispatcher) {
         val transitInfo = TransitInfo(
-            FakeStaticGtfsSource(globbedStops = listOf(stop), stopTimesRecords = standardDepartures),
+            FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = standardDepartures, calendar = calendar),
             FakeRealtimeSource(),
             FakeLocationSource(),
             FakeSettingsSource(),
@@ -327,7 +342,7 @@ class HomeViewModelTest {
     @Test
     fun `enabling following re-snaps to the closest stop`() = runTest(rule.dispatcher) {
         val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), stopTimesRecords = standardDepartures)
+            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), scheduledStopTimes = standardDepartures, calendar = calendar)
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource(stop2Loc)
         val settingsRepo = FakeSettingsSource()
@@ -354,7 +369,7 @@ class HomeViewModelTest {
     @Test
     fun `re-enabling follow after a manual pick snaps back to the closest stop`() = runTest(rule.dispatcher) {
         val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), stopTimesRecords = standardDepartures)
+            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), scheduledStopTimes = standardDepartures, calendar = calendar)
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource()
         val settingsRepo = FakeSettingsSource()
@@ -422,7 +437,7 @@ class HomeViewModelTest {
     @Test
     fun `selecting a saved stop turns following off`() = runTest(rule.dispatcher) {
         val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), stopTimesRecords = standardDepartures)
+            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), scheduledStopTimes = standardDepartures, calendar = calendar)
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource(stop2Loc)
         val settingsRepo = FakeSettingsSource()
@@ -444,18 +459,96 @@ class HomeViewModelTest {
         assertFalse(homeViewModel.followLocation.value)
     }
 
-    @Test
-    fun `transitInfo only ever holds less than 100 stoptimes`() = runTest(rule.dispatcher) {
-        val fuckTonOfStopTimes: List<StopTimesRecord> = (1..1000)
-            .map {
-                dep(
-                    route = "610x",
-                    headsign ="Excellent 610x.",
-                    at = LocalDateTime.now().plusSeconds(it.toLong())
-                )
-            }
-        val (vm, _) = buildVm(departures = fuckTonOfStopTimes)
+    // --- Stitched, paged departures ---
 
-        assertTrue(vm.associatedStopTimes.value.count() <= 100)
+    private val pageSize = HomeViewModel.PAGE_SIZE
+    private val busyStop = (1..1000L).map { dep("610x", "Excellent 610x.", at = soon.plusMinutes(it)) }
+
+    @Test
+    fun `a service running on several days shows a departure on each`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = listOf(dep("100", "Downtown")), serviceCalendar = todayAndTomorrow)
+
+        assertEquals(
+            listOf(soon, soon.plusDays(1)),
+            vm.associatedStopTimes.value.map { it.second.stopTimesRecord.departureTime },
+        )
+    }
+
+    @Test
+    fun `the departure list starts at one page`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = busyStop)
+
+        assertEquals(pageSize, vm.associatedStopTimes.value.size)
+    }
+
+    @Test
+    fun `scrolling near the end of the list loads another page`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = busyStop)
+
+        vm.onScrolledTo(vm.associatedStopTimes.value.lastIndex)
+        assertEquals(2 * pageSize, vm.associatedStopTimes.value.size)
+    }
+
+    @Test
+    fun `scrolling short of the end does not load another page`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = busyStop)
+
+        vm.onScrolledTo(0)
+        assertEquals(pageSize, vm.associatedStopTimes.value.size)
+    }
+
+    @Test
+    fun `loading another page does not scroll back to the top`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = busyStop)
+        vm.scrollToTop.test {
+            awaitItem() // the initial load
+            vm.onScrolledTo(vm.associatedStopTimes.value.lastIndex)
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `changing filters goes back to one page`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(departures = busyStop)
+        vm.onScrolledTo(vm.associatedStopTimes.value.lastIndex)
+
+        vm.toggleFilterForBusStops(TransitFilterOptions.RouteShortName("610x", TransitMode.BUS))
+        assertEquals(pageSize, vm.associatedStopTimes.value.size)
+    }
+
+    // The filter row comes from the whole timetable, not the page: a rarely-run route past the first
+    // page is still offered, and selecting it finds its departure.
+    @Test
+    fun `filters cover departures beyond the first page`() = runTest(rule.dispatcher) {
+        val busy = (1..2L * pageSize).map { dep("100", "Downtown", at = soon.plusMinutes(it)) }
+        val rare = dep("200", "Uptown", at = soon.plusMinutes(3L * pageSize))
+        val (vm, _) = buildVm(departures = busy + rare)
+        val route200 = TransitFilterOptions.RouteShortName("200", TransitMode.BUS)
+
+        assertTrue(route200 in vm.availableFiltersForBusStop.value)
+        vm.toggleFilterForBusStops(route200)
+        assertEquals(listOf("trip-200"), vm.associatedStopTimes.value.map { it.second.stopTimesRecord.tripId })
+    }
+
+    // The realtime feed only describes a trip's current run; the same trip id tomorrow has no realtime yet.
+    @Test
+    fun `realtime attaches to a trip's next run only`() = runTest(rule.dispatcher) {
+        val realtime = RealtimeTripInfo(
+            id = "entity-1",
+            tripId = "trip-100",
+            updatedAt = LocalDateTime.now(),
+            stopTimeDelays = listOf("S1" to 60),
+            vehicleLicencePlate = "ABC123",
+        )
+        val (vm, _) = buildVm(
+            departures = listOf(dep("100", "Downtown")),
+            serviceCalendar = todayAndTomorrow,
+            realtime = listOf(realtime),
+        )
+
+        val (todays, tomorrows) = vm.associatedStopTimes.value.map { it.second }
+        assertNotNull(todays.realtimeStopTimesRecord)
+        assertNull(tomorrows.realtimeStopTimesRecord)
     }
 }

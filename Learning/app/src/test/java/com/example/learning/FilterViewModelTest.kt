@@ -7,8 +7,9 @@ import com.example.learning.repos.FakeSettingsSource
 import com.example.learning.repos.FakeStaticGtfsSource
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.LatLon
+import com.example.learning.repos.ScheduledStopTime
+import com.example.learning.repos.ServiceCalendar
 import com.example.learning.repos.StopRecord
-import com.example.learning.repos.StopTimesRecord
 import com.example.learning.repos.TransitMode
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -17,6 +18,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 class FilterViewModelTest {
@@ -24,6 +27,8 @@ class FilterViewModelTest {
 
     private val stopLoc = LatLon(-33.8688, 151.2093)
     private val soon = LocalDateTime.now().plusHours(1)
+    private val today = LocalDate.now()
+    private val calendar = ServiceCalendar(mapOf(today to setOf("svc")))
     private val stopId = "G1"
 
     // An interchange: buses at two stands, trains at a platform. Three stop records is the threshold
@@ -43,10 +48,10 @@ class FilterViewModelTest {
         mode: TransitMode = TransitMode.BUS,
         stopRecord: StopRecord = standA,
         at: LocalDateTime = soon,
-    ) = StopTimesRecord(
+    ) = ScheduledStopTime(
         tripId = "trip-$route",
-        departureTime = at,
-        arrivalTime = at,
+        departureOffset = Duration.between(today.atStartOfDay(), at),
+        arrivalOffset = Duration.between(today.atStartOfDay(), at),
         sequence = 1,
         routeId = "route-$route",
         serviceId = "svc",
@@ -87,11 +92,11 @@ class FilterViewModelTest {
     // TransitInfo is wiring: built here, handed to the ViewModels, never read by a test. Returned
     // separately so the cross-screen cases can put a HomeViewModel over the same instance.
     private fun TestScope.buildTransitInfo(
-        departures: List<StopTimesRecord> = standardDepartures,
+        departures: List<ScheduledStopTime> = standardDepartures,
         stops: List<GlobbedStopRecord> = listOf(stop),
         location: LatLon = stopLoc,
     ) = TransitInfo(
-        FakeStaticGtfsSource(globbedStops = stops, stopTimesRecords = departures),
+        FakeStaticGtfsSource(globbedStops = stops, scheduledStopTimes = departures, calendar = calendar),
         FakeRealtimeSource(),
         FakeLocationSource(location),
         FakeSettingsSource(),
@@ -99,11 +104,11 @@ class FilterViewModelTest {
     )
 
     private fun TestScope.buildVm(
-        departures: List<StopTimesRecord> = standardDepartures,
+        departures: List<ScheduledStopTime> = standardDepartures,
         stops: List<GlobbedStopRecord> = listOf(stop),
         location: LatLon = stopLoc,
     ): TestDependencies {
-        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = stops, stopTimesRecords = departures)
+        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = stops, scheduledStopTimes = departures, calendar = calendar)
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource(location)
         val settingsRepo = FakeSettingsSource()
