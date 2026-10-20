@@ -43,13 +43,7 @@ class PickStopViewModelTest {
         val locationRepo = FakeLocationSource()
         val settingsRepo = FakeSettingsSource()
 
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
-        )
+        val transitInfo = buildTransitInfo(gtfsStaticRepository, gtfsRealtimeRepository, locationRepo, settingsRepo)
 
         return TestDependencies(
             PickStopViewModel(transitInfo),
@@ -123,13 +117,7 @@ class PickStopViewModelTest {
                 StopRecord("S2", "Test Stop 2", stopLoc, false),
             )
         )
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop, stop2)),
-            gtfsRealtimeRepository = FakeRealtimeSource(),
-            locationRepo = FakeLocationSource(),
-            settingsRepo = FakeSettingsSource(),
-            scope = backgroundScope,
-        )
+        val transitInfo = buildTransitInfo(gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop, stop2)))
         val vm = PickStopViewModel(transitInfo)
 
         vm.filteredBusStops.test {

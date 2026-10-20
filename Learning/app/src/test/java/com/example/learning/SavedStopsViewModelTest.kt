@@ -48,25 +48,10 @@ class SavedStopsViewModelTest {
         val settingsRepository: FakeSettingsSource,
     )
 
-    private fun TestScope.buildTransitInfo(
-        gtfsStaticRepository: FakeStaticGtfsSource =
-            FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = emptyList()),
-        gtfsRealtimeRepository: FakeRealtimeSource = FakeRealtimeSource(),
-        locationRepo: FakeLocationSource = FakeLocationSource(),
-        settingsRepo: FakeSettingsSource = FakeSettingsSource(),
-    ) = TransitInfo(
-        gtfsStaticRepository,
-        gtfsRealtimeRepository,
-        locationRepo,
-        settingsRepo,
-        backgroundScope,
-    )
-
     private fun TestScope.buildVm(
         entries: List<SavedStopEntry> = emptyList(),
     ): TestDependencies {
-        val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = emptyList())
+        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop))
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource()
         val settingsRepo = FakeSettingsSource(savedStops = entries)
@@ -89,7 +74,10 @@ class SavedStopsViewModelTest {
 
     private fun TestScope.buildVmPair(entries: List<SavedStopEntry> = emptyList()): TestVmPair {
         val settingsRepo = FakeSettingsSource(savedStops = entries)
-        val transitInfo = buildTransitInfo(settingsRepo = settingsRepo)
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop)),
+            settingsRepo = settingsRepo,
+        )
         return TestVmPair(SavedStopsViewModel(transitInfo), HomeViewModel(transitInfo), settingsRepo)
     }
 

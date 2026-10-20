@@ -44,15 +44,7 @@ class TripsViewModelTest {
     private val tripStops = listOf(stop("S1", 1), stop("S2", 2), stop("S3", 3))
 
     private fun TestScope.buildVm(focusedStopId: String = "S2"): TripsViewModel {
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository = FakeStaticGtfsSource(
-                scheduledStopTimes = tripStops,
-            ),
-            gtfsRealtimeRepository = FakeRealtimeSource(),
-            locationRepo = FakeLocationSource(),
-            settingsRepo = FakeSettingsSource(),
-            scope = backgroundScope,
-        )
+        val transitInfo = buildTransitInfo(gtfsStaticRepository = FakeStaticGtfsSource(scheduledStopTimes = tripStops))
         return TripsViewModel("T1", focusedStopId, date, transitInfo)
     }
 
@@ -72,14 +64,7 @@ class TripsViewModelTest {
 
     @Test
     fun `tripHeader is null when the trip has no stops`() = runTest(rule.dispatcher) {
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository = FakeStaticGtfsSource(scheduledStopTimes = emptyList()),
-            gtfsRealtimeRepository = FakeRealtimeSource(),
-            locationRepo = FakeLocationSource(),
-            settingsRepo = FakeSettingsSource(),
-            scope = backgroundScope,
-        )
-        val vm = TripsViewModel("T1", "S2", date, transitInfo)
+        val vm = TripsViewModel("T1", "S2", date, buildTransitInfo())
         assertNull(vm.tripHeader.value)
     }
 

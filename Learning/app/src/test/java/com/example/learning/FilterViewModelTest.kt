@@ -89,37 +89,18 @@ class FilterViewModelTest {
         val settingsRepository: FakeSettingsSource,
     )
 
-    // TransitInfo is wiring: built here, handed to the ViewModels, never read by a test. Returned
-    // separately so the cross-screen cases can put a HomeViewModel over the same instance.
-    private fun TestScope.buildTransitInfo(
-        departures: List<ScheduledStopTime> = standardDepartures,
-        stops: List<GlobbedStopRecord> = listOf(stop),
-        location: LatLon = stopLoc,
-    ) = TransitInfo(
-        FakeStaticGtfsSource(globbedStops = stops, scheduledStopTimes = departures, calendar = calendar),
-        FakeRealtimeSource(),
-        FakeLocationSource(location),
-        FakeSettingsSource(),
-        backgroundScope,
-    )
-
     private fun TestScope.buildVm(
         departures: List<ScheduledStopTime> = standardDepartures,
         stops: List<GlobbedStopRecord> = listOf(stop),
         location: LatLon = stopLoc,
     ): TestDependencies {
-        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = stops, scheduledStopTimes = departures, calendar = calendar)
+        val gtfsStaticRepository =
+            FakeStaticGtfsSource(globbedStops = stops, scheduledStopTimes = departures, calendar = calendar)
         val gtfsRealtimeRepository = FakeRealtimeSource()
         val locationRepo = FakeLocationSource(location)
         val settingsRepo = FakeSettingsSource()
 
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
-        )
+        val transitInfo = buildTransitInfo(gtfsStaticRepository, gtfsRealtimeRepository, locationRepo, settingsRepo)
 
         return TestDependencies(
             FilterViewModel(transitInfo),
@@ -137,7 +118,7 @@ class FilterViewModelTest {
     // filter has to be committed through Home before the FilterViewModel exists.
     @Test
     fun `staged selection seeds from the committed filters`() = runTest(rule.dispatcher) {
-        val transitInfo = buildTransitInfo()
+        val transitInfo = buildTransitInfo(FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar))
         val homeViewModel = HomeViewModel(transitInfo)
         homeViewModel.toggleFilterForBusStops(busRoute370)
 
@@ -148,7 +129,7 @@ class FilterViewModelTest {
 
     @Test
     fun `toggleStaged adds and removes without committing`() = runTest(rule.dispatcher) {
-        val transitInfo = buildTransitInfo()
+        val transitInfo = buildTransitInfo(FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar))
         val homeViewModel = HomeViewModel(transitInfo)
         val vm = FilterViewModel(transitInfo)
 
@@ -162,7 +143,7 @@ class FilterViewModelTest {
 
     @Test
     fun `applyStaging commits the staged set and emits PopBack`() = runTest(rule.dispatcher) {
-        val transitInfo = buildTransitInfo()
+        val transitInfo = buildTransitInfo(FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar))
         val homeViewModel = HomeViewModel(transitInfo)
         val vm = FilterViewModel(transitInfo)
 
@@ -181,7 +162,7 @@ class FilterViewModelTest {
     // the user deselects them there.
     @Test
     fun `applied filters are pinned into the Home row`() = runTest(rule.dispatcher) {
-        val transitInfo = buildTransitInfo()
+        val transitInfo = buildTransitInfo(FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar))
         val homeViewModel = HomeViewModel(transitInfo)
         val vm = FilterViewModel(transitInfo)
 
@@ -194,7 +175,7 @@ class FilterViewModelTest {
 
     @Test
     fun `resetStaging empties staging and leaves the committed set until apply`() = runTest(rule.dispatcher) {
-        val transitInfo = buildTransitInfo()
+        val transitInfo = buildTransitInfo(FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar))
         val homeViewModel = HomeViewModel(transitInfo)
         homeViewModel.toggleFilterForBusStops(busRoute370)
         val vm = FilterViewModel(transitInfo)
@@ -210,7 +191,7 @@ class FilterViewModelTest {
     // Back discards: the staged edits never reach Home.
     @Test
     fun `onBackClicked emits PopBack and discards staging`() = runTest(rule.dispatcher) {
-        val transitInfo = buildTransitInfo()
+        val transitInfo = buildTransitInfo(FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar))
         val homeViewModel = HomeViewModel(transitInfo)
         val vm = FilterViewModel(transitInfo)
 

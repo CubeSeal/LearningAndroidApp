@@ -144,7 +144,7 @@ fun test() = runTest(rule.dispatcher) {
 }
 ```
 
-Pass the same fake instance you assert on — don't build a second one inside the helper. For a side effect, destructure the relevant fake (`val (vm, _, _, _, fakeSettingsSource) = buildVm()`) and Turbine it. `buildVm` returns a single VM, so **cross-VM tests wire `TransitInfo` inline** and construct both VMs over it (see `HomeViewModelTest`'s `enabling following re-snaps to the closest stop`).
+Pass the same fake instance you assert on — don't build a second one inside the helper. For a side effect, destructure the relevant fake (`val (vm, _, _, _, fakeSettingsSource) = buildVm()`) and Turbine it. `buildVm` returns a single VM, so **cross-VM tests build `TransitInfo` themselves** with the shared `buildTransitInfo` (`TestWiring.kt`), passing only the fakes they seed or assert on (the rest default to an empty world), and construct both VMs over it (see `HomeViewModelTest`'s `enabling following re-snaps to the closest stop`). Every `buildVm` goes through it too, so a new seam is added in one place.
 
 `TransitInfo` takes `scope = backgroundScope` (cancelled at test end — no resource leaks). `viewModelScope` uses `Dispatchers.Main` (set to `UnconfinedTestDispatcher` by the rule, so coroutines run eagerly without explicit advancement).
 

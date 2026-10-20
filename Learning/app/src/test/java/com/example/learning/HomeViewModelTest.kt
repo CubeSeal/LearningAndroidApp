@@ -84,22 +84,13 @@ class HomeViewModelTest {
         serviceCalendar: ServiceCalendar = calendar,
         realtime: List<RealtimeTripInfo> = emptyList(),
     ): TestDependencies {
-        val gtfsStaticRepository = FakeStaticGtfsSource(
-            globbedStops = stops,
-            scheduledStopTimes = departures,
-            calendar = serviceCalendar,
-        )
+        val gtfsStaticRepository =
+            FakeStaticGtfsSource(globbedStops = stops, scheduledStopTimes = departures, calendar = serviceCalendar)
         val gtfsRealtimeRepository = FakeRealtimeSource(realtime)
         val locationRepo = FakeLocationSource(location)
         val settingsRepo = FakeSettingsSource()
 
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
-        )
+        val transitInfo = buildTransitInfo(gtfsStaticRepository, gtfsRealtimeRepository, locationRepo, settingsRepo)
 
         return TestDependencies(
             HomeViewModel(transitInfo),
@@ -247,16 +238,8 @@ class HomeViewModelTest {
 
     @Test
     fun `a saved-stop combo selection is applied to the home filters`() = runTest(rule.dispatcher) {
-        val gtfsStaticRepository = FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = standardDepartures, calendar = calendar)
-        val gtfsRealtimeRepository = FakeRealtimeSource()
-        val locationRepo = FakeLocationSource()
-        val settingsRepo = FakeSettingsSource()
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar),
         )
         val homeViewModel = HomeViewModel(transitInfo)
         val savedStopsViewModel = SavedStopsViewModel(transitInfo)
@@ -275,12 +258,8 @@ class HomeViewModelTest {
     // committed. Its startup must not clear them (only pull-to-refresh does).
     @Test
     fun `a saved-stop combo survives Home being recreated on the way back`() = runTest(rule.dispatcher) {
-        val transitInfo = TransitInfo(
-            FakeStaticGtfsSource(globbedStops = listOf(stop), scheduledStopTimes = standardDepartures, calendar = calendar),
-            FakeRealtimeSource(),
-            FakeLocationSource(),
-            FakeSettingsSource(),
-            backgroundScope,
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(listOf(stop), standardDepartures, calendar),
         )
         val savedStopsViewModel = SavedStopsViewModel(transitInfo)
 
@@ -354,17 +333,9 @@ class HomeViewModelTest {
 
     @Test
     fun `enabling following re-snaps to the closest stop`() = runTest(rule.dispatcher) {
-        val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), scheduledStopTimes = standardDepartures, calendar = calendar)
-        val gtfsRealtimeRepository = FakeRealtimeSource()
-        val locationRepo = FakeLocationSource(stop2Loc)
-        val settingsRepo = FakeSettingsSource()
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(listOf(stop, stop2), standardDepartures, calendar),
+            locationRepo = FakeLocationSource(stop2Loc),
         )
         val homeViewModel = HomeViewModel(transitInfo)
         val savedStopsViewModel = SavedStopsViewModel(transitInfo)
@@ -381,17 +352,8 @@ class HomeViewModelTest {
 
     @Test
     fun `re-enabling follow after a manual pick snaps back to the closest stop`() = runTest(rule.dispatcher) {
-        val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), scheduledStopTimes = standardDepartures, calendar = calendar)
-        val gtfsRealtimeRepository = FakeRealtimeSource()
-        val locationRepo = FakeLocationSource()
-        val settingsRepo = FakeSettingsSource()
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(listOf(stop, stop2), standardDepartures, calendar),
         )
         val homeViewModel = HomeViewModel(transitInfo)
         val savedStopsViewModel = SavedStopsViewModel(transitInfo)
@@ -449,18 +411,9 @@ class HomeViewModelTest {
 
     @Test
     fun `selecting a saved stop turns following off`() = runTest(rule.dispatcher) {
-        val gtfsStaticRepository =
-            FakeStaticGtfsSource(globbedStops = listOf(stop, stop2), scheduledStopTimes = standardDepartures, calendar = calendar)
-        val gtfsRealtimeRepository = FakeRealtimeSource()
-        val locationRepo = FakeLocationSource(stop2Loc)
-        val settingsRepo = FakeSettingsSource()
-
-        val transitInfo = TransitInfo(
-            gtfsStaticRepository,
-            gtfsRealtimeRepository,
-            locationRepo,
-            settingsRepo,
-            backgroundScope,
+        val transitInfo = buildTransitInfo(
+            gtfsStaticRepository = FakeStaticGtfsSource(listOf(stop, stop2), standardDepartures, calendar),
+            locationRepo = FakeLocationSource(stop2Loc),
         )
 
         val homeViewModel = HomeViewModel(transitInfo)
