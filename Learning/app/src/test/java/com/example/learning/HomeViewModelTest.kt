@@ -448,23 +448,37 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `enabling follow location shows the refresh spinner while it runs`() = runTest(rule.dispatcher) {
+    fun `enabling follow location shows the location button loading while it runs`() = runTest(rule.dispatcher) {
         val (vm, _) = buildVm(stops = listOf(stop, stop2))
         vm.toggleFollowLocation() // on -> off, settles before we start observing
 
-        vm.isRefreshing.test {
+        vm.locating.test {
             assertFalse(awaitItem())
-            vm.toggleFollowLocation() // off -> on: should spin while the fresh fix is requested
+            vm.toggleFollowLocation() // off -> on: should load while the fresh fix is requested
             assertTrue(awaitItem())
             assertFalse(awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
     }
 
+    // Following location is picking a stop, not refreshing the list, so the button loads instead.
     @Test
-    fun `disabling follow location does not show the refresh spinner`() = runTest(rule.dispatcher) {
+    fun `enabling follow location does not show the refresh spinner`() = runTest(rule.dispatcher) {
         val (vm, _) = buildVm(stops = listOf(stop, stop2))
+        vm.toggleFollowLocation() // on -> off, settles before we start observing
+
         vm.isRefreshing.test {
+            assertFalse(awaitItem())
+            vm.toggleFollowLocation() // off -> on
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `disabling follow location does not show the location button loading`() = runTest(rule.dispatcher) {
+        val (vm, _) = buildVm(stops = listOf(stop, stop2))
+        vm.locating.test {
             assertFalse(awaitItem())
             vm.toggleFollowLocation() // on -> off: no location fetch needed
             expectNoEvents()

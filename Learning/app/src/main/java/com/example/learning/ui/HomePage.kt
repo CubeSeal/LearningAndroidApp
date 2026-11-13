@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -107,6 +108,7 @@ fun HOMEScreen(
     val rowFilters by viewModel.rowFilters.collectAsStateWithLifecycle()
     val selectedFiltersForBusStop by viewModel.selectedFiltersForBusStop.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val locating by viewModel.locating.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -140,6 +142,7 @@ fun HOMEScreen(
             HomeHeader(
                 focusedBusStop = focusedBusStop,
                 followLocation = followLocation,
+                locating = locating,
                 onToggleFollowLocation = { viewModel.toggleFollowLocation() },
                 onSaveStop = { focusedBusStop?.let { viewModel.addSavedStop(it) } },
                 onEditStop = { viewModel.onEditStopClicked() },
@@ -178,6 +181,7 @@ fun HOMEScreen(
 fun HomeHeader(
     focusedBusStop: GlobbedStopRecord?,
     followLocation: Boolean,
+    locating: Boolean,
     onToggleFollowLocation: () -> Unit,
     onSaveStop: () -> Unit,
     onEditStop: () -> Unit,
@@ -193,12 +197,19 @@ fun HomeHeader(
         horizontalArrangement = Arrangement.End,
     ) {
         IconButton(onClick = onToggleFollowLocation) {
-            Icon(
-                if (followLocation) Icons.Filled.MyLocation else Icons.Filled.LocationDisabled,
-                contentDescription = if (followLocation) "Stop following my location" else "Follow my location",
-                tint = if (followLocation) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (locating) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    if (followLocation) Icons.Filled.MyLocation else Icons.Filled.LocationDisabled,
+                    contentDescription = if (followLocation) "Stop following my location" else "Follow my location",
+                    tint = if (followLocation) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         IconButton(onClick = onSaveStop) {
             Icon(Icons.Filled.Save, contentDescription = "Save stop")

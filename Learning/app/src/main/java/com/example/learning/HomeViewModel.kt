@@ -147,6 +147,9 @@ class HomeViewModel(
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing = _isRefreshing.asStateFlow()
 
+    private val _locating = MutableStateFlow(false)
+    val locating = _locating.asStateFlow()
+
     // One-shot effects. The list resets to the top when it becomes a different list (new stop or
     // filter selection), and saving a stop surfaces a snackbar — both emitted here so the composable
     // is a dumb collector.
@@ -193,19 +196,19 @@ class HomeViewModel(
     }
 
     // Turning follow-location ON re-fetches a fresh fix (see TransitInfo.setFollowLocation), so the
-    // same refresh spinner used by pull-to-refresh shows while that's in flight. Turning it off is
-    // instant (no location fetch), so the spinner stays untouched.
+    // location button loads while that's in flight: following is a choice of stop, not a refresh of
+    // the list. Turning it off is instant (no location fetch).
     fun toggleFollowLocation() = viewModelScope.launch {
         val enabling = !transitInfo.followLocation.value
         if (!enabling) {
             transitInfo.setFollowLocation(false)
             return@launch
         }
-        _isRefreshing.update { true }
+        _locating.update { true }
         try {
             transitInfo.setFollowLocation(true)
         } finally {
-            _isRefreshing.update { false }
+            _locating.update { false }
         }
     }
 
