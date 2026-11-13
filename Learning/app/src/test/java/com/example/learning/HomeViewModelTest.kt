@@ -575,6 +575,28 @@ class HomeViewModelTest {
         assertEquals(listOf("trip-200"), vm.associatedStopTimes.value.map { it.second.stopTimesRecord.tripId })
     }
 
+    @Test
+    fun `a stop with two stands offers a filter for each`() = runTest(rule.dispatcher) {
+        val standA = StopRecord("S1", "QVB, York St, Stand A", stopLoc, false)
+        val standF = StopRecord("S2", "QVB, Market St, Stand F", stopLoc, false)
+        val qvb = GlobbedStopRecord(stopId, "QVB", listOf(standA, standF))
+        val (vm, _) = buildVm(
+            departures = listOf(
+                dep("100", "Downtown").copy(stopId = standA.stopId, stopName = standA.stopName),
+                dep("200", "Uptown").copy(stopId = standF.stopId, stopName = standF.stopName),
+            ),
+            stops = listOf(qvb),
+        )
+
+        assertEquals(
+            setOf(
+                TransitFilterOptions.StopStand(standA.stopName, TransitMode.BUS),
+                TransitFilterOptions.StopStand(standF.stopName, TransitMode.BUS),
+            ),
+            vm.availableFiltersForBusStop.value.filterIsInstance<TransitFilterOptions.StopStand>().toSet(),
+        )
+    }
+
     // The realtime feed only describes a trip's current run; the same trip id tomorrow has no realtime yet.
     @Test
     fun `realtime attaches to a trip's next run only`() = runTest(rule.dispatcher) {

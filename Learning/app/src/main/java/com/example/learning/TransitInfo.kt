@@ -315,7 +315,7 @@ class TransitInfo(
                     focusedBusStop
                         .value
                         ?.stopRecords
-                        ?.takeIf { it.size > 2}
+                        ?.takeIf { it.size > 1 }
                         ?.filter { it.stopId == stopTimesRecord.stopId }
                         ?.forEach { if (it.stopName.isNotBlank()) add(TransitFilterOptions.StopStand(it.stopName, mode)) }
                 }
