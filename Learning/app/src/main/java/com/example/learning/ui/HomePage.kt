@@ -85,6 +85,7 @@ import com.example.learning.TransitFilterOptions
 import com.example.learning.Trips
 import com.example.learning.effectiveDepartureTime
 import com.example.learning.printTime
+import com.example.learning.shortStandName
 import com.example.learning.timeDisplay
 import com.example.learning.repos.GlobbedStopRecord
 import com.example.learning.repos.TransitMode
@@ -472,20 +473,6 @@ internal fun ModeRoundel(mode: TransitMode) {
 }
 
 /**
- * Display-only short name for a platform/stand. GTFS supplies the full form — "<Station> Platform 3"
- * for platforms, "<Station>, <street>, Stand A" for stands — so we strip the leading "<…> Station"
- * prefix (with a trailing space or ", ") to leave "Platform 3" / "<street>, Stand A". Falls back to
- * the full name if the expected shape isn't found.
- */
-internal fun shortStandName(fullName: String): String {
-    val marker = " Station"
-    val stationEnd = fullName.indexOf(marker)
-    if (stationEnd < 0) return fullName
-    val rest = fullName.substring(stationEnd + marker.length).removePrefix(",").trimStart()
-    return rest.ifBlank { fullName }
-}
-
-/**
  * The label content of a filter chip — a mode roundel for transport modes, otherwise the option's
  * text. Shared by the Home filter row, the FilterPage, and the saved-stop combos so all three render
  * filters identically.
@@ -493,9 +480,7 @@ internal fun shortStandName(fullName: String): String {
 @Composable
 internal fun FilterChipLabel(option: TransitFilterOptions) {
     when (option) {
-        is TransitFilterOptions.RouteShortName -> Text(option.routeShortName)
-        is TransitFilterOptions.TripHeadsign -> Text(option.tripHeadsign)
-        is TransitFilterOptions.StopStand -> Text(shortStandName(option.stopStand))
         is TransitFilterOptions.TransportMode -> ModeRoundel(option.mode)
+        else -> Text(option.filterLabel)
     }
 }

@@ -280,7 +280,7 @@ class FilterViewModelTest {
         assertEquals(listOf("T1"), vm.visibleOptions.value.map { it.filterLabel })
 
         vm.selectFilterTab(FilterTabs.Platforms)
-        assertEquals(listOf("Test Station, Platform 1"), vm.visibleOptions.value.map { it.filterLabel })
+        assertEquals(listOf("Platform 1"), vm.visibleOptions.value.map { it.filterLabel })
     }
 
     // Staging spans tabs: a chip checked on one tab stays checked after navigating away and back.

@@ -93,7 +93,7 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
     data class StopStand(val stopStand: String, val mode: TransitMode): TransitFilterOptions {
         override val typeRank = 1
         override val modeRank = mode.rank
-        override val filterLabel = this.stopStand
+        override val filterLabel = shortStandName(this.stopStand)
         init { require(stopStand.isNotBlank()) }
     }
 
@@ -112,6 +112,25 @@ sealed interface TransitFilterOptions: Comparable<TransitFilterOptions> {
         override val filterLabel = this.tripHeadsign
         init { require(tripHeadsign.isNotBlank()) }
     }
+}
+
+/**
+ * Short name for a platform/stand, without the place its globbed stop is already named after. GTFS
+ * supplies the full form — "<Station> Platform 3" for platforms, "<Place>, <street>, Stand A" for
+ * stands — so we strip the leading place (up to the first comma) or "<…> Station" (with a trailing
+ * space or ", ") to leave "Platform 3" / "<street>, Stand A". Falls back to the full name if the
+ * expected shape isn't found.
+ */
+fun shortStandName(fullName: String): String {
+    val rest = if (fullName.count { it == ',' } >= 2) {
+        fullName.substringAfter(',').trimStart()
+    } else {
+        val marker = " Station"
+        val stationEnd = fullName.indexOf(marker)
+        if (stationEnd < 0) return fullName
+        fullName.substring(stationEnd + marker.length).removePrefix(",").trimStart()
+    }
+    return rest.ifBlank { fullName }
 }
 
 /**
