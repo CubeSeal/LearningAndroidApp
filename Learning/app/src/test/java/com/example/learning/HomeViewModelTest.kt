@@ -317,6 +317,30 @@ class HomeViewModelTest {
         assertEquals(setOf(filter100), vm.selectedFiltersForBusStop.value)
     }
 
+    // The focused stop's id is the same in the new database, so nothing about the stop changes; only
+    // the swap itself can bring in its new timetable.
+    @Test
+    fun `a refresh that pulls a newer database shows its departures`() = runTest(rule.dispatcher) {
+        val (vm, fakeStaticSource) = buildVm()
+
+        fakeStaticSource.publish(scheduledStopTimes = listOf(dep("300", "Midtown")))
+        vm.refresh()
+
+        assertEquals(listOf("trip-300"), vm.associatedStopTimes.value.map { it.second.stopTimesRecord.tripId })
+    }
+
+    @Test
+    fun `without following location, a refresh that pulls a newer database shows its departures`() =
+        runTest(rule.dispatcher) {
+            val (vm, fakeStaticSource) = buildVm()
+            vm.toggleFollowLocation()
+
+            fakeStaticSource.publish(scheduledStopTimes = listOf(dep("300", "Midtown")))
+            vm.refresh()
+
+            assertEquals(listOf("trip-300"), vm.associatedStopTimes.value.map { it.second.stopTimesRecord.tripId })
+        }
+
     // --- Follow-my-location toggle ---
 
     private val stop2Loc = LatLon(-33.9, 151.3)

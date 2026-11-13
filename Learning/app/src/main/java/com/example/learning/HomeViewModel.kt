@@ -144,7 +144,6 @@ class HomeViewModel(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
 
-    val isUpToDate = transitInfo.gtfsStaticRepository.isUpToDate
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing = _isRefreshing.asStateFlow()
 

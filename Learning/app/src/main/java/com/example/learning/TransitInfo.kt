@@ -221,9 +221,11 @@ class TransitInfo(
         .map { it.toLocalDate() }
         .stateIn(scope, SharingStarted.Eagerly, currentMinute.value.toLocalDate())
 
-    val focusedBusStop = settingsRepo
-        .homeStopId
-        .filterNotNull()
+    // Every read of the static DB below also keys on its version, so a sync that swaps in a newer DB
+    // re-reads it even when nothing else (the stop, the location) has changed.
+    private val databaseVersion = gtfsStaticRepository.databaseVersion
+
+    val focusedBusStop = combine(settingsRepo.homeStopId.filterNotNull(), databaseVersion) { id, _ -> id }
         .transformLatest {
             val value = gtfsStaticRepository.getGlobbedStopById(it)
             Log.d("TransitInfo", "Settings focused bus stop to ${value?.globbedStopId} (${value?.stopRecords?.size} stops)")
@@ -235,7 +237,7 @@ class TransitInfo(
         )
 
     // Derived state - automatically updates when location or allBusStops change
-    val closestBusStops: StateFlow<List<GlobbedStopRecord>> = locationRepo.currentLocation.map { loc ->
+    val closestBusStops: StateFlow<List<GlobbedStopRecord>> = combine(locationRepo.currentLocation, databaseVersion) { loc, _ -> loc }.map { loc ->
         Log.d("TransitInfo", "Updating closest info with $loc.")
         loc?.let { gtfsStaticRepository.getNClosestStops(it, 10) } ?: emptyList()
     }.stateIn(
@@ -300,8 +302,9 @@ class TransitInfo(
     // Only rows you can board count as this stop's departures — not a train running straight through
     // (every CCN at Pennant Hills), nor one that only sets down here. Filters are built from this too,
     // so neither offers a chip.
-    val schedule: StateFlow<StopSchedule?> = focusedBusStop
-        .filterNotNull()
+    // Keyed on the version as well as the stop: an unchanged stop is an equal record, so the
+    // focusedBusStop StateFlow won't re-emit it after a swap.
+    val schedule: StateFlow<StopSchedule?> = combine(focusedBusStop.filterNotNull(), databaseVersion) { stop, _ -> stop }
         .flatMapLatest { stop ->
             flow {
                 emit(null)
@@ -370,7 +373,7 @@ class TransitInfo(
             emptyMap()
         )
 
-    val savedStops: StateFlow<List<SavedStop>> = settingsRepo.savedStops
+    val savedStops: StateFlow<List<SavedStop>> = combine(settingsRepo.savedStops, databaseVersion) { entries, _ -> entries }
         .map { entries ->
             entries.mapNotNull { entry ->
                 gtfsStaticRepository.getGlobbedStopById(entry.stopId)?.let { stop ->

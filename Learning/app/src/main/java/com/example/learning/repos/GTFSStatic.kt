@@ -296,7 +296,8 @@ internal suspend fun bootstrapGtfs(
  * Kept as a plain interface so tests can swap in a state-based fake (see `src/test`).
  */
 interface StaticGtfsSource {
-    val isUpToDate: StateFlow<Boolean>
+    // Goes up each time a sync swaps in a newer database, so readers know to re-query.
+    val databaseVersion: StateFlow<Int>
 
     suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord?
     suspend fun getGlobbedStopsByName(globbedStopName: String): List<GlobbedStopRecord>
@@ -320,7 +321,7 @@ class GtfsStaticRepository(
     private val db get() = GtfsDatabase.getInstance(context)
     private val gtfsDao get() = db.gtfsDao()
     private var _serviceCalendar: ServiceCalendar? = null
-    override val isUpToDate = MutableStateFlow(false)
+    override val databaseVersion = MutableStateFlow(0)
 
     override suspend fun getServiceCalendar(): ServiceCalendar =
         _serviceCalendar ?: run {
@@ -409,8 +410,6 @@ class GtfsStaticRepository(
 
             if (!force && localTimestamp != null && localTimestamp >= publishedAt) {
                 Log.d(tag, "Up to date ($localTimestamp >= $publishedAt)")
-
-                isUpToDate.update { true }
                 return@withContext
             }
 
@@ -488,7 +487,7 @@ class GtfsStaticRepository(
             // ── Write timestamp only after everything succeeded ──────
             fileRepository.writeFile(timestampFile, remoteTimestamp.toString())
             Log.i(tag, "GTFS DB updated (published: $remoteTimestamp)")
-            isUpToDate.update { true }
+            databaseVersion.update { it + 1 }
         } catch (e: Exception) {
             fileRepository.deleteFile(tempGzName)
             fileRepository.deleteFile(tempDbName)
@@ -499,11 +498,26 @@ class GtfsStaticRepository(
 }
 
 class FakeStaticGtfsSource(
-    private val globbedStops: List<GlobbedStopRecord> = emptyList(),
-    private val scheduledStopTimes: List<ScheduledStopTime> = emptyList(),
-    private val calendar: ServiceCalendar = ServiceCalendar(emptyMap()),
+    private var globbedStops: List<GlobbedStopRecord> = emptyList(),
+    private var scheduledStopTimes: List<ScheduledStopTime> = emptyList(),
+    private var calendar: ServiceCalendar = ServiceCalendar(emptyMap()),
 ) : StaticGtfsSource {
-    override val isUpToDate = MutableStateFlow(false)
+    override val databaseVersion = MutableStateFlow(0)
+
+    // A newer release on GitHub: the world the next sync swaps in.
+    private var published: (() -> Unit)? = null
+
+    fun publish(
+        globbedStops: List<GlobbedStopRecord> = this.globbedStops,
+        scheduledStopTimes: List<ScheduledStopTime> = this.scheduledStopTimes,
+        calendar: ServiceCalendar = this.calendar,
+    ) {
+        published = {
+            this.globbedStops = globbedStops
+            this.scheduledStopTimes = scheduledStopTimes
+            this.calendar = calendar
+        }
+    }
 
     override suspend fun getGlobbedStopById(globbedStopId: String): GlobbedStopRecord? =
         globbedStops.firstOrNull { it.globbedStopId == globbedStopId }
@@ -552,6 +566,10 @@ class FakeStaticGtfsSource(
         force: Boolean,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit,
     ) {
-        isUpToDate.value = true
+        published?.let {
+            it()
+            published = null
+            databaseVersion.update { version -> version + 1 }
+        }
     }
 }
