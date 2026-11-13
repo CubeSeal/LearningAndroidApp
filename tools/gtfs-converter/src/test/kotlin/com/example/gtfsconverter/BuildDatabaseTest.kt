@@ -224,6 +224,65 @@ class BuildDatabaseTest {
     }
 
     @Test
+    fun `it globs two-comma stand stops under their place, across streets`() {
+        // "QVB" isn't "% Station", but "<Place>, <Street>, <Stand>" names still glob on the place, so
+        // the York St and Market St stands become one logical stop, as a station's stands do.
+        val feed = gtfsFeed(
+            stops = listOf(
+                "Q1" to "QVB, York St, Stand A",
+                "Q2" to "QVB, York St, Stand E",
+                "Q3" to "QVB, Market St, Stand F",
+            ),
+        )
+
+        withMergedDb(feed to "") { db ->
+            val globbed = db.query("SELECT globbed_stop_id, globbed_stop_name, stop_id FROM globbed_stops") {
+                Triple(it.getString(1), it.getString(2), it.getString(3))
+            }
+            assertEquals(
+                setOf(
+                    Triple("qvb", "QVB", "Q1"),
+                    Triple("qvb", "QVB", "Q2"),
+                    Triple("qvb", "QVB", "Q3"),
+                ),
+                globbed.toSet(),
+            )
+        }
+    }
+
+    @Test
+    fun `it does not glob a lone two-comma stop`() {
+        // Globbing a stop with no siblings would only drop the street and stand from its name.
+        val feed = gtfsFeed(
+            stops = listOf(
+                "K1" to "Kiama High School, School Grounds, Shoalhaven St",
+                "K2" to "Kiama, Terralong St",
+            ),
+        )
+
+        withMergedDb(feed to "") { db ->
+            assertEquals(emptySet<String>(), db.ids("SELECT globbed_stop_id FROM globbed_stops"))
+        }
+    }
+
+    @Test
+    fun `one-comma stops do not join a two-comma place`() {
+        // Only "<Place>, <Street>, <Stand>" names glob by place; "QVB, George St" names a different
+        // single stop and stays apart.
+        val feed = gtfsFeed(
+            stops = listOf(
+                "Q1" to "QVB, York St, Stand A",
+                "Q2" to "QVB, York St, Stand B",
+                "G1" to "QVB, George St",
+            ),
+        )
+
+        withMergedDb(feed to "") { db ->
+            assertEquals(setOf("Q1", "Q2"), db.ids("SELECT stop_id FROM globbed_stops"))
+        }
+    }
+
+    @Test
     fun `it globs stops that share an identical non-station full name`() {
         // "M2 Motorway, Oakes Rd" appears under two stop_ids: no parent_station, not a station,
         // pre-comma "M2 Motorway" is not "% Station". Strategy 3 (identical full name) merges them.
@@ -294,6 +353,8 @@ class BuildDatabaseTest {
             stops = listOf(
                 "B1" to "Central Station, Bay 1",   // Strategy 2
                 "B2" to "Central Station, Bay 2",   // Strategy 2
+                "Q1" to "QVB, York St, Stand A",    // Strategy 2, by place
+                "Q2" to "QVB, York St, Stand A",    // Strategy 2, not also Strategy 3's identical name
                 "M1" to "M2 Motorway, Oakes Rd",    // Strategy 3
                 "M2" to "M2 Motorway, Oakes Rd",    // Strategy 3
                 "X1" to "Lonely Rd",                // unique -> ungloBBed

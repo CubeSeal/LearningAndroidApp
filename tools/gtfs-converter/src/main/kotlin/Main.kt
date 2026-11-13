@@ -591,8 +591,11 @@ private fun createGlobbedStops(conn: Connection) {
     //    This correctly groups "Wynyard Station" + "Wynyard Station, Platform 3" etc. without
     //    relying on name parsing.
     //
-    // 2. Name-parse fallback (buses): stops whose pre-comma name ends in "Station" but have no
-    //    parent_station (most bus stops). Retained so bus interchanges keep working.
+    // 2. Name-parse fallback (buses): stops with no parent_station (most bus stops) glob under their
+    //    pre-comma place when it ends in "Station", or when the name is "<Place>, <Street>, <Stand>"
+    //    and another such stop shares the place (e.g. "QVB, York St, Stand A" and
+    //    "QVB, Market St, Stand F" under "QVB"). A lone one stays unglobbed, since globbing it would
+    //    only drop its street and stand from the name.
     //
     // 3. Identical full-name fallback: stops NOT caught by 1/2 that share a byte-identical stop_name
     //    (e.g. "M2 Motorway, Oakes Rd" under two stop_ids) glob together. Duplicates only, capped.
@@ -601,6 +604,34 @@ private fun createGlobbedStops(conn: Connection) {
     // stop set is disjoint, so no stop_id ends up under two globbed_stop_ids (which would multiply
     // the app's LEFT JOIN globbed_stops rows).
     conn.exec("""
+        WITH unparented AS (
+            SELECT
+                stop_id,
+                stop_name,
+                location_type,
+                trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) AS place,
+                length(stop_name) - length(replace(stop_name, ',', '')) AS commas
+            FROM stops
+            WHERE stop_name IS NOT NULL
+              AND (parent_station IS NULL OR parent_station = '')
+        ),
+        stands AS (
+            SELECT stop_id, place FROM unparented
+            WHERE commas >= 2 AND (location_type IS NULL OR location_type != 1)
+        ),
+        place_named AS (
+            SELECT stop_id, place FROM unparented
+            WHERE commas >= 1 AND place LIKE '% Station'
+            UNION
+            SELECT stop_id, place FROM stands
+            WHERE place IN (SELECT place FROM stands GROUP BY place HAVING COUNT(*) >= 2)
+        ),
+        -- Strategy 3's pool: not covered by 1a (unparented), 1b or 2.
+        unclaimed AS (
+            SELECT stop_id, stop_name FROM unparented
+            WHERE (location_type IS NULL OR location_type != 1)
+              AND stop_id NOT IN (SELECT stop_id FROM place_named)
+        )
         INSERT OR REPLACE INTO globbed_stops (
             globbed_stop_id,
             globbed_stop_name,
@@ -629,48 +660,24 @@ private fun createGlobbedStops(conn: Connection) {
 
         -- Strategy 2: name-parse fallback for stops with no parent_station
         SELECT
-            replace(lower(station_name), ' ', '_') AS globbed_stop_id,
-            station_name AS globbed_stop_name,
+            replace(lower(place), ' ', '_') AS globbed_stop_id,
+            place AS globbed_stop_name,
             stop_id
-        FROM (
-            SELECT
-                stop_id,
-                trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) AS station_name
-            FROM stops
-            WHERE stop_name IS NOT NULL
-              AND instr(stop_name, ',') > 0
-              AND (parent_station IS NULL OR parent_station = '')
-        )
-        WHERE station_name LIKE '% Station'
+        FROM place_named
 
         UNION
 
         -- Strategy 3: identical full-name merge (e.g. "M2 Motorway, Oakes Rd" under two stop_ids).
-        -- Only stops NOT covered by 1a/1b/2, and only names shared by 2..4 eligible stops (the cap
-        -- bounds the per-stop query fan-out and coincidental over-merging). The eligibility predicate
-        -- is repeated in both subqueries on purpose so HAVING COUNT counts only eligible stops.
+        -- Only names shared by 2..4 unclaimed stops (the cap bounds the per-stop query fan-out and
+        -- coincidental over-merging).
         SELECT
-            replace(lower(e.stop_name), ' ', '_') AS globbed_stop_id,
-            e.stop_name                           AS globbed_stop_name,
-            e.stop_id
-        FROM (
-            SELECT stop_id, stop_name FROM stops
-            WHERE stop_name IS NOT NULL
-              AND (parent_station IS NULL OR parent_station = '')       -- excludes 1a
-              AND (location_type IS NULL OR location_type != 1)         -- excludes 1b
-              AND NOT (instr(stop_name, ',') > 0                        -- excludes 2
-                       AND trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) LIKE '% Station')
-        ) e
-        JOIN (
-            SELECT stop_name FROM stops
-            WHERE stop_name IS NOT NULL
-              AND (parent_station IS NULL OR parent_station = '')
-              AND (location_type IS NULL OR location_type != 1)
-              AND NOT (instr(stop_name, ',') > 0
-                       AND trim(substr(stop_name, 1, instr(stop_name, ',') - 1)) LIKE '% Station')
-            GROUP BY stop_name
-            HAVING COUNT(*) BETWEEN 2 AND 4
-        ) dup ON dup.stop_name = e.stop_name
+            replace(lower(stop_name), ' ', '_') AS globbed_stop_id,
+            stop_name                           AS globbed_stop_name,
+            stop_id
+        FROM unclaimed
+        WHERE stop_name IN (
+            SELECT stop_name FROM unclaimed GROUP BY stop_name HAVING COUNT(*) BETWEEN 2 AND 4
+        )
     """)
 }
 
